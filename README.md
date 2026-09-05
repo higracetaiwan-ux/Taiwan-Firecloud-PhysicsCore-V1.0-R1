@@ -1,10 +1,10 @@
 # Taiwan Firecloud PhysicsCore V1.0
 
-**Current checkpoint: V1.0-R2 — CloudScene + Canvas-specific Ray runtime foundation.**
+**Current checkpoint: V1.0-R2.1 — R2 runtime foundation + non-blocking streaming CASE export.**
 
 This is the new main-program identity. The package is a full runnable replacement built from the V8.4.16.7 compatibility baseline while the frozen PhysicsCore V1.0 architecture is refactored stage-by-stage.
 
-See `RELEASE_NOTES_PhysicsCore_V1.0-R2.md` for the exact implemented boundary.
+See `RELEASE_NOTES_PhysicsCore_V1.0-R2.1.md` for the exact implemented boundary.
 
 ---
 
@@ -529,6 +529,6 @@ See `說明文件_V8.4.16.7.md`, `RELEASE_NOTES_V8.4.16.7.md`, and the prior
 V8.4.16.5 notes.
 
 ## Active V1.0 documentation
-- `RELEASE_NOTES_PhysicsCore_V1.0-R2.md` — current R2 release notes.
+- `RELEASE_NOTES_PhysicsCore_V1.0-R2.1.md` — current R2 release notes.
 - `RELEASE_NOTES_PhysicsCore_V1.0-R1.md` — previous V1.0 checkpoint notes.
 - `V1.0_MIGRATION_FROM_V8.md` — concise historical migration record; individual V8.x release-note files are intentionally excluded from this package.

@@ -1555,81 +1555,187 @@ if run or st.session_state.analysis_result is not None:
     with st.expander("Voxel 詳細診斷"):
         st.dataframe(localized_df(detail["voxels"]), use_container_width=True, hide_index=True)
 
-    # CASE 封存：資料欄位維持英文，以確保回查與舊版本程式相容。
-    _case_export_t0 = perf_counter()
-    mem = io.BytesIO()
-    with zipfile.ZipFile(mem, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as z:
-        z.writestr("summary.csv", result["summary"].to_csv(index=False))
-        z.writestr("directions.csv", detail["directions"].to_csv(index=False))
-        z.writestr("voxels.csv", detail["voxels"].to_csv(index=False))
-        z.writestr("route_points.csv", result["route_points"].to_csv(index=False))
-        z.writestr("illumination_matrix.csv", result["illumination_matrix"].to_csv(index=False))
-        z.writestr("dynamic_rez.csv", result["dynamic_rez"].to_csv(index=False))
-        z.writestr("forecast_voxel_illumination.csv", result["forecast_voxel_matrix"].to_csv(index=False))
-        z.writestr("reconstructed_voxel_3d.csv", result["reconstructed_voxel_matrix"].to_csv(index=False))
-        z.writestr("reconstructed_cloud_columns.csv", result["reconstructed_cloud_columns"].to_csv(index=False))
-        z.writestr("pressure_profile_voxel_3d.csv", result["pressure_profile_voxel_matrix"].to_csv(index=False))
-        z.writestr("pressure_profile_cloud_columns.csv", result["pressure_profile_cloud_columns"].to_csv(index=False))
-        z.writestr("native_gfs_cloud_voxel_3d.csv", result["native_cloud_voxel_matrix"].to_csv(index=False))
-        z.writestr("native_gfs_cloud_columns.csv", result["native_cloud_columns"].to_csv(index=False))
-        native_meta_export = {str(k): v.get("native_provider_metadata", {}) for k, v in result.get("details", {}).items()}
-        z.writestr("native_gfs_provider_metadata.json", json.dumps(native_meta_export, ensure_ascii=False, indent=2, default=str))
-        z.writestr("optical_blocking_voxel_3d.csv", result["optical_blocking_voxel_matrix"].to_csv(index=False))
-        z.writestr("vertical_blocking_columns.csv", result["vertical_blocking_columns"].to_csv(index=False))
-        z.writestr("native_cloud_optical_blocking_voxel_3d.csv", result.get("native_optical_blocking_voxel_matrix", pd.DataFrame()).to_csv(index=False))
-        z.writestr("native_cloud_optical_blocking_columns.csv", result.get("native_optical_blocking_columns", pd.DataFrame()).to_csv(index=False))
-        z.writestr("spectral_rt_voxel_600_750nm.csv", result.get("spectral_rt_voxel_matrix", pd.DataFrame()).to_csv(index=False))
-        z.writestr("spectral_rt_columns_600_750nm.csv", result.get("spectral_rt_columns", pd.DataFrame()).to_csv(index=False))
-        z.writestr("aerosol_aod550_route_forecast.csv", result.get("aerosol_hourly_raw", pd.DataFrame()).to_csv(index=False))
-        z.writestr("aerosol_spectral_route_snapshots.csv", result.get("aerosol_spectral_route_snapshots", pd.DataFrame()).to_csv(index=False))
-        z.writestr("cams_native_aerosol_3d_route_snapshots.csv", result.get("cams_native_aerosol_route_snapshots", pd.DataFrame()).to_csv(index=False))
-        cams_meta_export = {str(k): v.get("cams_native_aerosol_metadata", {}) for k, v in result.get("details", {}).items()}
-        z.writestr("cams_native_aerosol_provider_metadata.json", json.dumps(cams_meta_export, ensure_ascii=False, indent=2, default=str))
-        z.writestr("gas_profile_route_snapshots.csv", result.get("gas_profile_route_snapshots", pd.DataFrame()).to_csv(index=False))
-        z.writestr("ozone_profile_route_snapshots.csv", result.get("ozone_profile_route_snapshots", pd.DataFrame()).to_csv(index=False))
-        z.writestr("cams_native_ozone_provider_status.json", json.dumps(result.get("cams_native_ozone_provider_status", {}), ensure_ascii=False, indent=2, default=str))
-        z.writestr("cams_grib_message_inventory.csv", result.get("cams_grib_message_inventory", pd.DataFrame()).to_csv(index=False))
-        z.writestr("cams_request_audit.csv", result.get("cams_request_audit", pd.DataFrame()).to_csv(index=False))
-        z.writestr("cams_tile_audit.csv", result.get("cams_tile_audit", pd.DataFrame()).to_csv(index=False))
-        z.writestr("openmeteo_request_audit.csv", result.get("openmeteo_request_audit", pd.DataFrame()).to_csv(index=False))
-        z.writestr("openmeteo_aerosol_request_audit.csv", result.get("openmeteo_aerosol_request_audit", pd.DataFrame()).to_csv(index=False))
-        z.writestr("hitran_backend_status.json", json.dumps(result.get("hitran_backend_status", {}), ensure_ascii=False, indent=2, default=str))
-        z.writestr("physics_data_completeness.csv", result.get("physics_data_completeness", pd.DataFrame()).to_csv(index=False))
-        z.writestr("v1_core_summary.csv", result.get("v1_core_summary", pd.DataFrame()).to_csv(index=False))
-        z.writestr("v1_cloud_layers.csv", result.get("v1_cloud_layers", pd.DataFrame()).to_csv(index=False))
-        z.writestr("v1_canvas_candidates.csv", result.get("v1_canvas_candidates", pd.DataFrame()).to_csv(index=False))
-        z.writestr("v1_direct_solar_fraction.csv", result.get("v1_direct_solar_fraction", pd.DataFrame()).to_csv(index=False))
-        z.writestr("v1_solar_rays.csv", result.get("v1_solar_rays", pd.DataFrame()).to_csv(index=False))
-        z.writestr("v1_solar_geometry.csv", result.get("v1_solar_geometry", pd.DataFrame()).to_csv(index=False))
-        z.writestr("v1_dependency_status.csv", result.get("v1_dependency_status", pd.DataFrame()).to_csv(index=False))
-        z.writestr("spectral_rt_coverage_diagnostics.csv", result.get("spectral_coverage_diagnostics", pd.DataFrame()).to_csv(index=False))
-        z.writestr("spectral_rt_o3_diagnostics.csv", result.get("spectral_rt_voxel_matrix", pd.DataFrame()).filter(regex=r"^(solar_altitude_deg|direction_offset_deg|distance_km|point_id|.*o3_.*|gas_rt_failure_cause|gas_rt_domain_status|gas_rt_expected_termination|gas_path_completeness|gas_rt_boundary_clipped)$").to_csv(index=False))
-        z.writestr("forecast_raw.csv", result["hourly_raw"].to_csv(index=False))
-        _case_export_elapsed = perf_counter() - _case_export_t0
-        _perf_export = result.get("performance_diagnostics", pd.DataFrame()).copy()
-        _core_rows = _perf_export[_perf_export.get("stage", pd.Series(dtype=str)).eq("TOTAL_ANALYSIS_CORE")] if not _perf_export.empty and "stage" in _perf_export.columns else pd.DataFrame()
-        _core_elapsed = float(_core_rows["elapsed_seconds"].iloc[-1]) if not _core_rows.empty else float("nan")
-        _extra_perf = pd.DataFrame([
-            {"stage": "CASE_EXPORT_SERIALIZATION", "elapsed_seconds": _case_export_elapsed, "cache_status": "COMPUTED"},
-            {"stage": "TOTAL_TO_CASE_ARCHIVE", "elapsed_seconds": (_core_elapsed + _case_export_elapsed) if pd.notna(_core_elapsed) else float("nan"), "cache_status": "COMPUTED"},
-        ])
-        _perf_export = pd.concat([_perf_export, _extra_perf], ignore_index=True, sort=False)
-        z.writestr("performance_diagnostics.csv", _perf_export.to_csv(index=False))
-        z.writestr("analysis_job_state.json", json.dumps(_load_analysis_job_state(), ensure_ascii=False, indent=2, default=str))
-        z.writestr("cams_worker_checkpoint.json", json.dumps(_load_cams_worker_checkpoint(), ensure_ascii=False, indent=2, default=str))
-        z.writestr("cams_worker_checkpoints.json", json.dumps(_load_all_cams_worker_checkpoints(), ensure_ascii=False, indent=2, default=str))
-    mem.seek(0)
+    # CASE 封存（R2.1）：分析完成與 CASE 生成解耦。
+    #
+    # R2 以前會在每次 Streamlit rerun 都把所有大型 DataFrame 先 to_csv()
+    # 成為完整字串，再壓進記憶體 ZIP。大型 spectral/native voxel 表可超過
+    # 100 MB，這會造成顯著的額外 RAM 尖峰，看起來像「分析結束後卡住」。
+    # R2.1 改為：
+    #   1) 使用者按下「產生 CASE ZIP」後才序列化；
+    #   2) CSV 直接串流寫入 ZipExtFile，不建立大型中間字串；
+    #   3) 完成後 bytes 保存在 session_state，同一分析不重複生成；
+    #   4) 顯示逐檔進度，分析畫面不再被 CASE 建檔阻塞。
+    st.subheader("CASE 封存")
+    st.caption(
+        "分析已完成。CASE ZIP 與核心分析已解耦；只有按下「產生 CASE ZIP」後才進行大型 CSV 序列化。"
+    )
+
+    if "case_archive_bytes" not in st.session_state:
+        st.session_state.case_archive_bytes = None
+    if "case_archive_signature" not in st.session_state:
+        st.session_state.case_archive_signature = None
+    if "case_archive_elapsed" not in st.session_state:
+        st.session_state.case_archive_elapsed = None
+
     archive_req = st.session_state.analysis_request or {"day": day, "event": event}
     archive_day = archive_req.get("day", day)
     archive_event = archive_req.get("event", event)
-    st.download_button(
-        "保存本次分析 CASE ZIP",
-        data=mem,
-        file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R2_{archive_day}_{archive_event}_CASE.zip",
-        mime="application/zip",
-        on_click="ignore",
-        key="download_case_zip",
+    _case_signature = json.dumps(
+        {
+            "program_version": __version__,
+            "analysis_request": archive_req,
+            "detail_angle": float(detail_angle) if detail_angle is not None else None,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
     )
+
+    # If a new analysis / detail snapshot is active, invalidate only the old CASE
+    # bytes. The physics result itself remains untouched.
+    if st.session_state.case_archive_signature != _case_signature:
+        st.session_state.case_archive_bytes = None
+        st.session_state.case_archive_elapsed = None
+
+    def _zip_write_csv_stream(zf, arcname, df, *, chunksize=8192):
+        """Stream a DataFrame CSV directly into one ZIP member.
+
+        This intentionally avoids ``df.to_csv()`` returning one giant Python
+        string before compression.  The latter doubled/tripled peak memory for
+        the 3-D/spectral matrices and could make Streamlit appear hung.
+        """
+        frame = df if isinstance(df, pd.DataFrame) else pd.DataFrame()
+        with zf.open(arcname, mode="w") as raw:
+            with io.TextIOWrapper(raw, encoding="utf-8", newline="", write_through=False) as text:
+                frame.to_csv(text, index=False, chunksize=chunksize)
+                text.flush()
+
+    def _build_case_archive_bytes():
+        _t0 = perf_counter()
+        _mem = io.BytesIO()
+        _items = [
+            ("summary.csv", result["summary"]),
+            ("directions.csv", detail["directions"]),
+            ("voxels.csv", detail["voxels"]),
+            ("route_points.csv", result["route_points"]),
+            ("illumination_matrix.csv", result["illumination_matrix"]),
+            ("dynamic_rez.csv", result["dynamic_rez"]),
+            ("forecast_voxel_illumination.csv", result["forecast_voxel_matrix"]),
+            ("reconstructed_voxel_3d.csv", result["reconstructed_voxel_matrix"]),
+            ("reconstructed_cloud_columns.csv", result["reconstructed_cloud_columns"]),
+            ("pressure_profile_voxel_3d.csv", result["pressure_profile_voxel_matrix"]),
+            ("pressure_profile_cloud_columns.csv", result["pressure_profile_cloud_columns"]),
+            ("native_gfs_cloud_voxel_3d.csv", result["native_cloud_voxel_matrix"]),
+            ("native_gfs_cloud_columns.csv", result["native_cloud_columns"]),
+            ("optical_blocking_voxel_3d.csv", result["optical_blocking_voxel_matrix"]),
+            ("vertical_blocking_columns.csv", result["vertical_blocking_columns"]),
+            ("native_cloud_optical_blocking_voxel_3d.csv", result.get("native_optical_blocking_voxel_matrix", pd.DataFrame())),
+            ("native_cloud_optical_blocking_columns.csv", result.get("native_optical_blocking_columns", pd.DataFrame())),
+            ("spectral_rt_voxel_600_750nm.csv", result.get("spectral_rt_voxel_matrix", pd.DataFrame())),
+            ("spectral_rt_columns_600_750nm.csv", result.get("spectral_rt_columns", pd.DataFrame())),
+            ("aerosol_aod550_route_forecast.csv", result.get("aerosol_hourly_raw", pd.DataFrame())),
+            ("aerosol_spectral_route_snapshots.csv", result.get("aerosol_spectral_route_snapshots", pd.DataFrame())),
+            ("cams_native_aerosol_3d_route_snapshots.csv", result.get("cams_native_aerosol_route_snapshots", pd.DataFrame())),
+            ("gas_profile_route_snapshots.csv", result.get("gas_profile_route_snapshots", pd.DataFrame())),
+            ("ozone_profile_route_snapshots.csv", result.get("ozone_profile_route_snapshots", pd.DataFrame())),
+            ("cams_grib_message_inventory.csv", result.get("cams_grib_message_inventory", pd.DataFrame())),
+            ("cams_request_audit.csv", result.get("cams_request_audit", pd.DataFrame())),
+            ("cams_tile_audit.csv", result.get("cams_tile_audit", pd.DataFrame())),
+            ("openmeteo_request_audit.csv", result.get("openmeteo_request_audit", pd.DataFrame())),
+            ("openmeteo_aerosol_request_audit.csv", result.get("openmeteo_aerosol_request_audit", pd.DataFrame())),
+            ("physics_data_completeness.csv", result.get("physics_data_completeness", pd.DataFrame())),
+            ("v1_core_summary.csv", result.get("v1_core_summary", pd.DataFrame())),
+            ("v1_cloud_layers.csv", result.get("v1_cloud_layers", pd.DataFrame())),
+            ("v1_canvas_candidates.csv", result.get("v1_canvas_candidates", pd.DataFrame())),
+            ("v1_direct_solar_fraction.csv", result.get("v1_direct_solar_fraction", pd.DataFrame())),
+            ("v1_solar_rays.csv", result.get("v1_solar_rays", pd.DataFrame())),
+            ("v1_solar_geometry.csv", result.get("v1_solar_geometry", pd.DataFrame())),
+            ("v1_dependency_status.csv", result.get("v1_dependency_status", pd.DataFrame())),
+            ("spectral_rt_coverage_diagnostics.csv", result.get("spectral_coverage_diagnostics", pd.DataFrame())),
+            (
+                "spectral_rt_o3_diagnostics.csv",
+                result.get("spectral_rt_voxel_matrix", pd.DataFrame()).filter(
+                    regex=r"^(solar_altitude_deg|direction_offset_deg|distance_km|point_id|.*o3_.*|gas_rt_failure_cause|gas_rt_domain_status|gas_rt_expected_termination|gas_path_completeness|gas_rt_boundary_clipped)$"
+                ),
+            ),
+            ("forecast_raw.csv", result["hourly_raw"]),
+        ]
+        _json_items = [
+            ("native_gfs_provider_metadata.json", {str(k): v.get("native_provider_metadata", {}) for k, v in result.get("details", {}).items()}),
+            ("cams_native_aerosol_provider_metadata.json", {str(k): v.get("cams_native_aerosol_metadata", {}) for k, v in result.get("details", {}).items()}),
+            ("cams_native_ozone_provider_status.json", result.get("cams_native_ozone_provider_status", {})),
+            ("hitran_backend_status.json", result.get("hitran_backend_status", {})),
+            ("analysis_job_state.json", _load_analysis_job_state()),
+            ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),
+            ("cams_worker_checkpoints.json", _load_all_cams_worker_checkpoints()),
+        ]
+
+        _total = len(_items) + len(_json_items) + 1
+        _progress = st.progress(0.0, text="準備 CASE 封存…")
+        _status = st.empty()
+        with zipfile.ZipFile(_mem, "w", zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as z:
+            for _i, (_name, _df) in enumerate(_items, start=1):
+                _rows = len(_df) if isinstance(_df, pd.DataFrame) else 0
+                _status.caption(f"CASE：{_name}｜{_rows:,} rows")
+                _zip_write_csv_stream(z, _name, _df)
+                _progress.progress(_i / _total, text=f"CASE 封存 {_i}/{_total}")
+
+            _offset = len(_items)
+            for _j, (_name, _obj) in enumerate(_json_items, start=1):
+                _status.caption(f"CASE：{_name}")
+                z.writestr(_name, json.dumps(_obj, ensure_ascii=False, indent=2, default=str))
+                _progress.progress((_offset + _j) / _total, text=f"CASE 封存 {_offset + _j}/{_total}")
+
+            _case_export_elapsed = perf_counter() - _t0
+            _perf_export = result.get("performance_diagnostics", pd.DataFrame()).copy()
+            _core_rows = _perf_export[_perf_export.get("stage", pd.Series(dtype=str)).eq("TOTAL_ANALYSIS_CORE")] if not _perf_export.empty and "stage" in _perf_export.columns else pd.DataFrame()
+            _core_elapsed = float(_core_rows["elapsed_seconds"].iloc[-1]) if not _core_rows.empty else float("nan")
+            _extra_perf = pd.DataFrame([
+                {"stage": "CASE_EXPORT_SERIALIZATION", "elapsed_seconds": _case_export_elapsed, "cache_status": "COMPUTED_STREAMING"},
+                {"stage": "TOTAL_TO_CASE_ARCHIVE", "elapsed_seconds": (_core_elapsed + _case_export_elapsed) if pd.notna(_core_elapsed) else float("nan"), "cache_status": "COMPUTED_STREAMING"},
+            ])
+            _perf_export = pd.concat([_perf_export, _extra_perf], ignore_index=True, sort=False)
+            _status.caption("CASE：performance_diagnostics.csv")
+            _zip_write_csv_stream(z, "performance_diagnostics.csv", _perf_export)
+            _progress.progress(1.0, text="CASE ZIP 完成")
+
+        _elapsed = perf_counter() - _t0
+        _status.empty()
+        _progress.empty()
+        _mem.seek(0)
+        return _mem.getvalue(), _elapsed
+
+    if st.session_state.case_archive_bytes is None:
+        st.info(
+            "核心分析已完成；CASE 尚未生成。這是 R2.1 的預期行為，可先查看所有分析圖表，再按下方按鈕建立封存。"
+        )
+        if st.button("產生 CASE ZIP", type="primary", key="build_case_zip"):
+            with st.status("正在建立 CASE ZIP…", expanded=True) as _case_status:
+                try:
+                    _case_bytes, _case_elapsed = _build_case_archive_bytes()
+                    st.session_state.case_archive_bytes = _case_bytes
+                    st.session_state.case_archive_signature = _case_signature
+                    st.session_state.case_archive_elapsed = _case_elapsed
+                    _case_status.update(label=f"CASE ZIP 已完成（{_case_elapsed:.1f} 秒）", state="complete", expanded=False)
+                except Exception as _case_exc:
+                    _case_status.update(label="CASE ZIP 建立失敗", state="error", expanded=True)
+                    st.exception(_case_exc)
+    else:
+        _elapsed = st.session_state.case_archive_elapsed
+        if _elapsed is not None:
+            st.success(f"CASE ZIP 已準備完成｜建立時間 {_elapsed:.1f} 秒｜同一分析不會重複序列化。")
+        else:
+            st.success("CASE ZIP 已準備完成。")
+
+    if st.session_state.case_archive_bytes is not None:
+        st.download_button(
+            "下載本次分析 CASE ZIP",
+            data=st.session_state.case_archive_bytes,
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R2.1_{archive_day}_{archive_event}_CASE.zip",
+            mime="application/zip",
+            on_click="ignore",
+            key="download_case_zip",
+        )
 
 st.divider()
 st.caption(
