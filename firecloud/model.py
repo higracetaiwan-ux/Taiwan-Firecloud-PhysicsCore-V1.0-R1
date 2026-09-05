@@ -42,6 +42,7 @@ from .cloud_optics import add_native_optical_properties
 from .spectral_rt import build_spectral_rt, summarize_spectral_rt
 from .gas_rt import build_gas_profile, hitran_backend_status, prepare_gas_rt_context
 from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot, resolve_run_and_lead, DEFAULT_PRESSURE_LEVELS_HPA, native_provider_status
+from .providers.ecmwf_ifs_native import fetch_route_secondary_target_optics, provider_status as ecmwf_ifs_provider_status
 from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
 from .formation import build_r4_formation_tables
@@ -51,6 +52,7 @@ from .formation_prerequisites import build_formation_prerequisite_table
 from .optical_validation import build_cloud_optical_validation_table
 from .precipitation import build_precipitation_path_evidence
 from .spectroscopy_readiness import build_six_band_spectroscopy_readiness
+from .formation_gates import build_formation_gate_table
 
 
 def _clamp01(x):
@@ -1218,8 +1220,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_target_canvas_optical_evidence_frames = []
     v1_target_canvas_optical_summary_frames = []
     v1_secondary_target_optics_frames = []
+    v1_formation_gate_frames = []
+    ecmwf_ifs_request_audit_rows = []
     native_cache = {}
     cams_native_cache = {}
+    ecmwf_ifs_secondary_cache = {}
     native_volume_cache = {}
     native_optical_base_cache = {}
     gas_profile_cache = {}
@@ -1410,6 +1415,22 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         performance_rows.append({"time": _st, "solar_altitude_deg": float(_sa), "stage": "OPENMETEO_ROUTE_INTERPOLATION", "elapsed_seconds": perf_counter()-_one_t0, "cache_status": "PRECOMPUTED"})
         _progress(0.395 + 0.005 * (_si + 1) / max(1, len(candidates)), f"路徑預報內插：{_si+1}/{len(candidates)}")
     performance_rows.append({"stage": "OPENMETEO_ROUTE_INTERPOLATION_TOTAL", "elapsed_seconds": perf_counter()-_snapshot_t0, "cache_status": "PRECOMPUTED"})
+
+    # PhysicsCore V1.0-R5.1: prefetch configured ECMWF IFS native cloud
+    # microphysics once per unique valid time. No configured/entitled GRIB means
+    # explicit Missing; no satellite or geometry fallback is substituted.
+    _ifs_t0 = perf_counter()
+    for _sa, _st, _saz in candidates:
+        _k = pd.Timestamp(_st.replace(tzinfo=None))
+        if _k in ecmwf_ifs_secondary_cache:
+            continue
+        try:
+            _idf, _imeta = fetch_route_secondary_target_optics(route_points, _st)
+        except Exception as _exc:
+            _idf, _imeta = pd.DataFrame(), {**ecmwf_ifs_provider_status(), "status":"FAILED", "error":f"{type(_exc).__name__}: {_exc}"}
+        ecmwf_ifs_secondary_cache[_k] = (_idf, _imeta)
+        ecmwf_ifs_request_audit_rows.append({"time":_st, **{k:v for k,v in (_imeta or {}).items() if not isinstance(v,(list,dict,tuple,set))}})
+    performance_rows.append({"stage":"ECMWF_IFS_SECONDARY_OPTICS_PREFETCH","elapsed_seconds":perf_counter()-_ifs_t0,"cache_status":"CONFIGURED_GRIB_OR_EXPLICIT_MISSING"})
 
     _angles_t0 = perf_counter()
     for candidate_index, (angle, t, az) in enumerate(candidates):
@@ -1614,7 +1635,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         # Formation.  Exact direct-native COT and bounded adjacent-native
         # hypotheses remain distinct; CF/RH/geometry never fabricate COT.
         _angle_progress(candidate_index, 0.968, f"{label}：解析 Target Canvas Optical Evidence…")
-        _secondary_forecast_optics = snap.get("secondary_target_optics") if isinstance(snap, dict) else None
+        _secondary_forecast_optics, _secondary_meta = ecmwf_ifs_secondary_cache.get(pd.Timestamp(t.replace(tzinfo=None)), (pd.DataFrame(), {"status":"UNAVAILABLE"}))
         _secondary_validated = validate_secondary_forecast_optical_evidence(_secondary_forecast_optics)
         if _secondary_validated is not None and not _secondary_validated.empty:
             _sv=_secondary_validated.copy(); _sv.insert(0,"time",t); _sv.insert(1,"solar_altitude_deg",float(angle)); v1_secondary_target_optics_frames.append(_sv)
@@ -1629,6 +1650,14 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             if _target_summary is not None and not _target_summary.empty:
                 _target_summary.insert(0, "time", t)
                 v1_target_canvas_optical_summary_frames.append(_target_summary)
+
+        _formation_gate = build_formation_gate_table(
+            _v1.get("canvases", pd.DataFrame()), _v1.get("direct_solar", pd.DataFrame()),
+            _r3.get("cloud_base_illumination", pd.DataFrame()), _r3.get("spectral_optical_paths", pd.DataFrame())
+        )
+        if _formation_gate is not None and not _formation_gate.empty:
+            _formation_gate.insert(0,"time",t)
+            v1_formation_gate_frames.append(_formation_gate)
 
         # PhysicsCore V1.0-R4.9 Formation consumes the resolver output. Missing
         # or conflicting target optics stays Unknown; bounded hypotheses are
@@ -1800,6 +1829,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame()
     v1_target_canvas_optical_summary = pd.concat(v1_target_canvas_optical_summary_frames, ignore_index=True) if v1_target_canvas_optical_summary_frames else pd.DataFrame()
     v1_secondary_target_optics = pd.concat(v1_secondary_target_optics_frames, ignore_index=True) if v1_secondary_target_optics_frames else pd.DataFrame()
+    v1_formation_gates = pd.concat(v1_formation_gate_frames, ignore_index=True) if v1_formation_gate_frames else pd.DataFrame()
+    ecmwf_ifs_request_audit = pd.DataFrame(ecmwf_ifs_request_audit_rows)
     _lut_path = Path(__file__).resolve().parent.parent / "hitran_runtime" / "firecloud_600_750nm_band_coefficients.csv"
     v1_six_band_spectroscopy_readiness = build_six_band_spectroscopy_readiness(_lut_path)
     v1_cloud_optical_validation = build_cloud_optical_validation_table(
@@ -2004,6 +2035,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_target_canvas_optical_evidence": v1_target_canvas_optical_evidence,
         "v1_target_canvas_optical_summary": v1_target_canvas_optical_summary,
         "v1_secondary_target_optics": v1_secondary_target_optics,
+        "v1_formation_gates": v1_formation_gates,
+        "ecmwf_ifs_request_audit": ecmwf_ifs_request_audit,
         "v1_six_band_spectroscopy_readiness": v1_six_band_spectroscopy_readiness,
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,

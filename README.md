@@ -18,5 +18,9 @@ Frozen physics behavior remains unchanged: Missing is not Clear or Zero; cloud g
 
 See `RELEASE_NOTES_PhysicsCore_V1.0-R4.8.2.md` and `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R4.8.2.md`.
 
-## R5.0 Secondary Target Optical Evidence
-R5.0 adds a provider-neutral forecast-only secondary Target Canvas optical contract. Multi-source disagreements remain explicit and are never averaged away. No satellite observation is used as future forecast input.
+## R5.1 Secondary Target Optical Evidence
+R5.1 adds a provider-neutral forecast-only secondary Target Canvas optical contract. Multi-source disagreements remain explicit and are never averaged away. No satellite observation is used as future forecast input.
+
+
+## R5.1 ECMWF IFS secondary cloud optics
+Set `FIRECLOUD_ECMWF_IFS_GRIB_PATH` to an entitled/mounted IFS model-level forecast GRIB containing CLWC/CIWC/CC/T/Q plus hybrid coefficients and surface pressure/geopotential. Missing access remains explicit Missing.
