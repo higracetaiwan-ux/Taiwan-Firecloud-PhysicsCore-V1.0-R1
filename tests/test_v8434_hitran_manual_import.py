@@ -18,4 +18,4 @@ def test_manual_import_keeps_original_science_grid():
     assert "220,250,280,293" in build
     assert "100,300,500,700,900,1000" in build
     assert 'default="550,575,600,650,700,750"' in build
-    assert '"version":"PhysicsCore-V1.0-R4.8"' in build
+    assert '"version":"PhysicsCore-V1.0-R4.8.1"' in build

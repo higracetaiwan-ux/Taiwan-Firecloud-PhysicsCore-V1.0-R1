@@ -223,10 +223,12 @@ def _hitran_one_click_bootstrap(progress_callback=None) -> tuple[bool, str]:
         [sys.executable, str(root / "build_hitran_band_coefficients.py"), "--db", db_path,
          "--h2o-table", "H2O_535_765", "--o2-table", "O2_535_765",
          "--o3-xsc", o3_xsc_arg,
-         "--v1-six-band"],
+         "--v1-six-band",
+         "--incremental-base-lut", str(root / "hitran_runtime" / HITRAN_LUT_FILENAME),
+         "--incremental-base-manifest", str(root / "hitran_runtime" / HITRAN_MANIFEST_FILENAME)],
         timeout_seconds=build_timeout,
         progress_callback=progress_callback,
-        label="建立 PhysicsCore 550–750 nm 六波段 coefficient LUT",
+        label="增量建立 PhysicsCore 550 nm coefficient（沿用已驗證 575–750 nm）",
     )
     logs.append(f"=== FIRECLOUD LUT BUILD ({elapsed:.1f}s, timeout={timed_out}) ===\n" + out)
     if not ok:
@@ -253,10 +255,12 @@ def _hitran_build_lut_only(progress_callback=None) -> tuple[bool, str]:
         [sys.executable, str(root / "build_hitran_band_coefficients.py"), "--db", db_path,
          "--h2o-table", "H2O_535_765", "--o2-table", "O2_535_765",
          "--o3-xsc", o3_xsc_arg,
-         "--v1-six-band"],
+         "--v1-six-band",
+         "--incremental-base-lut", str(root / "hitran_runtime" / HITRAN_LUT_FILENAME),
+         "--incremental-base-manifest", str(root / "hitran_runtime" / HITRAN_MANIFEST_FILENAME)],
         timeout_seconds=build_timeout,
         progress_callback=progress_callback,
-        label="建立 PhysicsCore 550–750 nm 六波段 coefficient LUT",
+        label="增量建立 PhysicsCore 550 nm coefficient（沿用已驗證 575–750 nm）",
     )
     logs.append(f"=== FIRECLOUD LUT BUILD ({elapsed:.1f}s, timeout={timed_out}) ===\n" + out)
     if not ok:
@@ -702,7 +706,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.8 Runtime Hotfix｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.8.1 Incremental 550 nm LUT Builder｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -846,7 +850,7 @@ with st.sidebar:
             if _hs.get("runtime_spectroscopy_ready", False):
                 st.info("現有舊 Runtime LUT 仍可讀取；但 PhysicsCore Formation 六波段要求 550/575/600/650/700/750 nm，未含 550 nm 時保持 prerequisite Missing。")
             st.caption(
-                "PhysicsCore R4.8 採混合光譜：H₂O / O₂ 使用 HITRAN 535–765 nm 標準 .par；"
+                "PhysicsCore R4.8.1 採混合光譜：H₂O / O₂ 使用 HITRAN 535–765 nm 標準 .par；"
                 "O₃ 使用 Serdyuchenko–Gorshelev 213–1100 nm 溫度相依 absorption cross section。"
                 "O₃ 不再要求不存在的可見光 HITRAN line table。"
             )
@@ -886,11 +890,11 @@ with st.sidebar:
                     st.code(st.session_state["hitran_o3_xsc_import_log"], language="json")
 
             _hybrid_sources_ready = all(r["資料"] == "READY" for r in _source_rows)
-            st.markdown("**② 建立 432-state Runtime LUT（550/575/600/650/700/750 nm）**")
+            st.markdown("**② 增量補建 550 nm → 合併為 432-state Runtime LUT**")
             if not _hybrid_sources_ready:
-                st.info("目前尚未具備 560–765 nm H₂O line table + O₂ line table + O₃ Serdyuchenko XSC；LUT 建立按鈕已停用。")
+                st.info("目前尚未具備 535–765 nm H₂O line table + O₂ line table + O₃ Serdyuchenko XSC；LUT 建立按鈕已停用。")
             if st.button(
-                "建立 432-state LUT 並提升至 Runtime",
+                "只計算 550 nm（72 rows）並合併 432-state Runtime LUT",
                 use_container_width=True,
                 disabled=not _hybrid_sources_ready,
                 key="hitran_lut_only",
@@ -908,7 +912,7 @@ with st.sidebar:
                         _promote_ok, _promote_log = _promote_built_hitran_lut()
                         st.session_state["hitran_runtime_promote_log"] = _promote_log
                         if _promote_ok:
-                            _lut_status.update(label="Hybrid 432-state LUT 建立並提升至 Runtime 完成", state="complete", expanded=True)
+                            _lut_status.update(label="Incremental 550 nm + 432-state Runtime LUT 完成", state="complete", expanded=True)
                             st.success("HYBRID_GAS_SPECTROSCOPY = READY；正式分析只讀衍生 Runtime LUT。")
                             st.rerun()
                         else:
@@ -1231,7 +1235,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R4.8：Runtime Hotfix")
+    st.subheader("PhysicsCore V1.0-R4.8.1：Incremental 550 nm LUT Builder")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1791,7 +1795,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.8_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.8.1_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

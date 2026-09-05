@@ -16,7 +16,7 @@ STATE_CACHE_FORMAT = "Taiwan Firecloud Hybrid Gas Spectroscopy Voigt state check
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Build Taiwan Firecloud hybrid 550–750 nm gas spectroscopy LUT")
+    p = argparse.ArgumentParser(description="Build Taiwan Firecloud hybrid 550–750 nm gas spectroscopy LUT; supports incremental 550 nm extension")
     p.add_argument("--db", default="hitran_db")
     p.add_argument("--temperatures", default="220,250,280,293")
     p.add_argument("--pressures-hpa", default="100,300,500,700,900,1000")
@@ -28,6 +28,14 @@ def parse_args():
         "--wavelengths",
         default="550,575,600,650,700,750",
         help="Comma-separated diagnostic band centers in nm. PhysicsCore V1.0 runtime default is the full six-band grid.",
+    )
+    p.add_argument(
+        "--incremental-base-lut", default="",
+        help="Optional validated 360-row 575–750 nm Runtime LUT. When supplied with --v1-six-band, compute only missing 550 nm states and merge to a 432-row six-band LUT.",
+    )
+    p.add_argument(
+        "--incremental-base-manifest", default="",
+        help="Optional manifest for --incremental-base-lut. If present, its SHA256 must match the base LUT.",
     )
     p.add_argument(
         "--v1-six-band", action="store_true",
@@ -65,7 +73,7 @@ def _build_signature(
     """Create the identity of one scientifically distinct LUT build."""
     payload = {
         "format": STATE_CACHE_FORMAT,
-        "builder": "PhysicsCore-V1.0-R4.8",
+        "builder": "PhysicsCore-V1.0-R4.8.1",
         "temperatures_k": temperatures,
         "pressures_hpa": pressures,
         "wavelengths_nm": wavelengths,
@@ -242,6 +250,69 @@ def _o3_sigma_band(wl_grid: np.ndarray, xsc_by_temp: dict[float,np.ndarray], tem
     return area/float(x[-1]-x[0]), provenance
 
 
+
+def _validate_incremental_base_lut(
+    csv_path: Path,
+    manifest_path: Path | None,
+    *,
+    temperatures: list[float],
+    pressures: list[float],
+) -> pd.DataFrame:
+    """Validate the legacy 575–750 nm derived Runtime LUT before reusing it.
+
+    This is deliberately strict: a base LUT is reused only when it exactly
+    matches the PhysicsCore T/P grid, gases, five legacy bands and 25-nm band
+    definition. No interpolation or silent repair is allowed.
+    """
+    if not csv_path.is_file():
+        raise SystemExit(f"Incremental base LUT not found: {csv_path}")
+    if manifest_path is not None and manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise SystemExit(f"Cannot read incremental base manifest: {exc}")
+        expected_sha = str(manifest.get("sha256", "")).strip().lower()
+        actual_sha = hashlib.sha256(csv_path.read_bytes()).hexdigest()
+        if expected_sha and expected_sha != actual_sha:
+            raise SystemExit("Incremental base LUT SHA256 does not match its manifest")
+    try:
+        base = pd.read_csv(csv_path)
+    except Exception as exc:
+        raise SystemExit(f"Cannot read incremental base LUT: {exc}")
+    required = {
+        "wavelength_nm", "gas", "sigma_cm2_molecule", "temperature_k",
+        "pressure_hpa", "band_half_width_nm"
+    }
+    missing = required - set(base.columns)
+    if missing:
+        raise SystemExit("Incremental base LUT missing columns: " + ", ".join(sorted(missing)))
+    legacy_bands = [575.0, 600.0, 650.0, 700.0, 750.0]
+    gases = ["H2O", "O2", "O3"]
+    for col in ("wavelength_nm", "sigma_cm2_molecule", "temperature_k", "pressure_hpa", "band_half_width_nm"):
+        base[col] = pd.to_numeric(base[col], errors="coerce")
+    if len(base) != 3 * len(legacy_bands) * len(temperatures) * len(pressures):
+        raise SystemExit(f"Incremental base LUT must contain exactly 360 rows; got {len(base)}")
+    if set(base["gas"].astype(str)) != set(gases):
+        raise SystemExit("Incremental base LUT gases must be exactly H2O/O2/O3")
+    if set(base["wavelength_nm"].astype(float)) != set(legacy_bands):
+        raise SystemExit("Incremental base LUT wavelengths must be exactly 575/600/650/700/750 nm")
+    if set(base["temperature_k"].astype(float)) != set(float(x) for x in temperatures):
+        raise SystemExit("Incremental base LUT temperature grid does not match requested build grid")
+    if set(base["pressure_hpa"].astype(float)) != set(float(x) for x in pressures):
+        raise SystemExit("Incremental base LUT pressure grid does not match requested build grid")
+    if not np.allclose(base["band_half_width_nm"].to_numpy(float), 12.5):
+        raise SystemExit("Incremental base LUT must use 12.5 nm band half-width")
+    sigma = base["sigma_cm2_molecule"].to_numpy(float)
+    if not (np.isfinite(sigma) & (sigma >= 0)).all():
+        raise SystemExit("Incremental base LUT contains non-finite/negative cross-sections")
+    keys = ["gas", "wavelength_nm", "temperature_k", "pressure_hpa"]
+    if base.duplicated(keys).any():
+        raise SystemExit("Incremental base LUT contains duplicate gas/band/T/P states")
+    counts = base.groupby(["gas", "wavelength_nm"], dropna=False).size()
+    if not (counts == len(temperatures) * len(pressures)).all():
+        raise SystemExit("Incremental base LUT does not contain 24 states for every gas/band")
+    return base.copy()
+
 def main():
     args=parse_args()
     DB=Path(args.db).expanduser(); DB.mkdir(parents=True,exist_ok=True)
@@ -276,8 +347,21 @@ def main():
     if min(temps)<193 or max(temps)>293:
         raise SystemExit("Hybrid V8.4.5 temperature grid must stay inside measured O3 XSC range 193–293 K.")
 
-    requested_min=min(wavelengths)-12.5
-    requested_max=max(wavelengths)+12.5
+    base_rows = None
+    build_wavelengths = list(wavelengths)
+    if args.incremental_base_lut:
+        if set(wavelengths) != {550.0,575.0,600.0,650.0,700.0,750.0}:
+            raise SystemExit("Incremental base mode is only valid for the PhysicsCore six-band build")
+        manifest_path = Path(args.incremental_base_manifest).expanduser() if args.incremental_base_manifest else None
+        base_rows = _validate_incremental_base_lut(
+            Path(args.incremental_base_lut).expanduser(), manifest_path,
+            temperatures=temps, pressures=pressures,
+        )
+        build_wavelengths = [550.0]
+        print(f"INCREMENTAL_BASE_VALIDATED rows={len(base_rows)}; computing only 550 nm (72 new rows total)", flush=True)
+
+    requested_min=min(build_wavelengths)-12.5
+    requested_max=max(build_wavelengths)+12.5
     wl_o3,xsc_o3=_load_o3_xsc(o3_path, requested_min, requested_max)
     db_begin(str(DB))
     input_fingerprints = {
@@ -290,7 +374,7 @@ def main():
     build_signature = _build_signature(
         temperatures=temps,
         pressures=pressures,
-        wavelengths=wavelengths,
+        wavelengths=build_wavelengths,
         wavenumber_step=args.wavenumber_step,
         h2o_table=h2o_table,
         o2_table=o2_table,
@@ -306,7 +390,7 @@ def main():
     full_nu_min=1e7/requested_max
     full_nu_max=1e7/requested_min
     band_defs=[]
-    for wl in wavelengths:
+    for wl in build_wavelengths:
         lo_nm,hi_nm=wl-12.5,wl+12.5
         band_defs.append((wl,1e7/hi_nm,1e7/lo_nm))
 
@@ -323,7 +407,7 @@ def main():
                     gas=gas,
                     temperature_k=T,
                     pressure_hpa=ph,
-                    wavelengths=wavelengths,
+                    wavelengths=build_wavelengths,
                 )
                 if cached_rows is not None:
                     rows.extend(cached_rows)
@@ -379,7 +463,7 @@ def main():
     # duplicate over the pressure grid so the existing runtime lookup contract stays uniform.
     for T in temps:
         for ph in pressures:
-            for wl in wavelengths:
+            for wl in build_wavelengths:
                 sigma,prov=_o3_sigma_band(wl_o3,xsc_o3,T,wl)
                 rows.append({
                     "wavelength_nm":wl,"gas":"O3","sigma_cm2_molecule":sigma,
@@ -390,6 +474,9 @@ def main():
                 })
 
     out=pd.DataFrame(rows)
+    if base_rows is not None:
+        out = pd.concat([base_rows, out], ignore_index=True, sort=False)
+        out = out.sort_values(["gas", "wavelength_nm", "temperature_k", "pressure_hpa"], kind="stable").reset_index(drop=True)
     expected=3*len(temps)*len(pressures)*len(wavelengths)
     if len(out)!=expected: raise SystemExit(f"LUT row count mismatch: got {len(out)}, expected {expected}")
     sig=pd.to_numeric(out["sigma_cm2_molecule"],errors="coerce")
@@ -398,14 +485,20 @@ def main():
     sha256=hashlib.sha256(path.read_bytes()).hexdigest()
     manifest={
         "format":"Taiwan Firecloud Hybrid Gas Spectroscopy diagnostic-band LUT",
-        "builder_optimization":"single full-range Voigt spectrum per gas/T/P; requested bands integrated from shared spectrum",
+        "builder_optimization":"incremental 550 nm extension from validated 360-row 575–750 nm LUT when --incremental-base-lut is supplied; otherwise single full-range Voigt spectrum per gas/T/P",
+        "incremental_build": {
+            "used": bool(base_rows is not None),
+            "base_rows": int(len(base_rows)) if base_rows is not None else 0,
+            "computed_wavelengths_nm": [int(w) if float(w).is_integer() else float(w) for w in build_wavelengths],
+            "policy": "reuse validated derived 575–750 nm coefficients; compute 550 nm directly from local spectroscopy; never interpolate 550 nm",
+        },
         "state_checkpoint_resume": {
             "format": STATE_CACHE_FORMAT,
             "signature": build_signature,
             "directory": STATE_CACHE_DIRNAME,
             "scope": "H2O/O2 completed temperature-pressure states; checkpoints are build-only and not promoted to runtime",
         },
-        "version":"PhysicsCore-V1.0-R4.8",
+        "version":"PhysicsCore-V1.0-R4.8.1",
         "coefficient_file":path.name,"sha256":sha256,"rows":int(len(out)),
         "gases":["H2O","O3","O2"],"wavelengths_nm":[int(w) if float(w).is_integer() else float(w) for w in wavelengths],
         "temperatures_k":temps,"pressures_hpa":pressures,"band_half_width_nm":12.5,

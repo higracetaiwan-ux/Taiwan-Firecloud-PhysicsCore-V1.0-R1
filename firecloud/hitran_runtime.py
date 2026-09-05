@@ -181,7 +181,7 @@ def install_runtime_lut(
         # Create a minimal deployment manifest for this validated derived table.
         manifest = {
             "format": "Taiwan Firecloud Hybrid Gas Spectroscopy diagnostic-band LUT",
-            "version": "PhysicsCore-V1.0-R4.8-runtime-import",
+            "version": "PhysicsCore-V1.0-R4.8.1-runtime-import",
             "coefficient_file": COEFFICIENT_FILENAME,
             "sha256": audit["sha256"],
             "rows": audit["rows"],
