@@ -1151,7 +1151,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             "sampling_segment": horizontal_sampling_segment(float(d))[0],
             "nominal_step_km": float(horizontal_sampling_segment(float(d))[1]),
             "sampling_is_cloud_width": False,
-            "contract": "ADAPTIVE_HORIZONTAL_SAMPLING_V1_R4_2",
+            "contract": "ADAPTIVE_HORIZONTAL_SAMPLING_V1_R4_3",
         }
         for d in _sampling_nodes
     ])
@@ -1200,6 +1200,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_solar_geometry_frames = []
     v1_ray_cloud_intersection_frames = []
     v1_cloud_horizontal_support_frames = []
+    v1_native_condensate_support_diagnostic_frames = []
     v1_spectral_optical_path_frames = []
     v1_cloud_base_illumination_frames = []
     v1_uncertainty_frames = []
@@ -1585,6 +1586,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         for _key, _dest in [
             ("ray_cloud_intersections", v1_ray_cloud_intersection_frames),
             ("cloud_horizontal_support", v1_cloud_horizontal_support_frames),
+            ("native_condensate_support_diagnostics", v1_native_condensate_support_diagnostic_frames),
             ("spectral_optical_paths", v1_spectral_optical_path_frames),
             ("cloud_base_illumination", v1_cloud_base_illumination_frames),
             ("uncertainty", v1_uncertainty_frames),
@@ -1749,6 +1751,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_solar_geometry = pd.concat(v1_solar_geometry_frames, ignore_index=True) if v1_solar_geometry_frames else pd.DataFrame()
     v1_ray_cloud_intersections = pd.concat(v1_ray_cloud_intersection_frames, ignore_index=True) if v1_ray_cloud_intersection_frames else pd.DataFrame()
     v1_cloud_horizontal_support = pd.concat(v1_cloud_horizontal_support_frames, ignore_index=True) if v1_cloud_horizontal_support_frames else pd.DataFrame()
+    v1_native_condensate_support_diagnostics = pd.concat(v1_native_condensate_support_diagnostic_frames, ignore_index=True) if v1_native_condensate_support_diagnostic_frames else pd.DataFrame()
     v1_spectral_optical_paths = pd.concat(v1_spectral_optical_path_frames, ignore_index=True) if v1_spectral_optical_path_frames else pd.DataFrame()
     v1_cloud_base_illumination = pd.concat(v1_cloud_base_illumination_frames, ignore_index=True) if v1_cloud_base_illumination_frames else pd.DataFrame()
     v1_uncertainty = pd.concat(v1_uncertainty_frames, ignore_index=True) if v1_uncertainty_frames else pd.DataFrame()
@@ -1906,6 +1909,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_solar_geometry": v1_solar_geometry,
         "v1_ray_cloud_intersections": v1_ray_cloud_intersections,
         "v1_cloud_horizontal_support": v1_cloud_horizontal_support,
+        "v1_native_condensate_support_diagnostics": v1_native_condensate_support_diagnostics,
         "v1_spectral_optical_paths": v1_spectral_optical_paths,
         "v1_cloud_base_illumination": v1_cloud_base_illumination,
         "v1_uncertainty": v1_uncertainty,

@@ -144,59 +144,103 @@ def build_ray_cloud_intersections(
 ) -> pd.DataFrame:
     """Intersect Canvas-specific rays with native CloudLayers.
 
-    R4.2 resolves upstream slant cloud optical depth only where horizontal
-    support is established by adjacent native-condensate columns.  Sampling
-    spacing by itself never becomes cloud width.
+    R4.3 keeps the R4.2 fail-closed horizontal-support rule but indexes native
+    layers by direction/distance and caches centre-point ray altitudes.  The
+    physics is unchanged: sampling spacing is never interpreted as cloud width,
+    and slant COT is resolved only for native-condensate-supported cloud prisms.
     """
     layer_by_id = {x.layer_id: x for x in scene.layers}
     support_map = _native_horizontal_support(scene)
+
+    # Spatial index: avoid scanning every CloudLayer for every Canvas.  Multiple
+    # vertical layers may share one sampled distance, so preserve a list per node.
+    by_direction: dict[float, dict[float, list]] = {}
+    for layer in scene.layers:
+        by_direction.setdefault(float(layer.direction_offset_deg), {}).setdefault(float(layer.distance_km), []).append(layer)
+    sorted_distances = {off: sorted(nodes) for off, nodes in by_direction.items()}
+
     rows: list[dict] = []
     for canvas in canvases:
         target = layer_by_id.get(canvas.cloud_layer_id)
         if target is None:
             continue
-        for layer in scene.layers:
-            if not _direction_match(layer.direction_offset_deg, target.direction_offset_deg):
-                continue
-            if float(layer.distance_km) + 1e-9 < float(canvas.distance_km):
-                continue
-            support=support_map.get(layer.layer_id,{})
-            base_row={
-                "canvas_id": canvas.canvas_id, "cloud_layer_id": layer.layer_id,
-                "direction_offset_deg": layer.direction_offset_deg, "distance_km": layer.distance_km,
-                "layer_base_km": layer.z_base_km, "layer_top_km": layer.z_top_km,
-                "geometry_confidence": layer.geometry_confidence.value,
-                "optical_evidence": layer.optical_evidence.value, "layer_vertical_cot": layer.cot,
-                "layer_phase": layer.phase, "effective_radius_um": layer.effective_radius_um,
-                "geometry_source": layer.geometry_source,
-                **support,
-            }
-            if layer.layer_id == canvas.cloud_layer_id:
-                rows.append({**base_row, "intersection_role":"TARGET_CANVAS",
-                    "ray_altitude_km":canvas.cloud_base_altitude_km, "intersects":True,
-                    "slant_path_km":None, "slant_cloud_optical_depth":None,
-                    "slant_optics_status":"TARGET_CLOUD_RESPONSE_NOT_PATH_BLOCKER"})
-                continue
-            if support.get("horizontal_support_resolved"):
-                hit,path,tau=_slant_intersection_through_supported_layer(canvas, layer, support, solar_altitude_deg, earth_radius_km)
+        off = float(target.direction_offset_deg)
+        nodes = by_direction.get(off, {})
+        distances = sorted_distances.get(off, ())
+        # The Sun->CloudBase ray extends away from the observer through distances
+        # >= target Canvas distance in the current route convention.
+        relevant_distances = [d for d in distances if d + 1e-9 >= float(canvas.distance_km)]
+        centre_ray_altitude_cache: dict[float, Optional[float]] = {}
+
+        for d in relevant_distances:
+            for layer in nodes.get(d, ()):
+                support = support_map.get(layer.layer_id, {})
+                base_row={
+                    "canvas_id": canvas.canvas_id, "cloud_layer_id": layer.layer_id,
+                    "direction_offset_deg": layer.direction_offset_deg, "distance_km": layer.distance_km,
+                    "layer_base_km": layer.z_base_km, "layer_top_km": layer.z_top_km,
+                    "geometry_confidence": layer.geometry_confidence.value,
+                    "optical_evidence": layer.optical_evidence.value, "layer_vertical_cot": layer.cot,
+                    "layer_phase": layer.phase, "effective_radius_um": layer.effective_radius_um,
+                    "geometry_source": layer.geometry_source,
+                    **support,
+                }
+                if layer.layer_id == canvas.cloud_layer_id:
+                    rows.append({**base_row, "intersection_role":"TARGET_CANVAS",
+                        "ray_altitude_km":canvas.cloud_base_altitude_km, "intersects":True,
+                        "slant_path_km":None, "slant_cloud_optical_depth":None,
+                        "slant_optics_status":"TARGET_CLOUD_RESPONSE_NOT_PATH_BLOCKER"})
+                    continue
+                if support.get("horizontal_support_resolved"):
+                    hit,path,tau=_slant_intersection_through_supported_layer(canvas, layer, support, solar_altitude_deg, earth_radius_km)
+                    if hit:
+                        mid=0.5*(float(support["support_start_km"])+float(support["support_end_km"]))
+                        z=ray_altitude_km_at_surface_distance(canvas.distance_km,canvas.cloud_base_altitude_km,mid,solar_altitude_deg,earth_radius_km)
+                        rows.append({**base_row, "intersection_role":"UPSTREAM_CLOUD_INTERSECTION",
+                            "ray_altitude_km":z, "intersects":True, "slant_path_km":path,
+                            "slant_cloud_optical_depth":tau,
+                            "slant_optics_status":"RESOLVED_NATIVE_CONDENSATE_SLANT_RT" if tau is not None else "SLANT_GEOMETRY_RESOLVED_OPTICS_UNKNOWN"})
+                    continue
+                # No horizontal optical support: retain centre-point geometry hit only
+                # as an uncertainty flag; do not fabricate slant path/tau. Cache the
+                # ray altitude because all vertical layers at one sampled distance
+                # share the same ray geometry.
+                if d not in centre_ray_altitude_cache:
+                    centre_ray_altitude_cache[d]=ray_altitude_km_at_surface_distance(
+                        canvas.distance_km, canvas.cloud_base_altitude_km, d, solar_altitude_deg, earth_radius_km)
+                z=centre_ray_altitude_cache[d]
+                hit=bool(z is not None and _finite(z) and float(layer.z_base_km)-1e-9 <= float(z) <= float(layer.z_top_km)+1e-9)
                 if hit:
-                    mid=0.5*(float(support["support_start_km"])+float(support["support_end_km"]))
-                    z=ray_altitude_km_at_surface_distance(canvas.distance_km,canvas.cloud_base_altitude_km,mid,solar_altitude_deg,earth_radius_km)
                     rows.append({**base_row, "intersection_role":"UPSTREAM_CLOUD_INTERSECTION",
-                        "ray_altitude_km":z, "intersects":True, "slant_path_km":path,
-                        "slant_cloud_optical_depth":tau,
-                        "slant_optics_status":"RESOLVED_NATIVE_CONDENSATE_SLANT_RT" if tau is not None else "SLANT_GEOMETRY_RESOLVED_OPTICS_UNKNOWN"})
-                continue
-            # No horizontal optical support: retain centre-point geometry hit only
-            # as an uncertainty flag; do not fabricate slant path/tau.
-            z=ray_altitude_km_at_surface_distance(canvas.distance_km,canvas.cloud_base_altitude_km,float(layer.distance_km),solar_altitude_deg,earth_radius_km)
-            hit=bool(z is not None and _finite(z) and float(layer.z_base_km)-1e-9 <= float(z) <= float(layer.z_top_km)+1e-9)
-            if hit:
-                rows.append({**base_row, "intersection_role":"UPSTREAM_CLOUD_INTERSECTION",
-                    "ray_altitude_km":float(z), "intersects":True, "slant_path_km":None,
-                    "slant_cloud_optical_depth":None, "slant_optics_status":"POTENTIAL_BLOCKER_HORIZONTAL_SUPPORT_UNKNOWN"})
+                        "ray_altitude_km":float(z), "intersects":True, "slant_path_km":None,
+                        "slant_cloud_optical_depth":None, "slant_optics_status":"POTENTIAL_BLOCKER_HORIZONTAL_SUPPORT_UNKNOWN"})
     return pd.DataFrame(rows)
 
+
+def build_native_condensate_support_diagnostics(
+    scene: CloudScene, intersections: pd.DataFrame
+) -> pd.DataFrame:
+    """Compact R4.3 audit of native-condensate support and resolved slant RT.
+
+    This table distinguishes absence of optical evidence from absence of a cloud.
+    It is diagnostic/provenance only and never acts as a Physics score.
+    """
+    support = _native_horizontal_support(scene)
+    layers = list(scene.layers)
+    optical_layers = [x for x in layers if x.cot is not None and _finite(x.cot) and x.optical_evidence in (EvidenceState.FULL, EvidenceState.PARTIAL_OPTICS)]
+    resolved_layers = [x for x in layers if support.get(x.layer_id,{}).get("horizontal_support_resolved")]
+    inter = intersections if intersections is not None else pd.DataFrame()
+    status = inter.get("slant_optics_status", pd.Series(dtype=str)).astype(str) if not inter.empty else pd.Series(dtype=str)
+    return pd.DataFrame([{
+        "cloud_layer_count": len(layers),
+        "native_optical_layer_count": len(optical_layers),
+        "horizontal_support_resolved_layer_count": len(resolved_layers),
+        "upstream_intersection_count": int(inter.get("intersection_role", pd.Series(dtype=str)).eq("UPSTREAM_CLOUD_INTERSECTION").sum()) if not inter.empty else 0,
+        "resolved_native_condensate_slant_intersection_count": int(status.eq("RESOLVED_NATIVE_CONDENSATE_SLANT_RT").sum()),
+        "unknown_horizontal_support_intersection_count": int(status.eq("POTENTIAL_BLOCKER_HORIZONTAL_SUPPORT_UNKNOWN").sum()),
+        "support_contract": "NATIVE_MULTICOLUMN_CONDENSATE_CONTINUITY_R4_3",
+        "sampling_step_is_cloud_width": False,
+    }])
 
 def _target_rt_row(
     spectral_voxels: pd.DataFrame,
@@ -377,7 +421,17 @@ def build_r3_optical_tables(
             if tau_c is None or unknown_cloud_intersections: missing_parts.append("CLOUD")
             if tau_p is None: missing_parts.append(precip_status)
 
-            if fsun is not None and fsun <= 0.0:
+            if not missing_parts:
+                # R4.3 closes the full-path bridge: when gas, aerosol, resolved
+                # upstream cloud slant opacity and precipitation-path opacity are
+                # all evidenced, compute the actual total optical depth and
+                # transmission.  Earlier R3/R4 checkpoints intentionally left
+                # these fields unset even when evidence became complete.
+                tau_total = max(0.0, float(tau_g + tau_a + tau_c + tau_p))
+                trans = math.exp(-tau_total)
+                rel = (float(fsun) * trans) if fsun is not None else None
+                status = "FULL_OPTICAL_PATH"
+            elif fsun is not None and fsun <= 0.0:
                 # Earth shadow makes delivered direct illumination exactly zero
                 # even when downstream extinction is unknown.
                 rel = 0.0
@@ -449,6 +503,9 @@ def build_r3_optical_tables(
             illum_status = "CONFIRMED_NOT_ILLUMINATED_EARTH_SHADOW"
         else:
             illum_status = "UNCERTAIN_OPTICS"  # until full four-component path exists
+        _full_spectral = all(known_trans.get(int(wl)) is not None for wl in SIX_BAND_WAVELENGTHS_NM)
+        if fsun is not None and fsun > 0.0 and _full_spectral:
+            illum_status = "CONFIRMED_ILLUMINATED_FULL_PATH"
         illum_rows.append({
             "time": valid_time,
             "solar_altitude_deg": float(solar_altitude_deg),
@@ -456,10 +513,10 @@ def build_r3_optical_tables(
             "cloud_layer_id": canvas.cloud_layer_id,
             "direct_solar_fraction": fsun,
             "illumination_status": illum_status,
-            "confirmed_illuminated": False,
+            "confirmed_illuminated": bool(fsun is not None and fsun > 0.0 and _full_spectral),
             "confirmed_not_illuminated": bool(fsun is not None and fsun <= 0.0),
-            "uncertain_illumination": bool(fsun is None or fsun > 0.0),
-            "spectral_transmission_complete": False,
+            "uncertain_illumination": bool(fsun is None or (fsun > 0.0 and not _full_spectral)),
+            "spectral_transmission_complete": bool(_full_spectral),
             "confidence": canvas.geometry_confidence.value,
             **{f"transmission_{wl}nm": known_trans[int(wl)] for wl in SIX_BAND_WAVELENGTHS_NM},
             **{f"relative_base_illumination_{wl}nm": relative_illum[int(wl)] for wl in SIX_BAND_WAVELENGTHS_NM},
@@ -482,9 +539,14 @@ def build_r3_optical_tables(
     ] if c in inter.columns]
     cloud_support = (inter[support_cols].drop_duplicates(subset=[c for c in ["time","solar_altitude_deg","cloud_layer_id"] if c in support_cols])
                      if support_cols else pd.DataFrame())
+    native_support_diagnostics = build_native_condensate_support_diagnostics(scene, inter)
+    if not native_support_diagnostics.empty:
+        native_support_diagnostics.insert(0, "time", valid_time)
+        native_support_diagnostics.insert(1, "solar_altitude_deg", float(solar_altitude_deg))
     return {
         "ray_cloud_intersections": inter,
         "cloud_horizontal_support": cloud_support,
+        "native_condensate_support_diagnostics": native_support_diagnostics,
         "spectral_optical_paths": pd.DataFrame(optical_rows),
         "cloud_base_illumination": pd.DataFrame(illum_rows),
         "uncertainty": pd.DataFrame(uncertainty_rows),

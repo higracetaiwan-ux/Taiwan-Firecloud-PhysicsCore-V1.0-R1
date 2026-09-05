@@ -1231,7 +1231,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R4.2：Adaptive Sampling × 3D Slant Blocker RT × Formation")
+    st.subheader("PhysicsCore V1.0-R4.3：Adaptive Sampling × 3D Slant Blocker RT × Formation")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1684,6 +1684,7 @@ if run or st.session_state.analysis_result is not None:
             ("v1_dependency_status.csv", result.get("v1_dependency_status", pd.DataFrame())),
             ("v1_ray_cloud_intersections.csv", result.get("v1_ray_cloud_intersections", pd.DataFrame())),
             ("v1_cloud_horizontal_support.csv", result.get("v1_cloud_horizontal_support", pd.DataFrame())),
+            ("v1_native_condensate_support_diagnostics.csv", result.get("v1_native_condensate_support_diagnostics", pd.DataFrame())),
             ("v1_spectral_optical_paths_550_750nm.csv", result.get("v1_spectral_optical_paths", pd.DataFrame())),
             ("v1_cloud_base_illumination_550_750nm.csv", result.get("v1_cloud_base_illumination", pd.DataFrame())),
             ("v1_prediction_uncertainty.csv", result.get("v1_uncertainty", pd.DataFrame())),
@@ -1770,7 +1771,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.2_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.3_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",
