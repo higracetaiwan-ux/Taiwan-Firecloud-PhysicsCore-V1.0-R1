@@ -16,6 +16,7 @@ from .config import (
     VOXEL_ALTITUDE_CENTERS_KM, VOXEL_VERTICAL_STEP_KM,
     PROFILE_CLOUD_OCCUPANCY_THRESHOLD, PROFILE_RH_SUPPORT_THRESHOLD_PCT,
     CLOUD_EXTINCTION_PROXY_PER_KM, RAY_HORIZONTAL_STEP_KM,
+    horizontal_sampling_segment, adaptive_horizontal_distance_samples,
 )
 from .geometry import (
     destination_point,
@@ -110,9 +111,13 @@ def build_route_points(lat: float, lon: float, sun_azimuth_deg: float, cfg: Mode
         bearing = (sun_azimuth_deg + off) % 360
         for d in cfg.dynamic_distance_samples_km:
             plat, plon = destination_point(lat, lon, bearing, d, cfg.earth_radius_km)
+            _seg_name, _nom_step = horizontal_sampling_segment(float(d))
             points.append({
-                "point_id": f"{off:+.1f}_{d:03d}",
+                "point_id": f"{off:+.1f}_{int(round(float(d))):04d}",
                 "distance_km": float(d),
+                "sampling_segment": _seg_name,
+                "nominal_sampling_step_km": float(_nom_step),
+                "sampling_is_cloud_width": False,
                 "direction_offset_deg": float(off),
                 "bearing_deg": bearing,
                 "lat": plat,
@@ -1139,6 +1144,17 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     performance_rows.append({"stage": "SOLAR_GEOMETRY_AND_TIMELINE", "elapsed_seconds": perf_counter()-_stage_t0, "cache_status": "COMPUTED"})
     ref_az = candidates[len(candidates)//2][2]
     route_points = build_route_points(lat, lon, ref_az, cfg)
+    _sampling_nodes = list(cfg.dynamic_distance_samples_km)
+    horizontal_sampling_profile = pd.DataFrame([
+        {
+            "node_distance_km": float(d),
+            "sampling_segment": horizontal_sampling_segment(float(d))[0],
+            "nominal_step_km": float(horizontal_sampling_segment(float(d))[1]),
+            "sampling_is_cloud_width": False,
+            "contract": "ADAPTIVE_HORIZONTAL_SAMPLING_V1_R4_2",
+        }
+        for d in _sampling_nodes
+    ])
     start = min(t for _, t, _ in candidates) - timedelta(hours=2)
     end = max(t for _, t, _ in candidates) + timedelta(hours=2)
     _progress(0.10, "下載 Open-Meteo 輕量路徑營運欄位…")
@@ -1183,6 +1199,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_dependency_frames = []
     v1_solar_geometry_frames = []
     v1_ray_cloud_intersection_frames = []
+    v1_cloud_horizontal_support_frames = []
     v1_spectral_optical_path_frames = []
     v1_cloud_base_illumination_frames = []
     v1_uncertainty_frames = []
@@ -1407,6 +1424,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             earth_radius_km=cfg.earth_radius_km,
             route_end_km=cfg.dynamic_domain_max_km,
             route_step_km=cfg.dynamic_route_step_km,
+            route_sampling_nodes_km=cfg.dynamic_distance_samples_km,
             valid_time=t,
         )
         for _key, _dest in [
@@ -1566,6 +1584,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         )
         for _key, _dest in [
             ("ray_cloud_intersections", v1_ray_cloud_intersection_frames),
+            ("cloud_horizontal_support", v1_cloud_horizontal_support_frames),
             ("spectral_optical_paths", v1_spectral_optical_path_frames),
             ("cloud_base_illumination", v1_cloud_base_illumination_frames),
             ("uncertainty", v1_uncertainty_frames),
@@ -1729,6 +1748,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_dependency_status = pd.concat(v1_dependency_frames, ignore_index=True) if v1_dependency_frames else pd.DataFrame()
     v1_solar_geometry = pd.concat(v1_solar_geometry_frames, ignore_index=True) if v1_solar_geometry_frames else pd.DataFrame()
     v1_ray_cloud_intersections = pd.concat(v1_ray_cloud_intersection_frames, ignore_index=True) if v1_ray_cloud_intersection_frames else pd.DataFrame()
+    v1_cloud_horizontal_support = pd.concat(v1_cloud_horizontal_support_frames, ignore_index=True) if v1_cloud_horizontal_support_frames else pd.DataFrame()
     v1_spectral_optical_paths = pd.concat(v1_spectral_optical_path_frames, ignore_index=True) if v1_spectral_optical_path_frames else pd.DataFrame()
     v1_cloud_base_illumination = pd.concat(v1_cloud_base_illumination_frames, ignore_index=True) if v1_cloud_base_illumination_frames else pd.DataFrame()
     v1_uncertainty = pd.concat(v1_uncertainty_frames, ignore_index=True) if v1_uncertainty_frames else pd.DataFrame()
@@ -1864,6 +1884,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "spectral_rt_columns": spectral_rt_columns,
         "selected_angle": selected_angle,
         "route_points": pd.DataFrame(route_points),
+        "horizontal_sampling_profile": horizontal_sampling_profile,
         "hourly_raw": hourly,
         "aerosol_hourly_raw": aerosol_hourly,
         "aerosol_spectral_route_snapshots": aerosol_spectral_route_snapshots,
@@ -1884,6 +1905,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_dependency_status": v1_dependency_status,
         "v1_solar_geometry": v1_solar_geometry,
         "v1_ray_cloud_intersections": v1_ray_cloud_intersections,
+        "v1_cloud_horizontal_support": v1_cloud_horizontal_support,
         "v1_spectral_optical_paths": v1_spectral_optical_paths,
         "v1_cloud_base_illumination": v1_cloud_base_illumination,
         "v1_uncertainty": v1_uncertainty,

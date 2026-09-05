@@ -26,6 +26,46 @@ SOLAR_ANGLES_DEG = TWILIGHT_DIAGNOSTIC_ANGLES_DEG
 DIRECTION_OFFSETS_DEG = (-5.0, 0.0, 5.0)
 LEGACY_DISTANCE_MAX_KM = 440
 LEGACY_DISTANCE_SAMPLES_KM = tuple(range(0, LEGACY_DISTANCE_MAX_KM + 1, 20))
+
+# PhysicsCore V1.0-R4.2 shared adaptive horizontal sampling.  These are
+# forecast/geometry sampling nodes only; spacing MUST NOT be interpreted as
+# physical cloud horizontal thickness or slant-path length.
+ADAPTIVE_HORIZONTAL_SAMPLING_SEGMENTS = (
+    (0.0, 40.0, 5.0, "PRIMARY_CANVAS_0_40"),
+    (40.0, 100.0, 10.0, "EXTENDED_CANVAS_40_100"),
+    (100.0, 440.0, 20.0, "LONG_RANGE_PATH_100_440"),
+)
+
+def adaptive_horizontal_distance_samples(max_distance_km: float) -> tuple:
+    """Return shared adaptive route nodes through ``max_distance_km``.
+
+    0–40 km uses 5-km nodes; 40–100 km uses 10-km nodes; beyond 100 km
+    uses 20-km nodes.  The final domain endpoint is always included.  This is a
+    sampling contract, not a cloud-width assumption.
+    """
+    maxd = max(0.0, float(max_distance_km))
+    vals = {0.0}
+    for lo, hi, step, _name in ADAPTIVE_HORIZONTAL_SAMPLING_SEGMENTS:
+        upper = min(maxd, hi)
+        if upper < lo - 1e-9:
+            continue
+        x = lo
+        while x <= upper + 1e-9:
+            vals.add(round(float(x), 6)); x += step
+    if maxd > 440.0:
+        x = 460.0
+        while x <= maxd + 1e-9:
+            vals.add(round(float(x), 6)); x += 20.0
+    vals.add(round(maxd, 6))
+    return tuple(sorted(vals))
+
+def horizontal_sampling_segment(distance_km: float) -> tuple[str, float]:
+    d = float(distance_km)
+    if d <= 40.0 + 1e-9:
+        return "PRIMARY_CANVAS_0_40", 5.0
+    if d <= 100.0 + 1e-9:
+        return "EXTENDED_CANVAS_40_100", 10.0
+    return "LONG_RANGE_PATH_100_PLUS", 20.0
 # Dynamic RT route length is derived from the deepest atmosphere component that
 # must be traversed by a directly sunlit Canvas ray. Cloud targets are modeled to
 # 18 km, but native CAMS aerosol integration is defined through the 30-km
@@ -64,7 +104,7 @@ class ModelConfig:
     # Kept as the legacy diagnostic/scoring lattice for backward compatibility.
     distance_samples_km: tuple = DISTANCE_SAMPLES_KM
     earth_radius_km: float = EARTH_RADIUS_KM
-    dynamic_route_step_km: float = 20.0
+    dynamic_route_step_km: float = 20.0  # long-range/default ray step; shared route nodes are adaptive
     rt_model_top_km: float = RT_MODEL_TOP_KM
     rt_route_termination_top_km: float = RT_ROUTE_TERMINATION_TOP_KM
     rt_canvas_max_distance_km: float = RT_CANVAS_MAX_DISTANCE_KM
@@ -153,8 +193,7 @@ class ModelConfig:
 
     @property
     def dynamic_distance_samples_km(self) -> tuple:
-        step = max(1, int(round(float(self.dynamic_route_step_km))))
-        return tuple(range(0, int(round(self.dynamic_domain_max_km)) + 1, step))
+        return adaptive_horizontal_distance_samples(self.dynamic_domain_max_km)
 
     # Cloud-cover-to-obstruction proxy. Cloud cover is not optical depth, so this
     # is deliberately labeled an empirical proxy rather than physical COD/COT.

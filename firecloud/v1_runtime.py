@@ -92,6 +92,7 @@ def build_canvas_solar_ray_g0(
     earth_radius_km: float,
     route_end_km: float,
     step_km: float = 20.0,
+    sampling_nodes_km=None,
 ) -> SolarRay:
     """Build a Canvas-specific Sun->CloudBase G0 ray.
 
@@ -103,14 +104,22 @@ def build_canvas_solar_ray_g0(
     d0 = float(canvas.distance_km)
     dend = max(d0, float(route_end_km))
     step = max(1.0, float(step_km))
-    distances = [d0]
-    d = math.ceil((d0 + 1e-9) / step) * step
-    if d <= d0 + 1e-9:
-        d += step
-    while d < dend - 1e-9:
-        distances.append(float(d)); d += step
-    if dend > d0 + 1e-9:
-        distances.append(dend)
+    if sampling_nodes_km is not None:
+        # R4.2 shared adaptive sampling nodes.  Nodes are forecast/ray sampling
+        # locations only and never imply cloud horizontal thickness.
+        nodes = sorted({float(x) for x in sampling_nodes_km if d0 < float(x) < dend})
+        distances = [d0, *nodes]
+        if dend > d0 + 1e-9:
+            distances.append(dend)
+    else:
+        distances = [d0]
+        d = math.ceil((d0 + 1e-9) / step) * step
+        if d <= d0 + 1e-9:
+            d += step
+        while d < dend - 1e-9:
+            distances.append(float(d)); d += step
+        if dend > d0 + 1e-9:
+            distances.append(dend)
 
     segs: list[RaySegment] = []
     rez_ids: list[str] = []
@@ -152,6 +161,7 @@ def build_r2_geometry_tables(
     *, observer_lat: float, observer_lon: float,
     solar_altitude_deg: float, solar_azimuth_deg: float,
     earth_radius_km: float, route_end_km: float, route_step_km: float,
+    route_sampling_nodes_km=None,
     valid_time=None,
 ):
     """Return R2 CloudScene / Canvas / DirectSolar / Ray audit tables."""
@@ -201,7 +211,7 @@ def build_r2_geometry_tables(
             c, solar_altitude_deg=solar_altitude_deg,
             observer_lat=observer_lat, observer_lon=observer_lon,
             earth_radius_km=earth_radius_km, route_end_km=route_end_km,
-            step_km=route_step_km,
+            step_km=route_step_km, sampling_nodes_km=route_sampling_nodes_km,
         )
         rez = set(ray.dynamic_rez_segment_ids)
         for s in ray.segments:
