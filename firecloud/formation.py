@@ -142,6 +142,27 @@ def _redness_proxy(radiance: dict[int, Optional[float]]) -> Optional[float]:
     return max(0.0, min(1.0, num / den))
 
 
+def _target_canvas_optical_state(layer) -> tuple[str, bool]:
+    """Classify whether a Canvas has sufficient *target* optical evidence.
+
+    Geometry occupancy and target optical response are intentionally separate.
+    Cloud-fraction occupancy with zero native condensate remains a real geometric
+    Canvas candidate, but cannot be promoted to an optically-resolved Canvas.
+    """
+    consistency = str(getattr(layer, "evidence_consistency", "UNKNOWN") or "UNKNOWN")
+    cot = getattr(layer, "cot", None)
+    optical = getattr(layer, "optical_evidence", EvidenceState.MISSING)
+    if consistency == "CF_CLOUD_CONDENSATE_ZERO":
+        return "GEOMETRY_CONFIRMED_TARGET_OPTICS_UNRESOLVED_CF_CONDENSATE_DISAGREEMENT", False
+    if consistency == "CONDENSATE_CLOUD_CF_LOW":
+        return "TARGET_OPTICS_EVIDENCE_CONFLICT", False
+    if optical in (EvidenceState.FULL, EvidenceState.PARTIAL_OPTICS) and _finite(cot):
+        return "TARGET_NATIVE_OPTICS_READY", True
+    if optical == EvidenceState.GEOMETRY_ONLY:
+        return "GEOMETRY_ONLY_TARGET_OPTICS_UNKNOWN", False
+    return "TARGET_OPTICS_MISSING", False
+
+
 def build_r4_formation_tables(
     *,
     scene: CloudScene,
@@ -185,7 +206,15 @@ def build_r4_formation_tables(
             target_altitude_km=canvas.cloud_base_altitude_km,
         )
         target_tau = _target_vertical_tau(rtrow, layer.optical_evidence, layer.cot)
-        source_fraction = _source_fraction_from_tau(target_tau)
+        target_optical_state, _layer_ready = _target_canvas_optical_state(layer)
+        _conflict = target_optical_state in (
+            "GEOMETRY_CONFIRMED_TARGET_OPTICS_UNRESOLVED_CF_CONDENSATE_DISAGREEMENT",
+            "TARGET_OPTICS_EVIDENCE_CONFLICT",
+        )
+        target_optics_ready = bool((not _conflict) and layer.optical_evidence in (EvidenceState.FULL, EvidenceState.PARTIAL_OPTICS) and _finite(target_tau))
+        if target_optics_ready and target_optical_state not in ("TARGET_NATIVE_OPTICS_READY",):
+            target_optical_state = "TARGET_OPTICS_READY_FROM_RESOLVED_RT_EVIDENCE"
+        source_fraction = _source_fraction_from_tau(target_tau) if target_optics_ready else None
         cf = float(layer.cloud_fraction) if _finite(layer.cloud_fraction) else None
 
         radiance: dict[int, Optional[float]] = {int(wl): None for wl in SIX_BAND_WAVELENGTHS_NM}
@@ -211,7 +240,11 @@ def build_r4_formation_tables(
                     confirmed_area = 0.0
                     uncertain_area = cf
             elif source_fraction is None:
-                response_status = "UNCERTAIN_TARGET_CLOUD_OPTICS"
+                response_status = (
+                    "UNCERTAIN_TARGET_CLOUD_OPTICS_EVIDENCE_CONFLICT"
+                    if target_optical_state in ("GEOMETRY_CONFIRMED_TARGET_OPTICS_UNRESOLVED_CF_CONDENSATE_DISAGREEMENT", "TARGET_OPTICS_EVIDENCE_CONFLICT")
+                    else "UNCERTAIN_TARGET_CLOUD_OPTICS"
+                )
                 confirmed_area = 0.0
                 uncertain_area = cf
             else:
@@ -233,6 +266,9 @@ def build_r4_formation_tables(
             "cloud_fraction": cf,
             "phase": layer.phase,
             "target_optical_evidence": layer.optical_evidence.value,
+            "target_evidence_consistency": getattr(layer, "evidence_consistency", "UNKNOWN"),
+            "target_canvas_optical_state": target_optical_state,
+            "target_optics_ready": bool(target_optics_ready),
             "target_vertical_cloud_optical_depth": target_tau,
             "target_cloud_cot_source": ("CLOUD_LAYER_NATIVE_CONDENSATE" if layer.cot is not None else "NO_RESOLVED_TARGET_COT"),
             "target_effective_radius_um": layer.effective_radius_um,
@@ -288,6 +324,12 @@ def build_r4_formation_tables(
         state = "UNCERTAIN_OPTICS"
         b = None; r = None; area = None; conf = "LOW" if not uncertain.empty else "UNKNOWN"
 
+    _target_ready_count = int(canvas_df.get("target_optics_ready", pd.Series(dtype=bool)).astype(bool).sum())
+    _target_conflict_count = int(canvas_df.get("target_canvas_optical_state", pd.Series(dtype=str)).astype(str).isin([
+        "GEOMETRY_CONFIRMED_TARGET_OPTICS_UNRESOLVED_CF_CONDENSATE_DISAGREEMENT",
+        "TARGET_OPTICS_EVIDENCE_CONFLICT",
+    ]).sum())
+    _target_geometry_only_count = int(canvas_df.get("target_canvas_optical_state", pd.Series(dtype=str)).astype(str).eq("GEOMETRY_ONLY_TARGET_OPTICS_UNKNOWN").sum())
     formation = pd.DataFrame([{
         "time": valid_time,
         "solar_altitude_deg": float(solar_altitude_deg),
@@ -299,6 +341,9 @@ def build_r4_formation_tables(
         "earth_shadow_zero_canvas_count": int(len(shadow_zero)),
         "uncertain_canvas_count": int(len(uncertain)),
         "total_canvas_count": int(len(canvas_df)),
+        "target_optics_ready_canvas_count": _target_ready_count,
+        "target_optics_evidence_conflict_canvas_count": _target_conflict_count,
+        "target_geometry_only_canvas_count": _target_geometry_only_count,
         "formation_confidence": conf,
         "rt_tier": "TIER1_FAST_SOURCE_PROXY",
         "aggregation_note": "NO_DISTANCE_WEIGHT;NO_CLOUD_TYPE_MULTIPLIER;NO_SINGLE_FORMATION_SCORE",

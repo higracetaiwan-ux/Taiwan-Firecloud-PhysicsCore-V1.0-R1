@@ -522,13 +522,40 @@ def build_r3_optical_tables(
             **{f"relative_base_illumination_{wl}nm": relative_illum[int(wl)] for wl in SIX_BAND_WAVELENGTHS_NM},
         })
 
+        # R4.6: expose the strongest *resolved* upstream cloud attenuation even
+        # when other path components remain unknown.  This is an audit bottleneck,
+        # not a substitute for full four-component transmission.
+        _resolved_ix = pd.DataFrame()
+        if not canvas_inter.empty:
+            _ss = canvas_inter.get("slant_optics_status", pd.Series("", index=canvas_inter.index)).astype(str)
+            _tt = pd.to_numeric(canvas_inter.get("slant_cloud_optical_depth", pd.Series(np.nan, index=canvas_inter.index)), errors="coerce")
+            _resolved_ix = canvas_inter[_ss.eq("RESOLVED_NATIVE_CONDENSATE_SLANT_RT") & _tt.notna()].copy()
+            if not _resolved_ix.empty:
+                _resolved_ix["_tau"] = pd.to_numeric(_resolved_ix["slant_cloud_optical_depth"], errors="coerce")
+                _b = _resolved_ix.loc[_resolved_ix["_tau"].idxmax()]
+                _seg = str(_b.get("cloud_layer_id"))
+                _btau = float(_b.get("_tau"))
+                _bdist = float(_b.get("distance_km")) if _finite(_b.get("distance_km", np.nan)) else None
+                _bst = "RESOLVED_CLOUD_BOTTLENECK_WITH_UNCERTAINTY" if unknown_cloud_intersections else "RESOLVED_CLOUD_BOTTLENECK"
+                _reason = "MAX_RESOLVED_NATIVE_CONDENSATE_SLANT_TAU;FULL_PATH_MAY_STILL_HAVE_UNKNOWN_COMPONENTS" if unknown_cloud_intersections else "MAX_RESOLVED_NATIVE_CONDENSATE_SLANT_TAU"
+            else:
+                _seg = None; _btau = None; _bdist = None
+                _bst = "UNRESOLVED_COMPONENT_OPTICS" if not canvas_inter.empty else "NO_UPSTREAM_CLOUD_BOTTLENECK"
+                _reason = "UPSTREAM_CLOUD_INTERSECTIONS_EXIST_BUT_OPTICS_UNRESOLVED" if not canvas_inter.empty else "NO_UPSTREAM_CLOUD_INTERSECTION"
+        else:
+            _seg = None; _btau = None; _bdist = None
+            _bst = "NO_UPSTREAM_CLOUD_BOTTLENECK"; _reason = "NO_UPSTREAM_CLOUD_INTERSECTION"
         bottleneck_rows.append({
             "time": valid_time,
             "solar_altitude_deg": float(solar_altitude_deg),
             "canvas_id": canvas.canvas_id,
-            "optical_bottleneck_status": "UNRESOLVED_COMPONENT_OPTICS",
-            "segment_id": None,
-            "reason": "R3_HAS_NO_SEGMENT_RESOLVED_FULL_FOUR_COMPONENT_TAU",
+            "optical_bottleneck_status": _bst,
+            "segment_id": _seg,
+            "bottleneck_cloud_layer_id": _seg,
+            "bottleneck_distance_km": _bdist,
+            "resolved_cloud_slant_tau": _btau,
+            "unresolved_upstream_cloud_optics": bool(unknown_cloud_intersections),
+            "reason": _reason,
         })
 
     support_cols = [c for c in [
