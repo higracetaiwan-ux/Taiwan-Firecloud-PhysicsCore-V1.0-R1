@@ -1575,7 +1575,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             if _df is not None and not _df.empty:
                 _dest.append(_df)
 
-        # PhysicsCore V1.0-R4: Canvas optical response / Formation foundation.
+        # PhysicsCore V1.0-R4.1: native Cloud Optical Evidence Bridge + Formation foundation.
         # R4 consumes only confirmed full-path CloudBaseIllumination plus native
         # target-cloud optical evidence. Missing cloud/path optics stays Unknown.
         _angle_progress(candidate_index, 0.972, f"{label}：建立 R4 Canvas Optical Response／Formation…")

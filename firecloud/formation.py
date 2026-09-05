@@ -79,10 +79,12 @@ def _target_rt_row(
     return g.iloc[0]
 
 
-def _target_vertical_tau(rtrow: Optional[pd.Series], target_evidence: EvidenceState) -> Optional[float]:
+def _target_vertical_tau(rtrow: Optional[pd.Series], target_evidence: EvidenceState, layer_cot: Optional[float] = None) -> Optional[float]:
     """Return target-cloud *vertical* optical-depth evidence, never geometry proxy."""
     if target_evidence in (EvidenceState.GEOMETRY_ONLY, EvidenceState.MISSING):
         return None
+    if layer_cot is not None and _finite(layer_cot):
+        return max(0.0, float(layer_cot))
     if rtrow is None:
         return None
     for name in ("vertical_cloud_optical_depth_estimate", "target_vertical_cloud_optical_depth"):
@@ -180,7 +182,7 @@ def build_r4_formation_tables(
             distance_km=canvas.distance_km,
             target_altitude_km=canvas.cloud_base_altitude_km,
         )
-        target_tau = _target_vertical_tau(rtrow, layer.optical_evidence)
+        target_tau = _target_vertical_tau(rtrow, layer.optical_evidence, layer.cot)
         source_fraction = _source_fraction_from_tau(target_tau)
         cf = float(layer.cloud_fraction) if _finite(layer.cloud_fraction) else None
 
@@ -229,6 +231,8 @@ def build_r4_formation_tables(
             "phase": layer.phase,
             "target_optical_evidence": layer.optical_evidence.value,
             "target_vertical_cloud_optical_depth": target_tau,
+            "target_cloud_cot_source": ("CLOUD_LAYER_NATIVE_CONDENSATE" if layer.cot is not None else "NO_RESOLVED_TARGET_COT"),
+            "target_effective_radius_um": layer.effective_radius_um,
             "tier1_source_fraction": source_fraction,
             "rt_tier": "TIER1_FAST_SOURCE_PROXY",
             "response_status": response_status,

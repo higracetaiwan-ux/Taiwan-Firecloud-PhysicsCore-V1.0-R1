@@ -87,6 +87,9 @@ def build_ray_cloud_intersections(
                     "intersects": True,
                     "geometry_confidence": layer.geometry_confidence.value,
                     "optical_evidence": layer.optical_evidence.value,
+                    "layer_vertical_cot": layer.cot,
+                    "layer_phase": layer.phase,
+                    "effective_radius_um": layer.effective_radius_um,
                     "geometry_source": layer.geometry_source,
                 })
                 continue
@@ -114,6 +117,9 @@ def build_ray_cloud_intersections(
                     "intersects": True,
                     "geometry_confidence": layer.geometry_confidence.value,
                     "optical_evidence": layer.optical_evidence.value,
+                    "layer_vertical_cot": layer.cot,
+                    "layer_phase": layer.phase,
+                    "effective_radius_um": layer.effective_radius_um,
                     "geometry_source": layer.geometry_source,
                 })
     return pd.DataFrame(rows)
@@ -169,13 +175,18 @@ def _component_tau(row: Optional[pd.Series], name: str, wl: int) -> Optional[flo
     return None
 
 
-def _cloud_tau(row: Optional[pd.Series], wl: int, *, optical_evidence: EvidenceState) -> Optional[float]:
-    if row is None:
-        return None
-    # R3.1: geometry evidence is never optical-clear evidence.  A target or
+def _cloud_tau(row: Optional[pd.Series], wl: int, *, optical_evidence: EvidenceState, layer_cot: Optional[float] = None) -> Optional[float]:
+    # R3.1/R4.1: geometry evidence is never optical-clear evidence.  A target or
     # blocker reconstructed from cloud fraction/base/top only must keep tau_cloud
     # Unknown even when a legacy RT voxel happens to carry transmission=1.
     if optical_evidence in (EvidenceState.GEOMETRY_ONLY, EvidenceState.MISSING):
+        return None
+    # R4.1 prefers CloudLayer native-level optical evidence.  It is a vertical
+    # target-COT estimate, not a slant blocker integral.  Upstream slant cloud
+    # opacity remains unresolved until native horizontal support is available.
+    if layer_cot is not None and _finite(layer_cot):
+        return max(0.0, float(layer_cot))
+    if row is None:
         return None
     # Current bulk cloud extinction is effectively grey across this diagnostic
     # visible range.  We retain the explicit per-wavelength field in the V1
@@ -247,7 +258,7 @@ def build_r3_optical_tables(
         for wl in SIX_BAND_WAVELENGTHS_NM:
             tau_g = _component_tau(rtrow, "gas", wl)
             tau_a = _component_tau(rtrow, "aerosol", wl)
-            tau_c = _cloud_tau(rtrow, wl, optical_evidence=target.optical_evidence)
+            tau_c = _cloud_tau(rtrow, wl, optical_evidence=target.optical_evidence, layer_cot=target.cot)
             # R3.1 precipitation branch is connected fail-closed.  Only an
             # explicit path optical-depth field can produce tau_precip. Surface
             # rain rate or cloud geometry alone never fabricates optical depth.

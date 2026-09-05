@@ -17,6 +17,7 @@ from .contracts import (
     ForecastFieldProvenance, GeometryConfidence, SourceType,
 )
 from .native_cloud import native_levels_from_row, NATIVE_CONDENSATE_THRESHOLD_KGKG
+from .cloud_optics import condensate_extinction_m1, DEFAULT_LIQUID_REFF_UM, DEFAULT_ICE_REFF_UM
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,67 @@ def _optical_evidence(levels: Sequence[Mapping]) -> EvidenceState:
         return EvidenceState.PARTIAL_OPTICS
     return EvidenceState.GEOMETRY_ONLY
 
+
+
+
+def _derive_native_layer_optics(levels: Sequence[Mapping], z_base_km: float, z_top_km: float) -> dict:
+    """Derive target-cloud visible optical evidence from *native* condensate.
+
+    This bridge never uses RH/cloud fraction/base-top geometry to invent COT.  A
+    level contributes only when native liquid+ice mixing ratio, pressure and
+    temperature are all finite.  The bulk extinction uses the explicit
+    condensate + assumed-r_eff geometric-optics model already used by the legacy
+    native optical diagnostic, but the integration is performed on native model
+    levels rather than resampled display voxels.
+    """
+    if not levels:
+        return {"evidence": EvidenceState.MISSING, "cot": None, "effective_radius_um": None,
+                "quality": "NO_NATIVE_LEVELS"}
+    recs=[]
+    for x in levels:
+        ql=x.get("cloud_liquid_water_kgkg", np.nan); qi=x.get("cloud_ice_water_kgkg", np.nan)
+        p=x.get("pressure_hpa", np.nan); t=x.get("temperature_k", np.nan)
+        z=x.get("altitude_agl_km", np.nan); cf=x.get("cloud_fraction", np.nan)
+        if not (_finite(ql) and _finite(qi) and _finite(p) and _finite(t) and _finite(z)):
+            recs.append(None); continue
+        tk=float(t); ph=float(p)
+        if tk <= 0 or ph <= 0:
+            recs.append(None); continue
+        rho=(ph*100.0)/(287.05*tk)
+        lwc=max(0.0,float(ql))*rho*1000.0
+        iwc=max(0.0,float(qi))*rho*1000.0
+        ext=condensate_extinction_m1(lwc, iwc, cf, DEFAULT_LIQUID_REFF_UM, DEFAULT_ICE_REFF_UM)
+        beta=ext.get("total_extinction_m1", np.nan)
+        recs.append(None if not _finite(beta) else (float(z), max(0.0,float(beta)), max(0.0,float(ql)), max(0.0,float(qi))))
+    valid=[r for r in recs if r is not None]
+    if not valid:
+        ev = EvidenceState.GEOMETRY_ONLY if any(classify_native_level(x, ProviderCloudGeometryConfig()) != CloudFractionState.UNKNOWN for x in levels) else EvidenceState.MISSING
+        return {"evidence": ev, "cot": None, "effective_radius_um": None,
+                "quality": "MISSING_NATIVE_CONDENSATE_OR_THERMODYNAMICS"}
+    evidence = EvidenceState.FULL if len(valid)==len(levels) else EvidenceState.PARTIAL_OPTICS
+    valid=sorted(valid, key=lambda r:r[0])
+    if len(valid)==1:
+        thickness_m=max(0.0,float(z_top_km)-float(z_base_km))*1000.0
+        cot=valid[0][1]*thickness_m
+    else:
+        zs=np.array([r[0] for r in valid],dtype=float)*1000.0
+        bs=np.array([r[1] for r in valid],dtype=float)
+        cot=float(np.trapezoid(bs,zs))
+        # Native occupied-level envelopes are centre based for multi-level layers.
+        # Add half-cell support at both ends using nearest native spacing so the
+        # optical integral represents finite native cells without crossing a
+        # CLEAR/UNKNOWN gap.
+        left=max(0.0,(valid[1][0]-valid[0][0])*500.0)
+        right=max(0.0,(valid[-1][0]-valid[-2][0])*500.0)
+        cot += bs[0]*left + bs[-1]*right
+    ql_sum=sum(r[2] for r in valid); qi_sum=sum(r[3] for r in valid)
+    if ql_sum+qi_sum>0:
+        reff=(ql_sum*DEFAULT_LIQUID_REFF_UM + qi_sum*DEFAULT_ICE_REFF_UM)/(ql_sum+qi_sum)
+    else:
+        reff=None
+    return {"evidence": evidence, "cot": max(0.0,float(cot)),
+            "effective_radius_um": reff,
+            "quality": "NATIVE_CONDENSATE_GEOMETRIC_OPTICS_ASSUMED_REFF"}
 
 def _geometry_confidence(states: Sequence[CloudFractionState]) -> GeometryConfidence:
     if states and all(s in (CloudFractionState.CLEAR, CloudFractionState.CLOUD_OCCUPIED) for s in states):
@@ -177,6 +239,16 @@ def segment_native_levels(
         occupancy = (CloudFractionState.CLOUD_OCCUPIED
                      if CloudFractionState.CLOUD_OCCUPIED in states
                      else CloudFractionState.PARTIAL_OCCUPANCY)
+        optics = _derive_native_layer_optics(gpts, z_base, z_top)
+        optical_prov = ForecastFieldProvenance(
+            provider=provider_cfg.provider, model="NATIVE_CONDENSATE_BULK_OPTICS",
+            variable="cloud_optical_depth_from_native_condensate",
+            source_type=SourceType.DERIVED_PHYSICAL,
+            interpolation="NATIVE_LEVEL_VERTICAL_INTEGRATION",
+            fallback="ASSUMED_REFF_LIQUID_10UM_ICE_30UM",
+            missing_reason=None if optics["cot"] is not None else optics["quality"],
+            extra={"optical_model": optics["quality"]},
+        )
         out.append(CloudLayer(
             layer_id=f"dir{direction_offset_deg:+.1f}_d{distance_km:.1f}_L{i}",
             direction_offset_deg=float(direction_offset_deg),
@@ -188,9 +260,11 @@ def segment_native_levels(
             liquid_condensate_kgkg=ql,
             ice_condensate_kgkg=qi,
             phase=phase,
+            effective_radius_um=optics["effective_radius_um"],
+            cot=optics["cot"],
             geometry_confidence=_geometry_confidence(states),
-            optical_evidence=_optical_evidence(gpts),
-            provenance=provenance,
+            optical_evidence=optics["evidence"],
+            provenance=provenance + (optical_prov,),
             geometry_source="NATIVE_MODEL_LEVELS",
         ))
     return out
