@@ -29,5 +29,6 @@ def test_full_matrix_shape_and_angles():
     cfg = ModelConfig()
     matrix, rez = build_geometry_diagnostics(cfg)
     assert len(matrix) == len(cfg.solar_angles_deg) * len(cfg.dynamic_distance_samples_km) * len(ILLUMINATION_HEIGHTS_KM)
-    assert len(rez) == len(cfg.solar_angles_deg) * len(ILLUMINATION_HEIGHTS_KM)
+    expected_rez_angles = tuple(dict.fromkeys((*cfg.firecloud_core_angles_deg, *cfg.late_glow_angles_deg)))
+    assert len(rez) == len(expected_rez_angles) * len(ILLUMINATION_HEIGHTS_KM)
     assert set(matrix["geometric_state"].unique()) <= {"ILLUMINATED", "EARTH_SHADOWED"}

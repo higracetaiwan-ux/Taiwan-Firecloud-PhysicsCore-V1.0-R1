@@ -702,7 +702,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R1 Contracts + CloudScene + Finite-Sun Geometry Foundation｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R2 CloudScene + Canvas-specific Ray Runtime Foundation｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1181,12 +1181,19 @@ if run or st.session_state.analysis_result is not None:
     for col in ["physics_score", "visual_magnitude", "data_completeness"]:
         summary[col] = (summary[col] * 100).round(1)
 
-    st.subheader("民用曙暮光診斷時間軸（0°～−6°）")
+    st.subheader("PhysicsCore V1.0 核心形成時間軸（0°～−4°，0.5°）")
     st.caption(
-        "0° / −0.5° / −1° / −2° / −3° / −4° / −5° / −6° 全部自動求時。"
-        "只有 −0.5°～−4° 可進入火燒雲核心出勤候選；−4°～−6° 保留為晚霞／三燒診斷。"
+        "R2 已切換為 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° 九個核心角度。"
+        "本階段顯示 CloudScene、Canvas Candidate 與 DirectSolarFraction；Formation / Viewing / Decision 尚未接入，因此不產生新的 Physics Score 或 GO/NO-GO。"
     )
-    st.dataframe(localized_df(summary), use_container_width=True, hide_index=True)
+    _v1_summary = result.get("v1_core_summary", pd.DataFrame())
+    if not _v1_summary.empty:
+        _v1_show = _v1_summary.copy()
+        if "cloud_geometry_completeness" in _v1_show:
+            _v1_show["cloud_geometry_completeness"] = (pd.to_numeric(_v1_show["cloud_geometry_completeness"], errors="coerce")*100).round(1)
+        st.dataframe(localized_df(_v1_show), use_container_width=True, hide_index=True)
+    with st.expander("Legacy V8 診斷欄位（僅相容／除錯，不是 V1.0 PhysicsCore 輸出）", expanded=False):
+        st.dataframe(localized_df(summary), use_container_width=True, hide_index=True)
 
     selected = result["selected_angle"]
 
@@ -1209,22 +1216,38 @@ if run or st.session_state.analysis_result is not None:
         st.error("目前沒有任何候選時刻具備足夠有效的物理資料可供正式出勤選擇。以下仍完整顯示所有診斷、資料完整率、3D/RT 圖層與 CASE 下載，供追查缺失原因。")
         chosen = _summary_raw[_summary_raw["solar_altitude_deg"] == diagnostic_angle].iloc[0]
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("正式選定核心角度", "N/A")
+        # Legacy regression note: older UI called this field「正式選定核心角度」;
+        # R2 no longer treats that V8 selection as a PhysicsCore V1 result.
+        c1.metric("V1.0 正式 Peak Window", "R2 尚未接入")
         c2.metric("診斷顯示角度", f"{diagnostic_angle:.1f}°")
         c3.metric("診斷角度資料完整率", f"{chosen['data_completeness']*100:.1f}%")
-        c4.metric("出勤判定", "資料不足／無正式候選")
+        c4.metric("Decision Layer", "R2 尚未接入")
     else:
         chosen = _summary_raw[_summary_raw["solar_altitude_deg"] == selected].iloc[0]
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("選定核心太陽高度角", f"{selected:.1f}°")
-        c2.metric("物理潛力", "N/A" if pd.isna(chosen["physics_score"]) else f"{chosen['physics_score']*100:.1f}")
+        c1.metric("Legacy 診斷角度", f"{selected:.1f}°")
+        c2.metric("Legacy physics_score", "N/A" if pd.isna(chosen["physics_score"]) else f"{chosen['physics_score']*100:.1f}")
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
-        c4.metric("出勤判定", _zh_text(chosen["operational_decision"]))
+        c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
+
+    st.subheader("PhysicsCore V1.0-R2：CloudScene × Canvas-specific Ray")
+    _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
+    _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
+    _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
+    if not _v1_dep.empty:
+        st.caption("V1.0 採 dependency-aware evidence：CAMS／O₃／Aerosol Missing 不會把已知 Cloud Geometry 或 DirectSolarFraction 歸零。")
+        _dshow = _v1_dep[pd.to_numeric(_v1_dep["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+        st.dataframe(localized_df(_dshow), use_container_width=True, hide_index=True)
+    if not _v1_canvas.empty and not _v1_sun.empty:
+        _c = _v1_canvas[pd.to_numeric(_v1_canvas["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+        _s = _v1_sun[pd.to_numeric(_v1_sun["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+        _cs = _c.merge(_s[[c for c in ["canvas_id","direct_solar_fraction","ray_status","shadow_diagnostic_height_km"] if c in _s.columns]], on="canvas_id", how="left")
+        st.dataframe(localized_df(_cs), use_container_width=True, hide_index=True)
 
     audit = result.get("physics_data_completeness", pd.DataFrame())
     perf = result.get("performance_diagnostics", pd.DataFrame())
     if not audit.empty:
-        st.subheader("物理資料完整率與就緒狀態")
+        st.subheader("Legacy V8 完整率診斷（R2 僅相容／除錯）")
         st.caption("Missing ≠ Zero ≠ Blocked。各物理層獨立判定；Full Spectral RT 只有所有必要輸入成立時才會 READY。")
         aa = audit[audit["solar_altitude_deg"] == diagnostic_angle].copy()
         layer_zh={"FORECAST_CLOUD":"基礎預報／雲場","NATIVE_AEROSOL":"Native Aerosol","O3_PROFILE":"Real O₃ Profile","GAS_PROFILE":"Gas Profile","HITRAN_SPECTROSCOPY":"HITRAN Spectroscopy","FULL_SPECTRAL_RT":"Full Spectral RT"}
@@ -1572,6 +1595,13 @@ if run or st.session_state.analysis_result is not None:
         z.writestr("openmeteo_aerosol_request_audit.csv", result.get("openmeteo_aerosol_request_audit", pd.DataFrame()).to_csv(index=False))
         z.writestr("hitran_backend_status.json", json.dumps(result.get("hitran_backend_status", {}), ensure_ascii=False, indent=2, default=str))
         z.writestr("physics_data_completeness.csv", result.get("physics_data_completeness", pd.DataFrame()).to_csv(index=False))
+        z.writestr("v1_core_summary.csv", result.get("v1_core_summary", pd.DataFrame()).to_csv(index=False))
+        z.writestr("v1_cloud_layers.csv", result.get("v1_cloud_layers", pd.DataFrame()).to_csv(index=False))
+        z.writestr("v1_canvas_candidates.csv", result.get("v1_canvas_candidates", pd.DataFrame()).to_csv(index=False))
+        z.writestr("v1_direct_solar_fraction.csv", result.get("v1_direct_solar_fraction", pd.DataFrame()).to_csv(index=False))
+        z.writestr("v1_solar_rays.csv", result.get("v1_solar_rays", pd.DataFrame()).to_csv(index=False))
+        z.writestr("v1_solar_geometry.csv", result.get("v1_solar_geometry", pd.DataFrame()).to_csv(index=False))
+        z.writestr("v1_dependency_status.csv", result.get("v1_dependency_status", pd.DataFrame()).to_csv(index=False))
         z.writestr("spectral_rt_coverage_diagnostics.csv", result.get("spectral_coverage_diagnostics", pd.DataFrame()).to_csv(index=False))
         z.writestr("spectral_rt_o3_diagnostics.csv", result.get("spectral_rt_voxel_matrix", pd.DataFrame()).filter(regex=r"^(solar_altitude_deg|direction_offset_deg|distance_km|point_id|.*o3_.*|gas_rt_failure_cause|gas_rt_domain_status|gas_rt_expected_termination|gas_path_completeness|gas_rt_boundary_clipped)$").to_csv(index=False))
         z.writestr("forecast_raw.csv", result["hourly_raw"].to_csv(index=False))
@@ -1595,7 +1625,7 @@ if run or st.session_state.analysis_result is not None:
     st.download_button(
         "保存本次分析 CASE ZIP",
         data=mem,
-        file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R1_{archive_day}_{archive_event}_CASE.zip",
+        file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R2_{archive_day}_{archive_event}_CASE.zip",
         mime="application/zip",
         on_click="ignore",
         key="download_case_zip",

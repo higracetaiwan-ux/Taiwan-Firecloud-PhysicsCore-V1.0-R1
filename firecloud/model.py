@@ -40,6 +40,7 @@ from .cloud_optics import add_native_optical_properties
 from .spectral_rt import build_spectral_rt, summarize_spectral_rt
 from .gas_rt import build_gas_profile, hitran_backend_status
 from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot, resolve_run_and_lead, DEFAULT_PRESSURE_LEVELS_HPA, native_provider_status
+from .v1_runtime import build_r2_geometry_tables
 
 
 def _clamp01(x):
@@ -66,7 +67,8 @@ def build_geometry_diagnostics(cfg: ModelConfig) -> tuple[pd.DataFrame, pd.DataF
     """
     matrix_rows = []
     rez_rows = []
-    for angle in cfg.solar_angles_deg:
+    _rez_angles = tuple(dict.fromkeys((*cfg.firecloud_core_angles_deg, *cfg.late_glow_angles_deg)))
+    for angle in _rez_angles:
         for z in ILLUMINATION_HEIGHTS_KM:
             entry = dynamic_rez_entry_distance_km(angle, z, cfg.earth_radius_km)
             rez_rows.append({
@@ -77,6 +79,10 @@ def build_geometry_diagnostics(cfg: ModelConfig) -> tuple[pd.DataFrame, pd.DataF
                 "dynamic_domain_max_km": float(cfg.dynamic_domain_max_km),
                 "within_dynamic_domain": bool(entry <= cfg.dynamic_domain_max_km),
             })
+    # The coarse illumination matrix follows the active runtime grid so it stays
+    # shape-compatible with the per-angle execution. Late-angle REZ entries are
+    # retained separately as legacy/diagnostic geometry.
+    for angle in cfg.solar_angles_deg:
         for d in cfg.dynamic_distance_samples_km:
             band = _band_name(float(d))
             for z in ILLUMINATION_HEIGHTS_KM:
@@ -1101,6 +1107,15 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
 
     result_rows = []
     details = {}
+    # PhysicsCore V1.0-R2 geometry/illumination audit frames. These are the new
+    # runtime contracts and are deliberately independent from the inherited V8
+    # physics_score / global completeness gate retained below only for legacy UI.
+    v1_cloud_layer_frames = []
+    v1_canvas_frames = []
+    v1_direct_solar_frames = []
+    v1_solar_ray_frames = []
+    v1_dependency_frames = []
+    v1_solar_geometry_frames = []
     native_cache = {}
     cams_native_cache = {}
     native_volume_cache = {}
@@ -1308,7 +1323,30 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
                 snap = merge_native_into_snapshot(snap, native_df)
         except Exception as exc:
             native_meta = {**native_meta, "native_status": "FAILED", "native_error": f"{type(exc).__name__}: {exc}"}
-        _angle_progress(candidate_index, 0.10, f"{label}：計算幾何與候選條件…")
+        _angle_progress(candidate_index, 0.10, f"{label}：建立 V1.0 CloudScene／Canvas-specific 光路…")
+        _v1 = build_r2_geometry_tables(
+            snap, DEFAULT_PRESSURE_LEVELS_HPA,
+            observer_lat=lat, observer_lon=lon,
+            solar_altitude_deg=float(angle), solar_azimuth_deg=float(az),
+            earth_radius_km=cfg.earth_radius_km,
+            route_end_km=cfg.dynamic_domain_max_km,
+            route_step_km=cfg.dynamic_route_step_km,
+            valid_time=t,
+        )
+        for _key, _dest in [
+            ("cloud_layers", v1_cloud_layer_frames),
+            ("canvases", v1_canvas_frames),
+            ("direct_solar", v1_direct_solar_frames),
+            ("solar_rays", v1_solar_ray_frames),
+            ("dependency_status", v1_dependency_frames),
+            ("solar_geometry", v1_solar_geometry_frames),
+        ]:
+            _df = _v1.get(_key, pd.DataFrame())
+            if _df is not None and not _df.empty:
+                _dest.append(_df)
+        # Legacy candidate evaluation remains temporarily available as a
+        # diagnostic compatibility branch only. It is not a PhysicsCore V1
+        # contract and must not gate the R2 geometry/illumination outputs.
         ev = evaluate_candidate(snap, angle, cfg)
         # V8.4.0.5: split the former generic "建立 3D 雲體" stage into four
         # explicit checkpoints.  This makes a slow cloud-volume builder visible
@@ -1531,6 +1569,37 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     cams_native_aerosol_route_snapshots = pd.concat(cams_aerosol_frames, ignore_index=True) if cams_aerosol_frames else pd.DataFrame()
     gas_profile_route_snapshots = pd.concat(gas_profile_frames, ignore_index=True) if gas_profile_frames else pd.DataFrame()
 
+    v1_cloud_layers = pd.concat(v1_cloud_layer_frames, ignore_index=True) if v1_cloud_layer_frames else pd.DataFrame()
+    v1_canvas_candidates = pd.concat(v1_canvas_frames, ignore_index=True) if v1_canvas_frames else pd.DataFrame()
+    v1_direct_solar = pd.concat(v1_direct_solar_frames, ignore_index=True) if v1_direct_solar_frames else pd.DataFrame()
+    v1_solar_rays = pd.concat(v1_solar_ray_frames, ignore_index=True) if v1_solar_ray_frames else pd.DataFrame()
+    v1_dependency_status = pd.concat(v1_dependency_frames, ignore_index=True) if v1_dependency_frames else pd.DataFrame()
+    v1_solar_geometry = pd.concat(v1_solar_geometry_frames, ignore_index=True) if v1_solar_geometry_frames else pd.DataFrame()
+
+    # V1 Core runtime summary is intentionally dimension/evidence based. There
+    # is no Physics Score, GO/NO-GO, or single global completeness percentage.
+    _v1_summary_rows = []
+    for _angle, _time, _az in candidates:
+        _a = float(_angle)
+        _cl = v1_cloud_layers[pd.to_numeric(v1_cloud_layers.get("solar_altitude_deg"), errors="coerce").eq(_a)] if not v1_cloud_layers.empty else pd.DataFrame()
+        _ca = v1_canvas_candidates[pd.to_numeric(v1_canvas_candidates.get("solar_altitude_deg"), errors="coerce").eq(_a)] if not v1_canvas_candidates.empty else pd.DataFrame()
+        _ds = v1_direct_solar[pd.to_numeric(v1_direct_solar.get("solar_altitude_deg"), errors="coerce").eq(_a)] if not v1_direct_solar.empty else pd.DataFrame()
+        _dep0 = v1_dependency_status[(pd.to_numeric(v1_dependency_status.get("solar_altitude_deg"), errors="coerce").eq(_a)) & (v1_dependency_status.get("dependency", pd.Series(dtype=str)).eq("CLOUD_GEOMETRY"))] if not v1_dependency_status.empty else pd.DataFrame()
+        _geom = float(pd.to_numeric(_dep0.get("completeness"), errors="coerce").iloc[0]) if not _dep0.empty and pd.notna(pd.to_numeric(_dep0.get("completeness"), errors="coerce").iloc[0]) else float("nan")
+        _states = _ds.get("ray_status", pd.Series(dtype=str)).astype(str) if not _ds.empty else pd.Series(dtype=str)
+        _v1_summary_rows.append({
+            "time": _time, "solar_altitude_deg": _a, "solar_azimuth_deg": float(_az),
+            "cloud_layer_count": int(len(_cl)), "canvas_candidate_count": int(len(_ca)),
+            "full_solar_canvas_count": int((_states == "FULL_SOLAR_DISK").sum()),
+            "partial_solar_canvas_count": int((_states == "PARTIAL_SOLAR_DISK").sum()),
+            "earth_shadowed_canvas_count": int((_states == "FULL_EARTH_SHADOW").sum()),
+            "cloud_geometry_completeness": _geom,
+            "v1_geometry_status": "READY" if (len(_ca) > 0 and (_states.isin(["FULL_SOLAR_DISK","PARTIAL_SOLAR_DISK"]).any())) else ("NO_ILLUMINATED_CANVAS" if len(_ca)>0 else "NO_CANVAS_EVIDENCE"),
+            "formation_status": "NOT_YET_CONNECTED_R2",
+            "viewing_status": "NOT_YET_CONNECTED_R2",
+        })
+    v1_core_summary = pd.DataFrame(_v1_summary_rows)
+
     physics_data_completeness = _build_physics_data_completeness(details, candidates, summary)
 
     # V8.4.9.1: the headline summary completeness must reflect the actual
@@ -1562,6 +1631,35 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
                 summary.loc[coremask,"operational_decision"]="UNKNOWN / DATA INCOMPLETE"
         if operational_rows:
             physics_data_completeness=pd.concat([physics_data_completeness,pd.DataFrame(operational_rows)],ignore_index=True)
+
+    # R2 dependency-aware evidence bridge: expose every legacy provider/RT
+    # dependency independently without collapsing them to a single minimum.
+    # This makes CAMS/O3/aerosol Missing affect only dependent downstream
+    # quantities in the V1 contract. The inherited OVERALL_OPERATIONAL_INPUTS
+    # row remains legacy diagnostic data only.
+    if not physics_data_completeness.empty:
+        _dep = physics_data_completeness[physics_data_completeness["layer"].ne("OVERALL_OPERATIONAL_INPUTS")].copy()
+        if not _dep.empty:
+            _dep["dependency"] = _dep["layer"].astype(str)
+            _status_map = {"READY":"FULL", "PARTIAL":"PARTIAL_OPTICS", "MISSING":"MISSING", "FAILED":"MISSING", "NOT_CONFIGURED":"MISSING"}
+            _dep["evidence_state"] = _dep["status"].astype(str).map(_status_map).fillna("MISSING")
+            _dep["criticality"] = _dep["dependency"].map({
+                "FORECAST_CLOUD":"HIGH", "NATIVE_AEROSOL":"MEDIUM", "O3_PROFILE":"MEDIUM",
+                "GAS_PROFILE":"HIGH", "HITRAN_SPECTROSCOPY":"HIGH", "GAS_VERTICAL_DOMAIN":"HIGH",
+                "SPECTRAL_AEROSOL_PATH":"MEDIUM", "FULL_SPECTRAL_RT":"HIGH",
+            }).fillna("MEDIUM")
+            _dep["affected_outputs"] = _dep["dependency"].map({
+                "FORECAST_CLOUD":"CloudScene,CanvasCandidate,OpticalPath",
+                "NATIVE_AEROSOL":"SpectralOpticalPath,Formation",
+                "O3_PROFILE":"SpectralOpticalPath,Formation",
+                "GAS_PROFILE":"SpectralOpticalPath,Formation",
+                "HITRAN_SPECTROSCOPY":"SpectralOpticalPath,Formation",
+                "GAS_VERTICAL_DOMAIN":"SpectralOpticalPath,Formation",
+                "SPECTRAL_AEROSOL_PATH":"SpectralOpticalPath,Formation",
+                "FULL_SPECTRAL_RT":"Formation",
+            }).fillna("DIAGNOSTIC")
+            _dep = _dep[[c for c in ["time","solar_altitude_deg","dependency","status","evidence_state","completeness","criticality","affected_outputs","provider","missing_reason"] if c in _dep.columns]]
+            v1_dependency_status = pd.concat([v1_dependency_status, _dep], ignore_index=True, sort=False)
 
     # Re-rank only after the real mandatory-layer completeness gate has been
     # propagated into summary. Physically scored but data-incomplete candidates
@@ -1609,7 +1707,14 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
         "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),
         "hitran_backend_status": hitran_backend_status(),
-        "physics_data_completeness": physics_data_completeness,
+        "physics_data_completeness": physics_data_completeness,  # LEGACY diagnostic only in R2
+        "v1_cloud_layers": v1_cloud_layers,
+        "v1_canvas_candidates": v1_canvas_candidates,
+        "v1_direct_solar_fraction": v1_direct_solar,
+        "v1_solar_rays": v1_solar_rays,
+        "v1_dependency_status": v1_dependency_status,
+        "v1_solar_geometry": v1_solar_geometry,
+        "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
         "performance_diagnostics": pd.DataFrame(performance_rows),
         "aerosol_provider_error": aerosol_error,

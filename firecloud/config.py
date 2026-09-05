@@ -15,10 +15,11 @@ PRE_SUNSET_DIAGNOSTIC_ANGLES_DEG = (2.0, 1.0)
 LATE_GLOW_ANGLES_DEG = (-4.0, -4.5, -5.0, -5.5, -6.0)
 NAUTICAL_TWILIGHT_DIAGNOSTIC_ANGLES_DEG = (-7.0, -8.0, -9.0, -10.0, -11.0, -12.0)
 
-# R1 compatibility execution timeline: the inherited V8 provider/RT pipeline
-# remains on its prior bounded set until the V1 dependency-aware scheduler is
-# connected.  It MUST NOT be interpreted as the frozen V1 Core contract.
-TWILIGHT_DIAGNOSTIC_ANGLES_DEG = (0.0, -0.5, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0)
+# R2 runtime: execute the frozen 0°..-4° Core Formation grid at 0.5°.
+# Extended/Late/Nautical diagnostics remain separate contracts and are not
+# multiplied into the expensive RT scheduler until their dependency-aware
+# branches are connected.
+TWILIGHT_DIAGNOSTIC_ANGLES_DEG = FIRECLOUD_CORE_ANGLES_DEG
 
 # Backward-compatible alias used by older code paths.
 SOLAR_ANGLES_DEG = TWILIGHT_DIAGNOSTIC_ANGLES_DEG
@@ -116,7 +117,13 @@ class ModelConfig:
         target_distances = list(range(0, int(round(float(self.rt_canvas_max_distance_km))) + 1, int(round(step))))
         target_altitudes = [0.25 + 0.5 * i for i in range(int(18.0 / 0.5))]
 
-        for angle in self.solar_angles_deg:
+        # Route-domain geometry must cover the late-firecloud diagnostic branch
+        # even though the expensive R2 runtime executes only the nine Core angles.
+        _runtime_angles = tuple(float(x) for x in self.solar_angles_deg)
+        _default_core = tuple(float(x) for x in FIRECLOUD_CORE_ANGLES_DEG)
+        _domain_angles = (tuple(dict.fromkeys((*self.firecloud_core_angles_deg, *self.late_glow_angles_deg)))
+                          if _runtime_angles == _default_core else _runtime_angles)
+        for angle in _domain_angles:
             a = float(angle)
             # Dynamic-REZ entries for the operational diagnostic cloud heights must
             # always fit inside the route domain, even if no 0–100 km Canvas cloud
