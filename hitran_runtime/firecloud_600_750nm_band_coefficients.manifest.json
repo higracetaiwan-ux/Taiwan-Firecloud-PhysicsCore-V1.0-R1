@@ -1,22 +1,31 @@
 {
   "format": "Taiwan Firecloud Hybrid Gas Spectroscopy diagnostic-band LUT",
-  "builder_optimization": "single full-range Voigt spectrum per gas/T/P; requested bands integrated from shared spectrum",
+  "builder_optimization": "incremental 550 nm extension from validated 360-row 575–750 nm LUT when --incremental-base-lut is supplied; otherwise single full-range Voigt spectrum per gas/T/P",
+  "incremental_build": {
+    "used": true,
+    "base_rows": 360,
+    "computed_wavelengths_nm": [
+      550
+    ],
+    "policy": "reuse validated derived 575–750 nm coefficients; compute 550 nm directly from local spectroscopy; never interpolate 550 nm"
+  },
   "state_checkpoint_resume": {
     "format": "Taiwan Firecloud Hybrid Gas Spectroscopy Voigt state checkpoint",
-    "signature": "ed39d7fb8d910d7dfca33a3fcfc70a0e850acdf320f08473c21d3704b26a01a0",
+    "signature": "9786ecaf661a98fb15e546d13a1b670a2afe9dc9624065e493790ebb339578d0",
     "directory": ".firecloud_lut_state_cache",
     "scope": "H2O/O2 completed temperature-pressure states; checkpoints are build-only and not promoted to runtime"
   },
-  "version": "V8.4.16.3",
+  "version": "PhysicsCore-V1.0-R4.8.1",
   "coefficient_file": "firecloud_600_750nm_band_coefficients.csv",
-  "sha256": "64a066ceb8486f803e44d4caa045bc2337c5c8eb5b673fedcedb47941615cdb9",
-  "rows": 360,
+  "sha256": "5422d6e6414351acce99ffd1552807a82fad40bd2388af13ccecd5563909cb75",
+  "rows": 432,
   "gases": [
     "H2O",
     "O3",
     "O2"
   ],
   "wavelengths_nm": [
+    550,
     575,
     600,
     650,

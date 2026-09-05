@@ -46,6 +46,7 @@ from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
 from .formation import build_r4_formation_tables
 from .target_canvas_optics import build_target_canvas_optical_evidence, summarize_target_canvas_optical_evidence
+from .secondary_target_optics import validate_secondary_forecast_optical_evidence, match_secondary_to_canvases
 from .formation_prerequisites import build_formation_prerequisite_table
 from .optical_validation import build_cloud_optical_validation_table
 from .precipitation import build_precipitation_path_evidence
@@ -1216,6 +1217,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_precipitation_path_frames = []
     v1_target_canvas_optical_evidence_frames = []
     v1_target_canvas_optical_summary_frames = []
+    v1_secondary_target_optics_frames = []
     native_cache = {}
     cams_native_cache = {}
     native_volume_cache = {}
@@ -1612,9 +1614,14 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         # Formation.  Exact direct-native COT and bounded adjacent-native
         # hypotheses remain distinct; CF/RH/geometry never fabricate COT.
         _angle_progress(candidate_index, 0.968, f"{label}：解析 Target Canvas Optical Evidence…")
+        _secondary_forecast_optics = snap.get("secondary_target_optics") if isinstance(snap, dict) else None
+        _secondary_validated = validate_secondary_forecast_optical_evidence(_secondary_forecast_optics)
+        if _secondary_validated is not None and not _secondary_validated.empty:
+            _sv=_secondary_validated.copy(); _sv.insert(0,"time",t); _sv.insert(1,"solar_altitude_deg",float(angle)); v1_secondary_target_optics_frames.append(_sv)
         _target_canvas_optics = build_target_canvas_optical_evidence(
             _v1["scene"], _v1.get("canvas_objects", ()),
             solar_altitude_deg=float(angle), valid_time=t,
+            secondary_forecast_optics=_secondary_forecast_optics,
         )
         if _target_canvas_optics is not None and not _target_canvas_optics.empty:
             v1_target_canvas_optical_evidence_frames.append(_target_canvas_optics)
@@ -1792,6 +1799,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_precipitation_path_evidence = pd.concat(v1_precipitation_path_frames, ignore_index=True) if v1_precipitation_path_frames else pd.DataFrame()
     v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame()
     v1_target_canvas_optical_summary = pd.concat(v1_target_canvas_optical_summary_frames, ignore_index=True) if v1_target_canvas_optical_summary_frames else pd.DataFrame()
+    v1_secondary_target_optics = pd.concat(v1_secondary_target_optics_frames, ignore_index=True) if v1_secondary_target_optics_frames else pd.DataFrame()
     _lut_path = Path(__file__).resolve().parent.parent / "hitran_runtime" / "firecloud_600_750nm_band_coefficients.csv"
     v1_six_band_spectroscopy_readiness = build_six_band_spectroscopy_readiness(_lut_path)
     v1_cloud_optical_validation = build_cloud_optical_validation_table(
@@ -1995,6 +2003,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_precipitation_path_evidence": v1_precipitation_path_evidence,
         "v1_target_canvas_optical_evidence": v1_target_canvas_optical_evidence,
         "v1_target_canvas_optical_summary": v1_target_canvas_optical_summary,
+        "v1_secondary_target_optics": v1_secondary_target_optics,
         "v1_six_band_spectroscopy_readiness": v1_six_band_spectroscopy_readiness,
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,

@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 from .contracts import CanvasCandidate, CloudScene, EvidenceState, CloudFractionState
+from .secondary_target_optics import match_secondary_to_canvases, arbitrate_primary_secondary
 
 
 def _finite(v) -> bool:
@@ -93,6 +94,7 @@ def build_target_canvas_optical_evidence(
     solar_altitude_deg: float,
     valid_time=None,
     min_vertical_overlap_fraction: float = 0.50,
+    secondary_forecast_optics: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Build auditable per-Canvas target optical evidence.
 
@@ -240,7 +242,13 @@ def build_target_canvas_optical_evidence(
             "note":"BOUNDED_SPATIAL_INTERPOLATION_ONLY;NOT_DIRECT_TARGET_COT;SAMPLING_SPACING_IS_NOT_CLOUD_WIDTH",
         })
         rows.append(rec)
-    return pd.DataFrame(rows)
+    primary=pd.DataFrame(rows)
+    matched=match_secondary_to_canvases(
+        scene, canvases, secondary_forecast_optics,
+        solar_altitude_deg=float(solar_altitude_deg), valid_time=valid_time,
+        min_vertical_overlap_fraction=min_vertical_overlap_fraction,
+    )
+    return arbitrate_primary_secondary(primary, matched)
 
 
 def summarize_target_canvas_optical_evidence(evidence: pd.DataFrame) -> pd.DataFrame:
@@ -258,7 +266,7 @@ def summarize_target_canvas_optical_evidence(evidence: pd.DataFrame) -> pd.DataF
             "other_unresolved_target_optics_count":int((~state.isin(["DIRECT_NATIVE_CONDENSATE_COT","ADJACENT_NATIVE_COT_BRACKET_BOUNDED","CF_CLOUD_CONDENSATE_ZERO_UNRESOLVED"])).sum()),
             "target_optics_exact_ready_count":int(g.get("target_optics_ready",pd.Series(False,index=g.index)).astype(bool).sum()),
             "target_optics_bounded_count":int(g.get("target_optics_bounded",pd.Series(False,index=g.index)).astype(bool).sum()),
-            "resolver_contract":"R4.9_TARGET_CANVAS_OPTICAL_EVIDENCE_NO_CF_TO_COT",
+            "resolver_contract":"R5.0_MULTI_SOURCE_TARGET_OPTICS_NO_AVERAGING",
             "sampling_step_is_cloud_width":False,
         })
     return pd.DataFrame(rows)
