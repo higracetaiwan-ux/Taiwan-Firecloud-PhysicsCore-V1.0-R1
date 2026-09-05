@@ -216,6 +216,39 @@ class PredictionUncertainty:
 
 
 @dataclass(frozen=True)
+class OpticalPathResult:
+    """Canvas-specific six-band Sun→CloudBase optical path result."""
+    canvas_id: str
+    solar_angle_deg: float
+    spectral_paths: Tuple[SpectralOpticalPath, ...]
+    critical_path_status: str
+    uncertainty: Tuple[PredictionUncertainty, ...] = ()
+    ray_id: Optional[str] = None
+    cloud_intersection_ids: Tuple[str, ...] = ()
+    optical_bottleneck_segment_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class CloudBaseIllumination:
+    """Illumination delivered to one Canvas cloud base.
+
+    irradiance values remain optional in R3 because absolute extraterrestrial
+    spectral irradiance calibration is a later contract.  R3 preserves the
+    physically required F_sun × T_lambda factor without fabricating radiometry.
+    """
+    canvas_id: str
+    solar_angle_deg: float
+    direct_solar_fraction: float
+    spectral_transmission: Mapping[int, Optional[float]]
+    relative_base_illumination: Mapping[int, Optional[float]]
+    illumination_status: str
+    illuminated_area_fraction: Optional[float] = None
+    uncertain_area_fraction: Optional[float] = None
+    confidence: GeometryConfidence = GeometryConfidence.UNKNOWN
+    uncertainty: Tuple[PredictionUncertainty, ...] = ()
+
+
+@dataclass(frozen=True)
 class PhysicsCoreResult:
     """Top-level V1 contract.
 

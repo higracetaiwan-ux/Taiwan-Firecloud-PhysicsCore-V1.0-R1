@@ -243,6 +243,7 @@ def build_r2_geometry_tables(
     }
     return {
         "scene": scene,
+        "canvas_objects": tuple(canvases),
         "cloud_layers": pd.DataFrame(cloud_rows),
         "canvases": pd.DataFrame(canvas_rows),
         "direct_solar": pd.DataFrame(direct_rows),

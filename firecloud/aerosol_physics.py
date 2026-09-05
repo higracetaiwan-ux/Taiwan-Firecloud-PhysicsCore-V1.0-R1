@@ -90,7 +90,17 @@ def derive_route_spectral_aod(snapshot: pd.DataFrame, targets=TARGET_WAVELENGTHS
         known = {w: row.get(c, np.nan) for w, c in src_cols.items()}
         return spectral_aod_loglog_interpolate(wl, known)
     for wl in targets:
-        out[f"aod{wl}"] = out.apply(lambda r: calc(r, wl), axis=1)
+        col = f"aod{wl}"
+        # Preserve a provider-native source wavelength (especially AOD550).
+        # Derived interpolation may fill missing values but must never overwrite
+        # real source evidence with NaN merely because the remaining spectrum is
+        # incomplete.
+        derived = out.apply(lambda r: calc(r, wl), axis=1)
+        if col in out.columns:
+            native = pd.to_numeric(out[col], errors="coerce")
+            out[col] = native.where(native.notna(), derived)
+        else:
+            out[col] = derived
     out["angstrom_550_800"] = out.apply(lambda r: angstrom_from_pair(r.get("aod550", np.nan), 550, r.get("aod800", np.nan), 800), axis=1)
     valid_count = out[[c for c in src_cols.values() if c in out.columns]].notna().sum(axis=1) if any(c in out.columns for c in src_cols.values()) else 0
     out["spectral_aod_quality"] = np.where(np.asarray(valid_count) >= 2, "REAL_MULTI_WAVELENGTH_COLUMN_AOD", "SPECTRAL_AOD_MISSING")

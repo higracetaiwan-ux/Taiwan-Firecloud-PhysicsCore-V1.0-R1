@@ -702,7 +702,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R2 CloudScene + Canvas-specific Ray Runtime Foundation｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R3 Canvas-specific Six-band Optical Path Foundation｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1183,8 +1183,9 @@ if run or st.session_state.analysis_result is not None:
 
     st.subheader("PhysicsCore V1.0 核心形成時間軸（0°～−4°，0.5°）")
     st.caption(
-        "R2 已切換為 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° 九個核心角度。"
-        "本階段顯示 CloudScene、Canvas Candidate 與 DirectSolarFraction；Formation / Viewing / Decision 尚未接入，因此不產生新的 Physics Score 或 GO/NO-GO。"
+        "R3 使用 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° 九個核心角度。"
+        "本階段新增 Ray–Cloud Intersection、550/575/600/650/700/750 nm OpticalPathResult 與 CloudBaseIllumination。"
+        "Formation / Viewing / Decision 尚未接入，因此仍不產生新的 Physics Score 或 GO/NO-GO。"
     )
     _v1_summary = result.get("v1_core_summary", pd.DataFrame())
     if not _v1_summary.empty:
@@ -1218,10 +1219,10 @@ if run or st.session_state.analysis_result is not None:
         c1, c2, c3, c4 = st.columns(4)
         # Legacy regression note: older UI called this field「正式選定核心角度」;
         # R2 no longer treats that V8 selection as a PhysicsCore V1 result.
-        c1.metric("V1.0 正式 Peak Window", "R2 尚未接入")
+        c1.metric("V1.0 正式 Peak Window", "R3 尚未接入")
         c2.metric("診斷顯示角度", f"{diagnostic_angle:.1f}°")
         c3.metric("診斷角度資料完整率", f"{chosen['data_completeness']*100:.1f}%")
-        c4.metric("Decision Layer", "R2 尚未接入")
+        c4.metric("Decision Layer", "R3 尚未接入")
     else:
         chosen = _summary_raw[_summary_raw["solar_altitude_deg"] == selected].iloc[0]
         c1, c2, c3, c4 = st.columns(4)
@@ -1230,12 +1231,12 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R2：CloudScene × Canvas-specific Ray")
+    st.subheader("PhysicsCore V1.0-R3：CloudScene × Canvas-specific Ray × Six-band Optical Path")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
     if not _v1_dep.empty:
-        st.caption("V1.0 採 dependency-aware evidence：CAMS／O₃／Aerosol Missing 不會把已知 Cloud Geometry 或 DirectSolarFraction 歸零。")
+        st.caption("V1.0 採 dependency-aware evidence：CAMS／O₃／Aerosol／Cloud Optics Missing 只影響依賴它的光譜路徑，不會把已知 Cloud Geometry 或 DirectSolarFraction 歸零。")
         _dshow = _v1_dep[pd.to_numeric(_v1_dep["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
         st.dataframe(localized_df(_dshow), use_container_width=True, hide_index=True)
     if not _v1_canvas.empty and not _v1_sun.empty:
@@ -1243,6 +1244,23 @@ if run or st.session_state.analysis_result is not None:
         _s = _v1_sun[pd.to_numeric(_v1_sun["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
         _cs = _c.merge(_s[[c for c in ["canvas_id","direct_solar_fraction","ray_status","shadow_diagnostic_height_km"] if c in _s.columns]], on="canvas_id", how="left")
         st.dataframe(localized_df(_cs), use_container_width=True, hide_index=True)
+
+    _r3_path = result.get("v1_spectral_optical_paths", pd.DataFrame())
+    _r3_illum = result.get("v1_cloud_base_illumination", pd.DataFrame())
+    _r3_hit = result.get("v1_ray_cloud_intersections", pd.DataFrame())
+    if not _r3_path.empty:
+        st.markdown("#### R3 六波段 Sun→CloudBase 光學路徑")
+        _pshow = _r3_path[pd.to_numeric(_r3_path["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+        st.caption("transmission 只有完整四成分（gas/aerosol/cloud/precip）證據時才可成為正式總傳輸；known_component_transmission 是 R3 部分證據診斷，不冒充 Full RT。")
+        st.dataframe(localized_df(_pshow), use_container_width=True, hide_index=True)
+    if not _r3_illum.empty:
+        st.markdown("#### R3 Cloud Base Illumination")
+        _ishow = _r3_illum[pd.to_numeric(_r3_illum["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+        st.dataframe(localized_df(_ishow), use_container_width=True, hide_index=True)
+    if not _r3_hit.empty:
+        with st.expander("R3 Ray–Cloud Intersection（Native CloudScene 幾何）", expanded=False):
+            _hshow = _r3_hit[pd.to_numeric(_r3_hit["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+            st.dataframe(localized_df(_hshow), use_container_width=True, hide_index=True)
 
     audit = result.get("physics_data_completeness", pd.DataFrame())
     perf = result.get("performance_diagnostics", pd.DataFrame())
@@ -1651,6 +1669,11 @@ if run or st.session_state.analysis_result is not None:
             ("v1_solar_rays.csv", result.get("v1_solar_rays", pd.DataFrame())),
             ("v1_solar_geometry.csv", result.get("v1_solar_geometry", pd.DataFrame())),
             ("v1_dependency_status.csv", result.get("v1_dependency_status", pd.DataFrame())),
+            ("v1_ray_cloud_intersections.csv", result.get("v1_ray_cloud_intersections", pd.DataFrame())),
+            ("v1_spectral_optical_paths_550_750nm.csv", result.get("v1_spectral_optical_paths", pd.DataFrame())),
+            ("v1_cloud_base_illumination_550_750nm.csv", result.get("v1_cloud_base_illumination", pd.DataFrame())),
+            ("v1_prediction_uncertainty.csv", result.get("v1_uncertainty", pd.DataFrame())),
+            ("v1_optical_bottlenecks.csv", result.get("v1_optical_bottlenecks", pd.DataFrame())),
             ("spectral_rt_coverage_diagnostics.csv", result.get("spectral_coverage_diagnostics", pd.DataFrame())),
             (
                 "spectral_rt_o3_diagnostics.csv",
@@ -1731,7 +1754,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R2.1_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R3_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

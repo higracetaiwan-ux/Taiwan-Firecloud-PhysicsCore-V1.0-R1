@@ -8,6 +8,7 @@ from .aerosol_physics import (
 )
 from .geometry import ray_altitude_km_at_surface_distance
 from .gas_rt import integrate_gas_sun_to_targets, active_gas_wavelengths, _local_band_coefficients_from_csv
+from .contracts import SIX_BAND_WAVELENGTHS_NM
 
 SPECTRAL_WAVELENGTHS_NM = (600, 650, 700, 750)
 DEFAULT_ANGSTROM_DIAGNOSTIC = 1.30  # only used when spectral AOD is not available; explicitly labelled
@@ -76,12 +77,15 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     """
     if native_optical_voxels.empty:
         return pd.DataFrame()
-    wavelengths=active_gas_wavelengths(_local_band_coefficients_from_csv())
+    # V1.0 R3 preserves the frozen six-band contract even when a gas
+    # coefficient is unavailable for one band (notably 550 nm); that component
+    # remains Missing rather than dropping the wavelength from the result.
+    wavelengths=tuple(SIX_BAND_WAVELENGTHS_NM)
     def _emit(frac: float, message: str):
         if progress_callback is not None:
             try: progress_callback(float(frac), str(message))
             except Exception: pass
-    _emit(0.02, "準備 575–750 nm 光譜狀態")
+    _emit(0.02, "準備 550–750 nm 六波段光譜狀態")
     out = native_optical_voxels.copy()
     m = twilight_slant_factor(solar_altitude_deg)
     cloud_tau = pd.to_numeric(out.get("slant_cloud_optical_depth_estimate", np.nan), errors="coerce")

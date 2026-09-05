@@ -41,6 +41,7 @@ from .spectral_rt import build_spectral_rt, summarize_spectral_rt
 from .gas_rt import build_gas_profile, hitran_backend_status
 from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot, resolve_run_and_lead, DEFAULT_PRESSURE_LEVELS_HPA, native_provider_status
 from .v1_runtime import build_r2_geometry_tables
+from .optical_path import build_r3_optical_tables
 
 
 def _clamp01(x):
@@ -1116,6 +1117,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_solar_ray_frames = []
     v1_dependency_frames = []
     v1_solar_geometry_frames = []
+    v1_ray_cloud_intersection_frames = []
+    v1_spectral_optical_path_frames = []
+    v1_cloud_base_illumination_frames = []
+    v1_uncertainty_frames = []
+    v1_optical_bottleneck_frames = []
     native_cache = {}
     cams_native_cache = {}
     native_volume_cache = {}
@@ -1438,6 +1444,32 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GAS_AND_SPECTRAL_RT", "elapsed_seconds": perf_counter()-_ts, "cache_status": "COMPUTED"})
         _angle_progress(candidate_index, 0.88, f"{label}：彙整光譜與垂直欄位…")
         spectral_columns = summarize_spectral_rt(spectral_voxels)
+
+        # PhysicsCore V1.0-R3: connect Canvas-specific native geometry to the
+        # route-resolved spectral evidence. Missing components remain local to
+        # the dependent optical/illumination outputs; they do not erase the
+        # already-known CloudScene or DirectSolarFraction.
+        _angle_progress(candidate_index, 0.955, f"{label}：建立 V1.0 六波段 OpticalPathResult…")
+        _r3 = build_r3_optical_tables(
+            scene=_v1["scene"],
+            canvases=_v1.get("canvas_objects", ()),
+            direct_solar=_v1.get("direct_solar", pd.DataFrame()),
+            solar_rays=_v1.get("solar_rays", pd.DataFrame()),
+            spectral_voxels=spectral_voxels,
+            solar_altitude_deg=float(angle),
+            earth_radius_km=cfg.earth_radius_km,
+            valid_time=t,
+        )
+        for _key, _dest in [
+            ("ray_cloud_intersections", v1_ray_cloud_intersection_frames),
+            ("spectral_optical_paths", v1_spectral_optical_path_frames),
+            ("cloud_base_illumination", v1_cloud_base_illumination_frames),
+            ("uncertainty", v1_uncertainty_frames),
+            ("optical_bottlenecks", v1_optical_bottleneck_frames),
+        ]:
+            _df = _r3.get(_key, pd.DataFrame())
+            if _df is not None and not _df.empty:
+                _dest.append(_df)
         _angle_progress(candidate_index, 0.98, f"{label}：完成")
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "PER_ANGLE_PHYSICS_TOTAL", "elapsed_seconds": perf_counter()-_angle_t0, "cache_status": "COMPUTED"})
         angle_f = float(angle)
@@ -1575,6 +1607,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_solar_rays = pd.concat(v1_solar_ray_frames, ignore_index=True) if v1_solar_ray_frames else pd.DataFrame()
     v1_dependency_status = pd.concat(v1_dependency_frames, ignore_index=True) if v1_dependency_frames else pd.DataFrame()
     v1_solar_geometry = pd.concat(v1_solar_geometry_frames, ignore_index=True) if v1_solar_geometry_frames else pd.DataFrame()
+    v1_ray_cloud_intersections = pd.concat(v1_ray_cloud_intersection_frames, ignore_index=True) if v1_ray_cloud_intersection_frames else pd.DataFrame()
+    v1_spectral_optical_paths = pd.concat(v1_spectral_optical_path_frames, ignore_index=True) if v1_spectral_optical_path_frames else pd.DataFrame()
+    v1_cloud_base_illumination = pd.concat(v1_cloud_base_illumination_frames, ignore_index=True) if v1_cloud_base_illumination_frames else pd.DataFrame()
+    v1_uncertainty = pd.concat(v1_uncertainty_frames, ignore_index=True) if v1_uncertainty_frames else pd.DataFrame()
+    v1_optical_bottlenecks = pd.concat(v1_optical_bottleneck_frames, ignore_index=True) if v1_optical_bottleneck_frames else pd.DataFrame()
 
     # V1 Core runtime summary is intentionally dimension/evidence based. There
     # is no Physics Score, GO/NO-GO, or single global completeness percentage.
@@ -1595,8 +1632,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             "earth_shadowed_canvas_count": int((_states == "FULL_EARTH_SHADOW").sum()),
             "cloud_geometry_completeness": _geom,
             "v1_geometry_status": "READY" if (len(_ca) > 0 and (_states.isin(["FULL_SOLAR_DISK","PARTIAL_SOLAR_DISK"]).any())) else ("NO_ILLUMINATED_CANVAS" if len(_ca)>0 else "NO_CANVAS_EVIDENCE"),
-            "formation_status": "NOT_YET_CONNECTED_R2",
-            "viewing_status": "NOT_YET_CONNECTED_R2",
+            "formation_status": "NOT_YET_CONNECTED_R3",
+            "optical_path_status": (
+                "R3_UNCERTAIN_OPTICS" if not v1_cloud_base_illumination.empty else "NO_R3_ILLUMINATION_EVIDENCE"
+            ),
+            "viewing_status": "NOT_YET_CONNECTED_R3",
         })
     v1_core_summary = pd.DataFrame(_v1_summary_rows)
 
@@ -1714,6 +1754,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_solar_rays": v1_solar_rays,
         "v1_dependency_status": v1_dependency_status,
         "v1_solar_geometry": v1_solar_geometry,
+        "v1_ray_cloud_intersections": v1_ray_cloud_intersections,
+        "v1_spectral_optical_paths": v1_spectral_optical_paths,
+        "v1_cloud_base_illumination": v1_cloud_base_illumination,
+        "v1_uncertainty": v1_uncertainty,
+        "v1_optical_bottlenecks": v1_optical_bottlenecks,
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
         "performance_diagnostics": pd.DataFrame(performance_rows),

@@ -1,10 +1,10 @@
 # Taiwan Firecloud PhysicsCore V1.0
 
-**Current checkpoint: V1.0-R2.1 — R2 runtime foundation + non-blocking streaming CASE export.**
+**Current checkpoint: V1.0-R3 — Canvas-specific ray/cloud intersection + six-band OpticalPathResult + CloudBaseIllumination foundation.**
 
 This is the new main-program identity. The package is a full runnable replacement built from the V8.4.16.7 compatibility baseline while the frozen PhysicsCore V1.0 architecture is refactored stage-by-stage.
 
-See `RELEASE_NOTES_PhysicsCore_V1.0-R2.1.md` for the exact implemented boundary.
+See `RELEASE_NOTES_PhysicsCore_V1.0-R3.md` for the exact implemented boundary.
 
 ---
 
