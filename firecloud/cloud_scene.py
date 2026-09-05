@@ -124,9 +124,33 @@ def segment_native_levels(
         gpts = [p for p, _ in grp]
         states = [s for _, s in grp]
         z = [float(p["altitude_agl_km"]) for p in gpts]
-        # Native-level support: for a single occupied level, base/top are the same
-        # checkpoint rather than inventing thickness from the visualization grid.
-        z_base, z_top = min(z), max(z)
+        # R3.1 native vertical support: an occupied native pressure/model level
+        # represents a finite native layer cell, not a zero-thickness plane.  We
+        # derive support from neighbouring *native* level centres (half-level
+        # boundaries).  This does not bridge CLEAR/UNKNOWN gaps and does not use
+        # the 0.5-km visualization grid.
+        if len(z) > 1:
+            # Multi-level layers keep their native occupied-level envelope, which
+            # preserves the R1 segmentation contract and never spans a CLEAR gap.
+            z_base, z_top = min(z), max(z)
+        else:
+            # Only the pathological single occupied native level needs explicit
+            # half-level support so slant intersections do not see zero thickness.
+            all_z = [float(x[0]["altitude_agl_km"]) for x in tagged]
+            j = next(j for j, x in enumerate(tagged) if float(x[0]["altitude_agl_km"]) == z[0])
+            zz = z[0]
+            if j > 0:
+                z_base = 0.5*(all_z[j-1]+zz)
+            elif len(all_z)>1:
+                z_base = max(0.0, zz-0.5*(all_z[1]-zz))
+            else:
+                z_base = max(0.0, zz-0.125)
+            if j < len(all_z)-1:
+                z_top = 0.5*(zz+all_z[j+1])
+            elif len(all_z)>1:
+                z_top = zz+0.5*(zz-all_z[j-1])
+            else:
+                z_top = zz+0.125
         cfs = []
         qls = []; qis = []
         for p in gpts:

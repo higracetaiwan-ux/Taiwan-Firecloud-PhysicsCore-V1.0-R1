@@ -4,7 +4,7 @@
 This helper NEVER bundles or fabricates HITRAN spectroscopy.  It can:
   1. create/audit the Firecloud local HITRAN directory;
   2. use official HAPI 1.3 line-by-line fetch_by_ids() as the primary downloader
-     for H2O/O2 560-765 nm transitions; HAPI2 is retained only as an
+     for H2O/O2 535-765 nm transitions; HAPI2 is retained only as an
      optional legacy fallback because its transitions header endpoint may 404;
   3. print the next command that builds Firecloud's diagnostic-band T/P LUT.
 
@@ -30,7 +30,7 @@ from firecloud.hitran_readiness import hitran_backend_status, inspect_hitran_coe
 
 NUMIN = 1e7 / 765.0
 NUMAX = 1e7 / 560.0
-TABLES = {"H2O": "H2O_560_765", "O3": "O3_560_765", "O2": "O2_560_765"}
+TABLES = {"H2O": "H2O_535_765", "O3": "O3_535_765", "O2": "O2_535_765"}
 MIN_SOURCE_COVERAGE_MARGIN_CM = 100.0
 DIAGNOSTIC_BANDS_NM = (575.0, 600.0, 650.0, 700.0, 750.0)
 # Official HITRAN global isotopologue IDs (natural isotopologues used by Firecloud).
@@ -300,7 +300,7 @@ def main() -> int:
     db.mkdir(parents=True, exist_ok=True)
     os.environ["FIRECLOUD_HITRAN_DB"] = str(db)
     print(f"FIRECLOUD_HITRAN_DB={db}")
-    print(f"Required source interval: 560-765 nm = {NUMIN:.2f}-{NUMAX:.2f} cm^-1")
+    print(f"Required source interval: 535-765 nm = {NUMIN:.2f}-{NUMAX:.2f} cm^-1")
     print("Required gases: H2O, O3, O2")
 
     if args.import_par_gas:

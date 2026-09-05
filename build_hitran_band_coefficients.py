@@ -16,20 +16,27 @@ STATE_CACHE_FORMAT = "Taiwan Firecloud Hybrid Gas Spectroscopy Voigt state check
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Build Taiwan Firecloud hybrid 575–750 nm gas spectroscopy LUT")
+    p = argparse.ArgumentParser(description="Build Taiwan Firecloud hybrid 550–750 nm gas spectroscopy LUT")
     p.add_argument("--db", default="hitran_db")
     p.add_argument("--temperatures", default="220,250,280,293")
     p.add_argument("--pressures-hpa", default="100,300,500,700,900,1000")
     p.add_argument("--wavenumber-step", type=float, default=0.02)
-    p.add_argument("--h2o-table", default="H2O_560_765")
-    p.add_argument("--o2-table", default="O2_560_765")
+    p.add_argument("--h2o-table", default="H2O_535_765")
+    p.add_argument("--o2-table", default="O2_535_765")
     p.add_argument("--o3-xsc", default=O3_XSC_FILENAME)
     p.add_argument(
         "--wavelengths",
         default="600,650,700,750",
-        help="Comma-separated diagnostic band centers in nm. Add 575 only when the local H2O/O2 tables and O3 XSC are present and validated.",
+        help="Comma-separated diagnostic band centers in nm. Legacy default retained for reproducibility.",
     )
-    return p.parse_args()
+    p.add_argument(
+        "--v1-six-band", action="store_true",
+        help="Build the PhysicsCore V1.0 six-band LUT at 550,575,600,650,700,750 nm. Requires local H2O/O2 tables extending to at least 535 nm and validated O3 XSC.",
+    )
+    args=p.parse_args()
+    if args.v1_six_band:
+        args.wavelengths="550,575,600,650,700,750"
+    return args
 
 
 def _file_fingerprint(path: Path) -> dict[str, object]:

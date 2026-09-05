@@ -42,6 +42,7 @@ from .gas_rt import build_gas_profile, hitran_backend_status
 from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot, resolve_run_and_lead, DEFAULT_PRESSURE_LEVELS_HPA, native_provider_status
 from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
+from .precipitation import build_precipitation_path_evidence
 
 
 def _clamp01(x):
@@ -1126,6 +1127,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     cams_native_cache = {}
     native_volume_cache = {}
     native_optical_base_cache = {}
+    gas_profile_cache = {}
+    aerosol_spectral_cache = {}
     core_set = {float(x) for x in cfg.firecloud_core_angles_deg}
     late_set = {float(x) for x in cfg.late_glow_angles_deg}
 
@@ -1426,11 +1429,28 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         except Exception as exc:
             cams_aerosol_meta = {**cams_aerosol_meta, "native_aerosol_status": "FAILED", "native_ozone_status": "FAILED", "native_aerosol_error": f"{type(exc).__name__}: {exc}", "native_ozone_error": f"{type(exc).__name__}: {exc}"}
         spectral_source_snap = cams_aerosol_snap if not cams_aerosol_snap.empty else aerosol_snap
-        aerosol_spectral_snap = derive_route_spectral_aod(spectral_source_snap) if not spectral_source_snap.empty else pd.DataFrame()
+        _spec_key = cams_key if 'cams_key' in locals() else cache_key
+        if _spec_key is not None and _spec_key in aerosol_spectral_cache:
+            aerosol_spectral_snap = aerosol_spectral_cache[_spec_key].copy()
+            _aero_spec_status = "HIT"
+        else:
+            aerosol_spectral_snap = derive_route_spectral_aod(spectral_source_snap) if not spectral_source_snap.empty else pd.DataFrame()
+            if _spec_key is not None:
+                aerosol_spectral_cache[_spec_key] = aerosol_spectral_snap.copy()
+            _aero_spec_status = "MISS"
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "AEROSOL_SPECTRAL_DERIVATION", "elapsed_seconds": 0.0, "cache_status": _aero_spec_status, "cache_key": str(_spec_key)})
         _angle_progress(candidate_index, 0.58, f"{label}：建立氣體狀態…")
         _ts = perf_counter()
         _o3_bind_t0 = perf_counter()
-        gas_profile = build_gas_profile(snap, GAS_PRESSURE_LEVELS_HPA, ozone_snapshot=cams_aerosol_snap)
+        _gas_key = (cache_key, cams_key if 'cams_key' in locals() else None)
+        if _gas_key in gas_profile_cache:
+            gas_profile = gas_profile_cache[_gas_key].copy()
+            _gas_cache_status = "HIT"
+        else:
+            gas_profile = build_gas_profile(snap, GAS_PRESSURE_LEVELS_HPA, ozone_snapshot=cams_aerosol_snap)
+            gas_profile_cache[_gas_key] = gas_profile.copy()
+            _gas_cache_status = "MISS"
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GAS_PROFILE_CACHE", "elapsed_seconds": 0.0, "cache_status": _gas_cache_status, "cache_key": str(_gas_key)})
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "CAMS_O3_PROFILE_BINDING", "elapsed_seconds": perf_counter()-_o3_bind_t0, "cache_status": "BOUND" if gas_profile.get("o3_mole_fraction", pd.Series(dtype=float)).notna().any() else "MISSING"})
         _angle_progress(candidate_index, 0.61, f"{label}：開始 575–750 nm 光譜 RT…")
         def _spectral_progress(_frac, _msg):
@@ -1450,6 +1470,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         # the dependent optical/illumination outputs; they do not erase the
         # already-known CloudScene or DirectSolarFraction.
         _angle_progress(candidate_index, 0.955, f"{label}：建立 V1.0 六波段 OpticalPathResult…")
+        _precip_path_evidence = build_precipitation_path_evidence(_v1.get("canvas_objects", ()), snap, valid_time=t)
         _r3 = build_r3_optical_tables(
             scene=_v1["scene"],
             canvases=_v1.get("canvas_objects", ()),
@@ -1459,6 +1480,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             solar_altitude_deg=float(angle),
             earth_radius_km=cfg.earth_radius_km,
             valid_time=t,
+            precipitation_path_evidence=_precip_path_evidence,
         )
         for _key, _dest in [
             ("ray_cloud_intersections", v1_ray_cloud_intersection_frames),

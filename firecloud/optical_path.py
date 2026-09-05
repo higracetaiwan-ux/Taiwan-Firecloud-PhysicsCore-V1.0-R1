@@ -169,8 +169,13 @@ def _component_tau(row: Optional[pd.Series], name: str, wl: int) -> Optional[flo
     return None
 
 
-def _cloud_tau(row: Optional[pd.Series], wl: int) -> Optional[float]:
+def _cloud_tau(row: Optional[pd.Series], wl: int, *, optical_evidence: EvidenceState) -> Optional[float]:
     if row is None:
+        return None
+    # R3.1: geometry evidence is never optical-clear evidence.  A target or
+    # blocker reconstructed from cloud fraction/base/top only must keep tau_cloud
+    # Unknown even when a legacy RT voxel happens to carry transmission=1.
+    if optical_evidence in (EvidenceState.GEOMETRY_ONLY, EvidenceState.MISSING):
         return None
     # Current bulk cloud extinction is effectively grey across this diagnostic
     # visible range.  We retain the explicit per-wavelength field in the V1
@@ -198,6 +203,7 @@ def build_r3_optical_tables(
     solar_altitude_deg: float,
     earth_radius_km: float,
     valid_time=None,
+    precipitation_path_evidence: Optional[pd.DataFrame] = None,
 ) -> dict[str, pd.DataFrame]:
     """Build R3 ray-cloud, six-band path, illumination and uncertainty tables."""
     canvases = list(canvases)
@@ -241,8 +247,21 @@ def build_r3_optical_tables(
         for wl in SIX_BAND_WAVELENGTHS_NM:
             tau_g = _component_tau(rtrow, "gas", wl)
             tau_a = _component_tau(rtrow, "aerosol", wl)
-            tau_c = _cloud_tau(rtrow, wl)
-            tau_p = None  # dedicated precipitation-volume RT is not connected in R3
+            tau_c = _cloud_tau(rtrow, wl, optical_evidence=target.optical_evidence)
+            # R3.1 precipitation branch is connected fail-closed.  Only an
+            # explicit path optical-depth field can produce tau_precip. Surface
+            # rain rate or cloud geometry alone never fabricates optical depth.
+            tau_p = None
+            precip_status = "PRECIPITATION_GEOMETRY_MISSING"
+            if precipitation_path_evidence is not None and not precipitation_path_evidence.empty:
+                pe = precipitation_path_evidence[precipitation_path_evidence.get("canvas_id", pd.Series(dtype=str)).astype(str) == str(canvas.canvas_id)]
+                if not pe.empty:
+                    prow = pe.iloc[0]
+                    pv = prow.get(f"tau_precip_{wl}nm", np.nan)
+                    if _finite(pv):
+                        tau_p = max(0.0, float(pv)); precip_status = "PRECIPITATION_OPTICS_RESOLVED"
+                    else:
+                        precip_status = str(prow.get("status", "PRECIPITATION_OPTICS_UNKNOWN"))
             known = [x for x in (tau_g, tau_a, tau_c) if x is not None]
             partial_tau = float(sum(known)) if known else None
             partial_t = math.exp(-partial_tau) if partial_tau is not None else None
@@ -255,7 +274,7 @@ def build_r3_optical_tables(
             if tau_g is None: missing_parts.append("GAS")
             if tau_a is None: missing_parts.append("AEROSOL")
             if tau_c is None or unknown_cloud_intersections: missing_parts.append("CLOUD")
-            missing_parts.append("PRECIP_NOT_CONNECTED_R3")
+            if tau_p is None: missing_parts.append(precip_status)
 
             if fsun is not None and fsun <= 0.0:
                 # Earth shadow makes delivered direct illumination exactly zero
@@ -297,7 +316,10 @@ def build_r3_optical_tables(
                 "evidence_state": ev.value,
                 "bound_level": int(bl.value),
                 "missing_components": ";".join(missing_parts),
-                "critical_path_status": "UNCERTAIN_OPTICS" if ev != EvidenceState.FULL else "FULL_RT",
+                "critical_path_status": (
+                    "POTENTIAL_BLOCKER_OPTICS_UNKNOWN" if unknown_cloud_intersections
+                    else ("UNCERTAIN_OPTICS" if ev != EvidenceState.FULL else "FULL_RT")
+                ),
                 "rt_evidence_source": "LEGACY_RT_EVIDENCE_BRIDGE_R3" if rtrow is not None else "NO_RT_EVIDENCE",
                 "upstream_cloud_intersection_count": int(len(canvas_inter)),
                 "unknown_upstream_cloud_optics": bool(unknown_cloud_intersections),

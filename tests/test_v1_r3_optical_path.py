@@ -57,7 +57,7 @@ def test_r3_preserves_all_six_bands_and_missing_is_not_zero():
     assert p["transmission"].isna().all()
     assert p["tau_total"].isna().all()
     assert (p["evidence_state"] == "MISSING").all()
-    assert p["missing_components"].str.contains("PRECIP_NOT_CONNECTED_R3").all()
+    assert p["missing_components"].str.contains("PRECIPITATION_GEOMETRY_MISSING").all()
 
 
 def test_earth_shadow_known_zero_does_not_require_optics():
