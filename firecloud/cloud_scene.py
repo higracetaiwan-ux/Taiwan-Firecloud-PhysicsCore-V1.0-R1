@@ -35,34 +35,76 @@ def _finite(v) -> bool:
         return False
 
 
-def classify_native_level(level: Mapping, cfg: ProviderCloudGeometryConfig) -> CloudFractionState:
-    """Classify occupancy without converting cloud fraction into COT.
+def _normalized_cloud_fraction(level: Mapping) -> Optional[float]:
+    cf = level.get("cloud_fraction", np.nan)
+    if not _finite(cf):
+        return None
+    f = float(cf)
+    if f > 1.0 + 1e-9:
+        f /= 100.0
+    return max(0.0, min(1.0, f))
 
-    Condensate is used as physical occupancy evidence when available.  Cloud
-    fraction is geometry/occupancy evidence only; it never fabricates optics.
-    """
+
+def _native_condensate_state(level: Mapping, cfg: ProviderCloudGeometryConfig) -> str:
     ql = level.get("cloud_liquid_water_kgkg", np.nan)
     qi = level.get("cloud_ice_water_kgkg", np.nan)
-    cf = level.get("cloud_fraction", np.nan)
-    if _finite(ql) and _finite(qi):
-        q = max(0.0, float(ql)) + max(0.0, float(qi))
-        if q >= cfg.condensate_threshold_kgkg:
-            return CloudFractionState.CLOUD_OCCUPIED
-        # Native zero/near-zero condensate is affirmative CLEAR optical/occupancy
-        # evidence at that model level, not Missing.
-        return CloudFractionState.CLEAR
-    if _finite(cf):
-        f = float(cf)
-        # Providers may expose 0..1 or 0..100 fractions.
-        if f > 1.0 + 1e-9:
-            f /= 100.0
-        f = max(0.0, min(1.0, f))
-        if f <= cfg.clear_fraction_max:
-            return CloudFractionState.CLEAR
+    if not (_finite(ql) and _finite(qi)):
+        return "MISSING"
+    q = max(0.0, float(ql)) + max(0.0, float(qi))
+    return "POSITIVE" if q >= cfg.condensate_threshold_kgkg else "ZERO"
+
+
+def classify_native_level(level: Mapping, cfg: ProviderCloudGeometryConfig) -> CloudFractionState:
+    """Classify cloud *geometry* without letting optical evidence erase it.
+
+    PhysicsCore V1.0-R4.5.2 explicitly decouples occupancy from optics. Native
+    cloud fraction is geometry evidence. Positive native condensate can add
+    independent occupancy evidence, but zero condensate cannot erase a non-zero
+    cloud-fraction signal. Conversely, cloud fraction never fabricates COT.
+    """
+    f = _normalized_cloud_fraction(level)
+    qstate = _native_condensate_state(level, cfg)
+
+    if f is not None:
         if f >= cfg.occupied_fraction_min:
             return CloudFractionState.CLOUD_OCCUPIED
-        return CloudFractionState.PARTIAL_OCCUPANCY
+        if f > cfg.clear_fraction_max:
+            return CloudFractionState.PARTIAL_OCCUPANCY
+        # A very low/zero cloud fraction is normally clear, but independently
+        # positive native condensate is still physical occupancy evidence.
+        if qstate == "POSITIVE":
+            return CloudFractionState.CLOUD_OCCUPIED
+        return CloudFractionState.CLEAR
+
+    if qstate == "POSITIVE":
+        return CloudFractionState.CLOUD_OCCUPIED
+    if qstate == "ZERO":
+        return CloudFractionState.CLEAR
     return CloudFractionState.UNKNOWN
+
+
+def native_level_evidence_consistency(level: Mapping, cfg: ProviderCloudGeometryConfig) -> str:
+    """Audit geometry-vs-condensate agreement without changing either evidence.
+
+    This is diagnostic provenance, not a score. A disagreement never invents
+    optical depth and never silently deletes cloud-fraction occupancy evidence.
+    """
+    f = _normalized_cloud_fraction(level)
+    qstate = _native_condensate_state(level, cfg)
+    if f is None and qstate == "MISSING":
+        return "OPTICS_AND_GEOMETRY_MISSING"
+    if f is None:
+        return "CONDENSATE_ONLY_POSITIVE" if qstate == "POSITIVE" else "CONDENSATE_ONLY_ZERO"
+    if qstate == "MISSING":
+        return "OPTICS_MISSING"
+    cf_cloud = f > cfg.clear_fraction_max
+    if cf_cloud and qstate == "ZERO":
+        return "CF_CLOUD_CONDENSATE_ZERO"
+    if (not cf_cloud) and qstate == "POSITIVE":
+        return "CONDENSATE_CLOUD_CF_LOW"
+    if cf_cloud and qstate == "POSITIVE":
+        return "CONSISTENT_CLOUD"
+    return "CONSISTENT_CLEAR"
 
 
 def _optical_evidence(levels: Sequence[Mapping]) -> EvidenceState:
@@ -81,7 +123,7 @@ def _optical_evidence(levels: Sequence[Mapping]) -> EvidenceState:
 
 
 
-def _derive_native_layer_optics(levels: Sequence[Mapping], z_base_km: float, z_top_km: float) -> dict:
+def _derive_native_layer_optics(levels: Sequence[Mapping], z_base_km: float, z_top_km: float, cfg: ProviderCloudGeometryConfig = ProviderCloudGeometryConfig()) -> dict:
     """Derive target-cloud visible optical evidence from *native* condensate.
 
     This bridge never uses RH/cloud fraction/base-top geometry to invent COT.  A
@@ -115,7 +157,27 @@ def _derive_native_layer_optics(levels: Sequence[Mapping], z_base_km: float, z_t
         ev = EvidenceState.GEOMETRY_ONLY if any(classify_native_level(x, ProviderCloudGeometryConfig()) != CloudFractionState.UNKNOWN for x in levels) else EvidenceState.MISSING
         return {"evidence": ev, "cot": None, "effective_radius_um": None,
                 "quality": "MISSING_NATIVE_CONDENSATE_OR_THERMODYNAMICS"}
-    evidence = EvidenceState.FULL if len(valid)==len(levels) else EvidenceState.PARTIAL_OPTICS
+
+    # Geometry/optics decoupling: if cloud fraction says cloud is present but all
+    # native condensate values are zero/near-zero, this is evidence disagreement,
+    # not proof that the cloud has COT=0. Preserve the CloudLayer but fail closed
+    # on optical depth.
+    positive_q = [r for r in valid if (r[2] + r[3]) >= NATIVE_CONDENSATE_THRESHOLD_KGKG]
+    cf_cloud_levels = [x for x in levels if (_normalized_cloud_fraction(x) or 0.0) > cfg.clear_fraction_max]
+    if not positive_q and cf_cloud_levels:
+        return {"evidence": EvidenceState.GEOMETRY_ONLY, "cot": None, "effective_radius_um": None,
+                "quality": "CF_CLOUD_CONDENSATE_ZERO"}
+
+    consistency = [native_level_evidence_consistency(x, cfg) for x in levels]
+    # Positive condensate with very low cloud fraction is also an unresolved
+    # evidence conflict. Keep the geometry, but do not turn the conflicting
+    # pair into a trusted COT by multiplying condensate with a near-zero CF.
+    if "CONDENSATE_CLOUD_CF_LOW" in consistency:
+        return {"evidence": EvidenceState.PARTIAL_OPTICS, "cot": None, "effective_radius_um": None,
+                "quality": "CONDENSATE_CLOUD_CF_LOW"}
+    disagreement = "CF_CLOUD_CONDENSATE_ZERO" in consistency
+    evidence = (EvidenceState.PARTIAL_OPTICS if disagreement or len(valid) != len(levels)
+                else EvidenceState.FULL)
     valid=sorted(valid, key=lambda r:r[0])
     if len(valid)==1:
         thickness_m=max(0.0,float(z_top_km)-float(z_base_km))*1000.0
@@ -239,7 +301,7 @@ def segment_native_levels(
         occupancy = (CloudFractionState.CLOUD_OCCUPIED
                      if CloudFractionState.CLOUD_OCCUPIED in states
                      else CloudFractionState.PARTIAL_OCCUPANCY)
-        optics = _derive_native_layer_optics(gpts, z_base, z_top)
+        optics = _derive_native_layer_optics(gpts, z_base, z_top, provider_cfg)
         optical_prov = ForecastFieldProvenance(
             provider=provider_cfg.provider, model="NATIVE_CONDENSATE_BULK_OPTICS",
             variable="cloud_optical_depth_from_native_condensate",
@@ -249,6 +311,13 @@ def segment_native_levels(
             missing_reason=None if optics["cot"] is not None else optics["quality"],
             extra={"optical_model": optics["quality"]},
         )
+        consistency_values = [native_level_evidence_consistency(p, provider_cfg) for p in gpts]
+        consistency_priority = [
+            "CF_CLOUD_CONDENSATE_ZERO", "CONDENSATE_CLOUD_CF_LOW", "OPTICS_MISSING",
+            "OPTICS_AND_GEOMETRY_MISSING", "CONSISTENT_CLOUD", "CONSISTENT_CLEAR",
+            "CONDENSATE_ONLY_POSITIVE", "CONDENSATE_ONLY_ZERO",
+        ]
+        layer_consistency = next((x for x in consistency_priority if x in consistency_values), "UNKNOWN")
         out.append(CloudLayer(
             layer_id=f"dir{direction_offset_deg:+.1f}_d{distance_km:.1f}_L{i}",
             direction_offset_deg=float(direction_offset_deg),
@@ -264,6 +333,7 @@ def segment_native_levels(
             cot=optics["cot"],
             geometry_confidence=_geometry_confidence(states),
             optical_evidence=optics["evidence"],
+            evidence_consistency=layer_consistency,
             provenance=provenance + (optical_prov,),
             geometry_source="NATIVE_MODEL_LEVELS",
         ))

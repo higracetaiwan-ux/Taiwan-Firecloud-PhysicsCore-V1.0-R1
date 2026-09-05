@@ -182,6 +182,7 @@ def build_r2_geometry_tables(
         r["cloud_fraction_state"] = x.cloud_fraction_state.value
         r["geometry_confidence"] = x.geometry_confidence.value
         r["optical_evidence"] = x.optical_evidence.value
+        r["evidence_consistency"] = x.evidence_consistency
         r["provenance"] = str(x.provenance)
         cloud_rows.append(r)
 

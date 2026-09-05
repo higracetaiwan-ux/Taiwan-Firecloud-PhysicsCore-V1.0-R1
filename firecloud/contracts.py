@@ -109,6 +109,7 @@ class CloudLayer:
     cot: Optional[float] = None
     geometry_confidence: GeometryConfidence = GeometryConfidence.UNKNOWN
     optical_evidence: EvidenceState = EvidenceState.MISSING
+    evidence_consistency: str = "UNKNOWN"
     provenance: Tuple[ForecastFieldProvenance, ...] = ()
     geometry_source: str = "NATIVE_MODEL_LEVELS"
 
