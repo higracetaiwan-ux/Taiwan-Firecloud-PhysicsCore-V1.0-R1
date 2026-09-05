@@ -21,6 +21,8 @@ from typing import Iterable, Optional
 import numpy as np
 import pandas as pd
 
+from .spectral_color import reconstruct_six_band_colour
+
 from .contracts import (
     SIX_BAND_WAVELENGTHS_NM,
     CanvasCandidate,
@@ -219,6 +221,7 @@ def build_r4_formation_tables(
 
         brightness = _brightness_proxy(radiance)
         redness = _redness_proxy(radiance)
+        colour_diag = reconstruct_six_band_colour(radiance)
         row = {
             "time": valid_time,
             "solar_altitude_deg": float(solar_altitude_deg),
@@ -243,6 +246,7 @@ def build_r4_formation_tables(
             "texture_structure": None,
             "colour_method": "SIX_BAND_ONLY_NO_INVENTED_BLUE;PHOTOPIC_BRIGHTNESS_PROXY;UNCALIBRATED_REDNESS_PROXY",
             "cloud_type_multiplier": "NONE",
+            **colour_diag,
         }
         for wl in SIX_BAND_WAVELENGTHS_NM:
             row[f"cloud_radiance_proxy_{int(wl)}nm"] = radiance[int(wl)]
@@ -257,7 +261,7 @@ def build_r4_formation_tables(
             "confirmed_canvas_count": 0, "uncertain_canvas_count": 0,
             "formation_confidence": "UNKNOWN", "rt_tier": "NONE",
         }])
-        return {"canvas_radiance": canvas_df, "formation": formation}
+        return {"canvas_radiance": canvas_df, "formation": formation, "spectral_colour": pd.DataFrame()}
 
     ready = canvas_df[canvas_df["response_status"] == "READY_TIER1_UNCALIBRATED"].copy()
     shadow_zero = canvas_df[canvas_df["response_status"] == "CONFIRMED_ZERO_EARTH_SHADOW"].copy()
@@ -299,4 +303,6 @@ def build_r4_formation_tables(
         "rt_tier": "TIER1_FAST_SOURCE_PROXY",
         "aggregation_note": "NO_DISTANCE_WEIGHT;NO_CLOUD_TYPE_MULTIPLIER;NO_SINGLE_FORMATION_SCORE",
     }])
-    return {"canvas_radiance": canvas_df, "formation": formation}
+    colour_cols = [c for c in ["time","solar_altitude_deg","canvas_id","cloud_layer_id","response_status","brightness","redness","spectral_colour_status","cie_X_truncated","cie_Y_truncated","cie_Z_truncated","cie_x_truncated","cie_y_truncated","deep_red_tail_fraction_750","warm_red_fraction_650_750","spectral_centroid_nm","spectral_peak_wavelength_nm_diagnostic","colour_reconstruction_method"] if c in canvas_df.columns]
+    spectral_colour = canvas_df[colour_cols].copy() if colour_cols else pd.DataFrame()
+    return {"canvas_radiance": canvas_df, "formation": formation, "spectral_colour": spectral_colour}

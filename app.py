@@ -702,7 +702,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R4 Canvas Optical Response / Formation Foundation｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.4 Cloud Optical Validation / Six-band Spectral Color Foundation｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1231,7 +1231,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R4.3：Adaptive Sampling × 3D Slant Blocker RT × Formation")
+    st.subheader("PhysicsCore V1.0-R4.4：Cloud Optical Validation × Six-band Spectral Color Foundation")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1273,6 +1273,18 @@ if run or st.session_state.analysis_result is not None:
         with st.expander("R4 Canvas Radiance / Brightness / Redness / Area", expanded=False):
             _cshow = _r4_canvas[pd.to_numeric(_r4_canvas["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
             st.dataframe(localized_df(_cshow), use_container_width=True, hide_index=True)
+
+    _r44_color = result.get("v1_spectral_colour", pd.DataFrame())
+    _r44_val = result.get("v1_cloud_optical_validation", pd.DataFrame())
+    if not _r44_color.empty:
+        with st.expander("R4.4 六波段 Spectral Color（截斷 CIE 診斷）", expanded=False):
+            st.caption("只使用 550/575/600/650/700/750 nm 已有輻亮度；不補造藍／藍綠波段。XYZ/x/y 是 retained-band truncated CIE 診斷，不等同完整人眼色彩重建。")
+            _x = _r44_color[pd.to_numeric(_r44_color["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+            st.dataframe(localized_df(_x), use_container_width=True, hide_index=True)
+    if not _r44_val.empty:
+        with st.expander("R4.4 Cloud Optical Validation", expanded=False):
+            _x = _r44_val[pd.to_numeric(_r44_val["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+            st.dataframe(localized_df(_x), use_container_width=True, hide_index=True)
 
     audit = result.get("physics_data_completeness", pd.DataFrame())
     perf = result.get("performance_diagnostics", pd.DataFrame())
@@ -1691,6 +1703,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_optical_bottlenecks.csv", result.get("v1_optical_bottlenecks", pd.DataFrame())),
             ("v1_canvas_radiance_550_750nm.csv", result.get("v1_canvas_radiance", pd.DataFrame())),
             ("v1_formation.csv", result.get("v1_formation", pd.DataFrame())),
+            ("v1_spectral_colour_550_750nm.csv", result.get("v1_spectral_colour", pd.DataFrame())),
+            ("v1_cloud_optical_validation.csv", result.get("v1_cloud_optical_validation", pd.DataFrame())),
             ("spectral_rt_coverage_diagnostics.csv", result.get("spectral_coverage_diagnostics", pd.DataFrame())),
             (
                 "spectral_rt_o3_diagnostics.csv",
@@ -1771,7 +1785,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.3_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.4_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

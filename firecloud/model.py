@@ -44,6 +44,7 @@ from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot
 from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
 from .formation import build_r4_formation_tables
+from .optical_validation import build_cloud_optical_validation_table
 from .precipitation import build_precipitation_path_evidence
 
 
@@ -1207,6 +1208,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_optical_bottleneck_frames = []
     v1_canvas_radiance_frames = []
     v1_formation_frames = []
+    v1_spectral_colour_frames = []
     native_cache = {}
     cams_native_cache = {}
     native_volume_cache = {}
@@ -1612,6 +1614,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             v1_canvas_radiance_frames.append(_r4["canvas_radiance"])
         if not _r4.get("formation", pd.DataFrame()).empty:
             v1_formation_frames.append(_r4["formation"])
+        if not _r4.get("spectral_colour", pd.DataFrame()).empty:
+            v1_spectral_colour_frames.append(_r4["spectral_colour"])
         _angle_progress(candidate_index, 0.98, f"{label}：完成")
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "PER_ANGLE_PHYSICS_TOTAL", "elapsed_seconds": perf_counter()-_angle_t0, "cache_status": "COMPUTED"})
         angle_f = float(angle)
@@ -1758,6 +1762,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_optical_bottlenecks = pd.concat(v1_optical_bottleneck_frames, ignore_index=True) if v1_optical_bottleneck_frames else pd.DataFrame()
     v1_canvas_radiance = pd.concat(v1_canvas_radiance_frames, ignore_index=True) if v1_canvas_radiance_frames else pd.DataFrame()
     v1_formation = pd.concat(v1_formation_frames, ignore_index=True) if v1_formation_frames else pd.DataFrame()
+    v1_spectral_colour = pd.concat(v1_spectral_colour_frames, ignore_index=True) if v1_spectral_colour_frames else pd.DataFrame()
+    v1_cloud_optical_validation = build_cloud_optical_validation_table(
+        cloud_layers=v1_cloud_layers, canvases=v1_canvas_candidates,
+        horizontal_support=v1_cloud_horizontal_support, intersections=v1_ray_cloud_intersections,
+    )
 
     # V1 Core runtime summary is intentionally dimension/evidence based. There
     # is no Physics Score, GO/NO-GO, or single global completeness percentage.
@@ -1916,6 +1925,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_optical_bottlenecks": v1_optical_bottlenecks,
         "v1_canvas_radiance": v1_canvas_radiance,
         "v1_formation": v1_formation,
+        "v1_spectral_colour": v1_spectral_colour,
+        "v1_cloud_optical_validation": v1_cloud_optical_validation,
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
         "performance_diagnostics": pd.DataFrame(performance_rows),
