@@ -702,7 +702,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.4 Cloud Optical Validation / Six-band Spectral Color Foundation｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.5 GFS Native Condensate Provider Validation｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1231,7 +1231,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R4.4：Cloud Optical Validation × Six-band Spectral Color Foundation")
+    st.subheader("PhysicsCore V1.0-R4.5：GFS Native Condensate Provider Validation")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1398,9 +1398,9 @@ if run or st.session_state.analysis_result is not None:
 
     native_meta = result.get("details", {}).get(matrix_angle, {}).get("native_provider_metadata", {})
     st.subheader("GFS 原生 3D 雲微物理")
-    if native_meta.get("native_status") == "OK":
+    if native_meta.get("native_status") == "FULL_NATIVE_MICROPHYSICS":
         st.success(
-            f"原生 GRIB2 資料正常｜run {native_meta.get('gfs_run_utc','')}｜"
+            f"原生 GRIB2 微物理完整｜run {native_meta.get('gfs_run_utc','')}｜"
             f"f{int(native_meta.get('gfs_forecast_hour',0)):03d}｜CLWMR + ICMR"
         )
     else:
@@ -1682,6 +1682,9 @@ if run or st.session_state.analysis_result is not None:
             ("gas_profile_route_snapshots.csv", result.get("gas_profile_route_snapshots", pd.DataFrame())),
             ("ozone_profile_route_snapshots.csv", result.get("ozone_profile_route_snapshots", pd.DataFrame())),
             ("cams_grib_message_inventory.csv", result.get("cams_grib_message_inventory", pd.DataFrame())),
+            ("gfs_native_request_audit.csv", result.get("gfs_native_request_audit", pd.DataFrame())),
+            ("gfs_grib_message_inventory.csv", result.get("gfs_grib_message_inventory", pd.DataFrame())),
+            ("gfs_native_field_completeness.csv", result.get("gfs_native_field_completeness", pd.DataFrame())),
             ("cams_request_audit.csv", result.get("cams_request_audit", pd.DataFrame())),
             ("cams_tile_audit.csv", result.get("cams_tile_audit", pd.DataFrame())),
             ("openmeteo_request_audit.csv", result.get("openmeteo_request_audit", pd.DataFrame())),
@@ -1785,7 +1788,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.4_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.5_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

@@ -1876,6 +1876,33 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     _progress(1.0, "分析完成。")
     _analysis_elapsed = perf_counter() - _analysis_t0
     performance_rows.append({"stage": "TOTAL_ANALYSIS_CORE", "elapsed_seconds": _analysis_elapsed, "cache_status": "COMPUTED"})
+
+    # R4.5 GFS native-condensate provider validation/audit tables.
+    _gfs_meta_unique = []
+    _seen_gfs_meta = set()
+    for _d in details.values():
+        _m = (_d.get("native_provider_metadata", {}) or {})
+        _k = (_m.get("gfs_run_utc"), _m.get("gfs_forecast_hour"), _m.get("gfs_file"))
+        if _k in _seen_gfs_meta:
+            continue
+        _seen_gfs_meta.add(_k); _gfs_meta_unique.append(_m)
+    gfs_native_request_audit = pd.DataFrame([
+        {**r, "gfs_run_utc":m.get("gfs_run_utc"), "gfs_forecast_hour":m.get("gfs_forecast_hour"),
+         "gfs_file":m.get("gfs_file"), "native_status":m.get("native_status")}
+        for m in _gfs_meta_unique for r in (m.get("gfs_native_request_audit", []) or [])
+    ])
+    gfs_grib_message_inventory = pd.DataFrame([
+        {**r, "gfs_run_utc":m.get("gfs_run_utc"), "gfs_forecast_hour":m.get("gfs_forecast_hour"),
+         "gfs_file":m.get("gfs_file")}
+        for m in _gfs_meta_unique for r in (m.get("gfs_grib_message_inventory", []) or [])
+    ])
+    gfs_native_field_completeness = pd.DataFrame([
+        {**r, "gfs_run_utc":m.get("gfs_run_utc"), "gfs_forecast_hour":m.get("gfs_forecast_hour"),
+         "gfs_file":m.get("gfs_file"), "native_status":m.get("native_status"),
+         "clwmr_nonnull_route_values":m.get("native_clwmr_nonnull_values"),
+         "icmr_nonnull_route_values":m.get("native_icmr_nonnull_values")}
+        for m in _gfs_meta_unique for r in (m.get("gfs_native_field_completeness", []) or [])
+    ])
     return {
         "summary": summary,
         "details": details,
@@ -1904,6 +1931,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "cams_native_aerosol_provider_status": native_aerosol_provider_status(),
         "cams_native_ozone_provider_status": native_ozone_provider_status(),
         "cams_grib_message_inventory": pd.DataFrame([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("grib_message_inventory", []) or [])]).drop_duplicates().reset_index(drop=True) if details else pd.DataFrame(),
+        "gfs_native_request_audit": gfs_native_request_audit,
+        "gfs_grib_message_inventory": gfs_grib_message_inventory,
+        "gfs_native_field_completeness": gfs_native_field_completeness,
         "cams_request_audit": _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_request_audit", []) or [])]) if details else pd.DataFrame(),
         "cams_tile_audit": _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_tile_audit", []) or [])]) if details else pd.DataFrame(),
         "gas_profile_route_snapshots": gas_profile_route_snapshots,

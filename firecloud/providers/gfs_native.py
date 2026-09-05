@@ -8,13 +8,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-import importlib.util, math, os, tempfile
+import importlib.util, math, os, tempfile, hashlib, json
 import numpy as np
 import pandas as pd
 import requests
 
 NATIVE_PROVIDER_NAME = "NOAA_GFS_0P25_NOMADS_GRIB2_CLWMR_ICMR"
 NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
+GFS_PROVIDER_SCHEMA_VERSION = "R4.5_NATIVE_CONDENSATE_V2"
 GFS_NATIVE_SHORTNAMES = {
     "CLWMR":"cloud_liquid_water_kgkg", "ICMR":"cloud_ice_water_kgkg",
     "TCDC":"cloud_fraction", "TMP":"temperature_k",
@@ -34,6 +35,7 @@ def native_provider_status() -> dict:
         "native_fields": list(GFS_NATIVE_SHORTNAMES),
         "transport": "NCEP_NOMADS_GRIB_FILTER",
         "grid": "GFS_0P25",
+        "provider_schema_version": GFS_PROVIDER_SCHEMA_VERSION,
         "fallback_policy": "EXPLICIT_OPEN_METEO_PRESSURE_PROFILE; NEVER RH_AS_NATIVE_CONDENSATE",
     }
 
@@ -79,6 +81,87 @@ def build_nomads_request(run: datetime, lead_hour: int, bbox: tuple[float,float,
     return NOMADS_FILTER_URL, params
 
 
+
+
+def _request_schema_fingerprint(params: dict, pressure_levels_hpa=DEFAULT_PRESSURE_LEVELS_HPA) -> str:
+    payload = {
+        "schema": GFS_PROVIDER_SCHEMA_VERSION,
+        "variables": sorted(GFS_NATIVE_SHORTNAMES.keys()),
+        "levels_hpa": [int(x) for x in pressure_levels_hpa],
+        "file": params.get("file"),
+        "dir": params.get("dir"),
+        "leftlon": params.get("leftlon"),
+        "rightlon": params.get("rightlon"),
+        "bottomlat": params.get("bottomlat"),
+        "toplat": params.get("toplat"),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
+
+
+def grib_message_inventory(grib_path: str|Path) -> list[dict]:
+    """Return a compact ecCodes message inventory for required GFS native fields."""
+    if not decoder_available():
+        return []
+    from eccodes import codes_grib_new_from_file, codes_get, codes_release
+    counts = {}
+    with open(grib_path, 'rb') as f:
+        while True:
+            gid = codes_grib_new_from_file(f)
+            if gid is None:
+                break
+            try:
+                try: raw_sn = str(codes_get(gid, 'shortName'))
+                except Exception: raw_sn = ''
+                sn = _shortname(raw_sn)
+                try: typ = str(codes_get(gid, 'typeOfLevel'))
+                except Exception: typ = ''
+                try: level = float(codes_get(gid, 'level'))
+                except Exception: level = float('nan')
+                if typ == 'isobaricInPa' and math.isfinite(level):
+                    level /= 100.0
+                try: name = str(codes_get(gid, 'name'))
+                except Exception: name = ''
+                try: units = str(codes_get(gid, 'units'))
+                except Exception: units = ''
+                key=(sn,name,typ,level,units)
+                counts[key]=counts.get(key,0)+1
+            finally:
+                codes_release(gid)
+    rows=[]
+    for (sn,name,typ,level,units),cnt in counts.items():
+        rows.append({
+            'shortName':sn,'name':name,'typeOfLevel':typ,'level':level,'units':units,
+            'message_count':cnt,'recognized_as':GFS_NATIVE_SHORTNAMES.get(sn,''),
+        })
+    return sorted(rows,key=lambda r:(r['shortName'],str(r['typeOfLevel']),float(r['level']) if isinstance(r['level'],(int,float)) and math.isfinite(r['level']) else 1e9))
+
+
+def _field_completeness_from_inventory(inventory: list[dict], pressure_levels_hpa=DEFAULT_PRESSURE_LEVELS_HPA) -> list[dict]:
+    wanted=set(float(x) for x in pressure_levels_hpa)
+    rows=[]
+    for sn in GFS_NATIVE_SHORTNAMES:
+        levels=set()
+        messages=0
+        for r in inventory:
+            if r.get('shortName') != sn or r.get('typeOfLevel') not in ('isobaricInhPa','isobaricInPa'):
+                continue
+            try: lev=float(r.get('level'))
+            except Exception: continue
+            if lev in wanted:
+                levels.add(lev); messages += int(r.get('message_count',0) or 0)
+        rows.append({
+            'field':sn, 'canonical_field':GFS_NATIVE_SHORTNAMES[sn],
+            'pressure_level_count':len(levels), 'message_count':messages,
+            'required_for_native_condensate':sn in ('CLWMR','ICMR'),
+            'status':'READY' if len(levels)>0 else 'MISSING',
+        })
+    return rows
+
+
+def _inventory_has_required_condensate(inventory: list[dict]) -> bool:
+    comp={r['field']:r for r in _field_completeness_from_inventory(inventory)}
+    return comp.get('CLWMR',{}).get('pressure_level_count',0)>0 and comp.get('ICMR',{}).get('pressure_level_count',0)>0
+
 def route_bbox(points: list[dict], margin_deg: float=0.5) -> tuple[float,float,float,float]:
     lats=[float(p['lat']) for p in points]; lons=[float(p['lon']) for p in points]
     return (min(lons)-margin_deg, max(lons)+margin_deg, min(lats)-margin_deg, max(lats)+margin_deg)
@@ -93,16 +176,48 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
     url, params = build_nomads_request(run, lead, bbox)
     cache = Path(cache_dir or Path(tempfile.gettempdir())/"taiwan_firecloud_gfs")
     cache.mkdir(parents=True, exist_ok=True)
-    out = cache/f"gfs_{run:%Y%m%d%H}_f{lead:03d}_{abs(hash(tuple(round(x,2) for x in bbox)))%10**8}.grib2"
-    if not out.exists() or out.stat().st_size < 1000:
-        s=session or requests.Session()
+    schema_fp=_request_schema_fingerprint(params)
+    bbox_fp=hashlib.sha256(json.dumps([round(x,3) for x in bbox]).encode()).hexdigest()[:10]
+    out = cache/f"gfs_{run:%Y%m%d%H}_f{lead:03d}_{bbox_fp}_{schema_fp}.grib2"
+    audit=[]
+    s=session or requests.Session()
+
+    def _download(reason: str):
         r=s.get(url, params=params, timeout=(8, 35))
         r.raise_for_status()
         ctype=(r.headers.get('content-type') or '').lower()
         if len(r.content)<1000 or b'GRIB' not in r.content[:32]:
             raise RuntimeError(f"NOMADS did not return GRIB2 ({len(r.content)} bytes, {ctype})")
         out.write_bytes(r.content)
-    meta={"gfs_run_utc":run.isoformat(),"gfs_forecast_hour":lead,"gfs_valid_time_utc":(run+timedelta(hours=lead)).isoformat(),"gfs_bbox":bbox,"gfs_file":out.name}
+        audit.append({'action':'DOWNLOAD','reason':reason,'cache_file':out.name,'bytes':len(r.content),'http_status':getattr(r,'status_code',None)})
+
+    cache_status='MISS'
+    if out.exists() and out.stat().st_size >= 1000:
+        cache_status='HIT'
+        inv=grib_message_inventory(out)
+        if _inventory_has_required_condensate(inv):
+            audit.append({'action':'CACHE_USE','reason':'REQUIRED_FIELDS_VALID','cache_file':out.name,'bytes':out.stat().st_size})
+        else:
+            cache_status='INVALID_REQUIRED_FIELDS'
+            audit.append({'action':'CACHE_INVALID_REQUIRED_FIELDS','reason':'CLWMR_OR_ICMR_MISSING','cache_file':out.name,'bytes':out.stat().st_size})
+            try: out.unlink()
+            except Exception: pass
+            _download('CACHE_INVALID_REQUIRED_FIELDS')
+    else:
+        _download('CACHE_MISS_OR_TOO_SMALL')
+
+    inventory=grib_message_inventory(out)
+    completeness=_field_completeness_from_inventory(inventory)
+    condensate_ok=_inventory_has_required_condensate(inventory)
+    meta={
+        "gfs_run_utc":run.isoformat(),"gfs_forecast_hour":lead,
+        "gfs_valid_time_utc":(run+timedelta(hours=lead)).isoformat(),"gfs_bbox":bbox,"gfs_file":out.name,
+        "gfs_cache_status":cache_status,"gfs_request_schema_version":GFS_PROVIDER_SCHEMA_VERSION,
+        "gfs_request_schema_fingerprint":schema_fp,"gfs_requested_variables":sorted(GFS_NATIVE_SHORTNAMES),
+        "gfs_requested_pressure_levels_hpa":[int(x) for x in DEFAULT_PRESSURE_LEVELS_HPA],
+        "gfs_grib_message_inventory":inventory,"gfs_native_field_completeness":completeness,
+        "gfs_native_request_audit":audit,"gfs_required_condensate_fields_present":condensate_ok,
+    }
     return out,meta
 
 
@@ -156,7 +271,21 @@ def fetch_route_native(points: list[dict], valid_time: datetime, cache_dir: str|
     """End-to-end NOMADS download + ecCodes decode for one event time."""
     path,meta=download_native_subset(points,valid_time,cache_dir=cache_dir)
     df=decode_grib_to_route(path,points)
-    meta.update({"native_rows":len(df),"native_decoder":"eccodes","native_status":"OK"})
+    required_present=bool(meta.get("gfs_required_condensate_fields_present"))
+    cl_cols=[c for c in df.columns if c.startswith("cloud_liquid_water_kgkg_")]
+    ic_cols=[c for c in df.columns if c.startswith("cloud_ice_water_kgkg_")]
+    cl_nonnull=int(df[cl_cols].notna().sum().sum()) if cl_cols else 0
+    ic_nonnull=int(df[ic_cols].notna().sum().sum()) if ic_cols else 0
+    if not required_present:
+        status="MISSING_REQUIRED_CONDENSATE_FIELDS"
+    elif cl_nonnull==0 or ic_nonnull==0:
+        status="CONDENSATE_FIELDS_DECODED_BUT_NO_ROUTE_VALUES"
+    else:
+        status="FULL_NATIVE_MICROPHYSICS"
+    meta.update({
+        "native_rows":len(df),"native_decoder":"eccodes","native_status":status,
+        "native_clwmr_nonnull_values":cl_nonnull,"native_icmr_nonnull_values":ic_nonnull,
+    })
     return df,meta
 
 
