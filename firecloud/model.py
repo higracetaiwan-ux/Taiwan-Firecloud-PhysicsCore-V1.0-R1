@@ -42,6 +42,7 @@ from .gas_rt import build_gas_profile, hitran_backend_status, prepare_gas_rt_con
 from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot, resolve_run_and_lead, DEFAULT_PRESSURE_LEVELS_HPA, native_provider_status
 from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
+from .formation import build_r4_formation_tables
 from .precipitation import build_precipitation_path_evidence
 
 
@@ -1186,6 +1187,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_cloud_base_illumination_frames = []
     v1_uncertainty_frames = []
     v1_optical_bottleneck_frames = []
+    v1_canvas_radiance_frames = []
+    v1_formation_frames = []
     native_cache = {}
     cams_native_cache = {}
     native_volume_cache = {}
@@ -1571,6 +1574,23 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             _df = _r3.get(_key, pd.DataFrame())
             if _df is not None and not _df.empty:
                 _dest.append(_df)
+
+        # PhysicsCore V1.0-R4: Canvas optical response / Formation foundation.
+        # R4 consumes only confirmed full-path CloudBaseIllumination plus native
+        # target-cloud optical evidence. Missing cloud/path optics stays Unknown.
+        _angle_progress(candidate_index, 0.972, f"{label}：建立 R4 Canvas Optical Response／Formation…")
+        _r4 = build_r4_formation_tables(
+            scene=_v1["scene"],
+            canvases=_v1.get("canvas_objects", ()),
+            cloud_base_illumination=_r3.get("cloud_base_illumination", pd.DataFrame()),
+            spectral_voxels=spectral_voxels,
+            solar_altitude_deg=float(angle),
+            valid_time=t,
+        )
+        if not _r4.get("canvas_radiance", pd.DataFrame()).empty:
+            v1_canvas_radiance_frames.append(_r4["canvas_radiance"])
+        if not _r4.get("formation", pd.DataFrame()).empty:
+            v1_formation_frames.append(_r4["formation"])
         _angle_progress(candidate_index, 0.98, f"{label}：完成")
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "PER_ANGLE_PHYSICS_TOTAL", "elapsed_seconds": perf_counter()-_angle_t0, "cache_status": "COMPUTED"})
         angle_f = float(angle)
@@ -1713,6 +1733,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_cloud_base_illumination = pd.concat(v1_cloud_base_illumination_frames, ignore_index=True) if v1_cloud_base_illumination_frames else pd.DataFrame()
     v1_uncertainty = pd.concat(v1_uncertainty_frames, ignore_index=True) if v1_uncertainty_frames else pd.DataFrame()
     v1_optical_bottlenecks = pd.concat(v1_optical_bottleneck_frames, ignore_index=True) if v1_optical_bottleneck_frames else pd.DataFrame()
+    v1_canvas_radiance = pd.concat(v1_canvas_radiance_frames, ignore_index=True) if v1_canvas_radiance_frames else pd.DataFrame()
+    v1_formation = pd.concat(v1_formation_frames, ignore_index=True) if v1_formation_frames else pd.DataFrame()
 
     # V1 Core runtime summary is intentionally dimension/evidence based. There
     # is no Physics Score, GO/NO-GO, or single global completeness percentage.
@@ -1725,6 +1747,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _dep0 = v1_dependency_status[(pd.to_numeric(v1_dependency_status.get("solar_altitude_deg"), errors="coerce").eq(_a)) & (v1_dependency_status.get("dependency", pd.Series(dtype=str)).eq("CLOUD_GEOMETRY"))] if not v1_dependency_status.empty else pd.DataFrame()
         _geom = float(pd.to_numeric(_dep0.get("completeness"), errors="coerce").iloc[0]) if not _dep0.empty and pd.notna(pd.to_numeric(_dep0.get("completeness"), errors="coerce").iloc[0]) else float("nan")
         _states = _ds.get("ray_status", pd.Series(dtype=str)).astype(str) if not _ds.empty else pd.Series(dtype=str)
+        _fr = v1_formation[pd.to_numeric(v1_formation.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_formation.empty else pd.DataFrame()
         _v1_summary_rows.append({
             "time": _time, "solar_altitude_deg": _a, "solar_azimuth_deg": float(_az),
             "cloud_layer_count": int(len(_cl)), "canvas_candidate_count": int(len(_ca)),
@@ -1733,11 +1756,16 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             "earth_shadowed_canvas_count": int((_states == "FULL_EARTH_SHADOW").sum()),
             "cloud_geometry_completeness": _geom,
             "v1_geometry_status": "READY" if (len(_ca) > 0 and (_states.isin(["FULL_SOLAR_DISK","PARTIAL_SOLAR_DISK"]).any())) else ("NO_ILLUMINATED_CANVAS" if len(_ca)>0 else "NO_CANVAS_EVIDENCE"),
-            "formation_status": "NOT_YET_CONNECTED_R3",
+            "formation_status": (
+                str(_fr.iloc[0]["formation_state"]) if not _fr.empty else "NO_R4_FORMATION_EVIDENCE"
+            ),
+            "formation_brightness": (float(_fr.iloc[0]["brightness"]) if not _fr.empty and pd.notna(_fr.iloc[0]["brightness"]) else float("nan")),
+            "formation_redness": (float(_fr.iloc[0]["redness"]) if not _fr.empty and pd.notna(_fr.iloc[0]["redness"]) else float("nan")),
+            "formation_effective_illuminated_area": (float(_fr.iloc[0]["effective_illuminated_area"]) if not _fr.empty and pd.notna(_fr.iloc[0]["effective_illuminated_area"]) else float("nan")),
             "optical_path_status": (
                 "R3_UNCERTAIN_OPTICS" if not v1_cloud_base_illumination.empty else "NO_R3_ILLUMINATION_EVIDENCE"
             ),
-            "viewing_status": "NOT_YET_CONNECTED_R3",
+            "viewing_status": "NOT_YET_CONNECTED_R4",
         })
     v1_core_summary = pd.DataFrame(_v1_summary_rows)
 
@@ -1860,6 +1888,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_cloud_base_illumination": v1_cloud_base_illumination,
         "v1_uncertainty": v1_uncertainty,
         "v1_optical_bottlenecks": v1_optical_bottlenecks,
+        "v1_canvas_radiance": v1_canvas_radiance,
+        "v1_formation": v1_formation,
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
         "performance_diagnostics": pd.DataFrame(performance_rows),

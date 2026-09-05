@@ -702,7 +702,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R3 Canvas-specific Six-band Optical Path Foundation｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R4 Canvas Optical Response / Formation Foundation｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1183,9 +1183,9 @@ if run or st.session_state.analysis_result is not None:
 
     st.subheader("PhysicsCore V1.0 核心形成時間軸（0°～−4°，0.5°）")
     st.caption(
-        "R3 使用 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° 九個核心角度。"
-        "本階段新增 Ray–Cloud Intersection、550/575/600/650/700/750 nm OpticalPathResult 與 CloudBaseIllumination。"
-        "Formation / Viewing / Decision 尚未接入，因此仍不產生新的 Physics Score 或 GO/NO-GO。"
+        "R4 使用 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° 九個核心角度。"
+        "本階段在 R3 六波段 OpticalPathResult / CloudBaseIllumination 後新增 Canvas Optical Response 與 Formation。"
+        "Brightness、Redness、Effective Illuminated Area 保持分離；不產生單一 Formation Score。Viewing / Decision 尚未接入。"
     )
     _v1_summary = result.get("v1_core_summary", pd.DataFrame())
     if not _v1_summary.empty:
@@ -1219,10 +1219,10 @@ if run or st.session_state.analysis_result is not None:
         c1, c2, c3, c4 = st.columns(4)
         # Legacy regression note: older UI called this field「正式選定核心角度」;
         # R2 no longer treats that V8 selection as a PhysicsCore V1 result.
-        c1.metric("V1.0 正式 Peak Window", "R3 尚未接入")
+        c1.metric("V1.0 正式 Peak Window", "R4 尚未接入")
         c2.metric("診斷顯示角度", f"{diagnostic_angle:.1f}°")
         c3.metric("診斷角度資料完整率", f"{chosen['data_completeness']*100:.1f}%")
-        c4.metric("Decision Layer", "R3 尚未接入")
+        c4.metric("Decision Layer", "R4 尚未接入")
     else:
         chosen = _summary_raw[_summary_raw["solar_altitude_deg"] == selected].iloc[0]
         c1, c2, c3, c4 = st.columns(4)
@@ -1231,7 +1231,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R3.3：CloudScene × Canvas-specific Ray × Six-band Optical Path")
+    st.subheader("PhysicsCore V1.0-R4：CloudScene × Optical Path × Canvas Optical Response × Formation")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1261,6 +1261,18 @@ if run or st.session_state.analysis_result is not None:
         with st.expander("R3 Ray–Cloud Intersection（Native CloudScene 幾何）", expanded=False):
             _hshow = _r3_hit[pd.to_numeric(_r3_hit["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
             st.dataframe(localized_df(_hshow), use_container_width=True, hide_index=True)
+
+    _r4_canvas = result.get("v1_canvas_radiance", pd.DataFrame())
+    _r4_form = result.get("v1_formation", pd.DataFrame())
+    if not _r4_form.empty:
+        st.markdown("#### R4 Formation（三維分量分離，不使用單一分數）")
+        _fshow = _r4_form[pd.to_numeric(_r4_form["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+        st.caption("R4 Tier-1 只在完整 CloudBaseIllumination + target cloud optical evidence 成立時建立六波段 Canvas response。Missing optics 會維持 UNCERTAIN，不以 Cloud Fraction/RH 假造 COT。")
+        st.dataframe(localized_df(_fshow), use_container_width=True, hide_index=True)
+    if not _r4_canvas.empty:
+        with st.expander("R4 Canvas Radiance / Brightness / Redness / Area", expanded=False):
+            _cshow = _r4_canvas[pd.to_numeric(_r4_canvas["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+            st.dataframe(localized_df(_cshow), use_container_width=True, hide_index=True)
 
     audit = result.get("physics_data_completeness", pd.DataFrame())
     perf = result.get("performance_diagnostics", pd.DataFrame())
@@ -1674,6 +1686,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_cloud_base_illumination_550_750nm.csv", result.get("v1_cloud_base_illumination", pd.DataFrame())),
             ("v1_prediction_uncertainty.csv", result.get("v1_uncertainty", pd.DataFrame())),
             ("v1_optical_bottlenecks.csv", result.get("v1_optical_bottlenecks", pd.DataFrame())),
+            ("v1_canvas_radiance_550_750nm.csv", result.get("v1_canvas_radiance", pd.DataFrame())),
+            ("v1_formation.csv", result.get("v1_formation", pd.DataFrame())),
             ("spectral_rt_coverage_diagnostics.csv", result.get("spectral_coverage_diagnostics", pd.DataFrame())),
             (
                 "spectral_rt_o3_diagnostics.csv",
@@ -1754,7 +1768,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R3.3_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

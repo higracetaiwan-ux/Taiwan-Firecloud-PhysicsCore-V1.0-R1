@@ -249,6 +249,39 @@ class CloudBaseIllumination:
 
 
 @dataclass(frozen=True)
+class CanvasRadiance:
+    """Stage-3 Canvas optical-response contract.
+
+    Radiance values are retained as six-band relative/physical radiance fields;
+    no single Canvas score is permitted here.
+    """
+    canvas_id: str
+    solar_angle_deg: float
+    spectral_radiance: Mapping[int, Optional[float]]
+    brightness: Optional[float]
+    redness: Optional[float]
+    effective_illuminated_area: Optional[float]
+    texture_structure: Optional[float] = None
+    rt_tier: str = "TIER1_FAST_SOURCE_PROXY"
+    response_status: str = "UNKNOWN"
+    confidence: GeometryConfidence = GeometryConfidence.UNKNOWN
+    uncertainty: Tuple[PredictionUncertainty, ...] = ()
+
+
+@dataclass(frozen=True)
+class FormationResult:
+    """Stage-3 scene Formation contract with independent dimensions."""
+    solar_angle_deg: float
+    brightness: Optional[float]
+    redness: Optional[float]
+    effective_illuminated_area: Optional[float]
+    formation_state: str
+    formation_confidence: GeometryConfidence = GeometryConfidence.UNKNOWN
+    canvas_results: Tuple[CanvasRadiance, ...] = ()
+    uncertainty: Tuple[PredictionUncertainty, ...] = ()
+
+
+@dataclass(frozen=True)
 class PhysicsCoreResult:
     """Top-level V1 contract.
 

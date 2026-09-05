@@ -1,10 +1,10 @@
 # Taiwan Firecloud PhysicsCore V1.0
 
-**Current checkpoint: V1.0-R3.3 — Canvas-specific ray/cloud intersection + six-band OpticalPathResult + CloudBaseIllumination foundation.**
+**Current checkpoint: V1.0-R4 — Canvas Optical Response + Formation foundation.**
 
 This is the new main-program identity. The package is a full runnable replacement built from the V8.4.16.7 compatibility baseline while the frozen PhysicsCore V1.0 architecture is refactored stage-by-stage.
 
-See `RELEASE_NOTES_PhysicsCore_V1.0-R3.3.md` for the exact implemented boundary.
+See `RELEASE_NOTES_PhysicsCore_V1.0-R4.md` for the exact implemented boundary.
 
 ---
 
@@ -551,3 +551,12 @@ R3.3 makes PhysicsCore V1 candidate filtering the default radiative-transfer tar
 R3.3 also reuses one angle-independent gas RT preparation context per forecast/CAMS atmospheric state (Runtime LUT decode, fast LUT arrays, and route profile indexing), and passes the already cached route spectral-AOD table into the spectral solver instead of deriving it again inside every angle.
 
 The embedded compatibility LUT still does **not** contain a verified complete 550-nm H2O/O2/O3 T/P grid. Therefore 550-nm gas optical depth remains Missing until a true local six-band LUT is built/imported. R3.3 does not interpolate 550 nm from 575/600 nm.
+
+
+## R4 Canvas Optical Response / Formation foundation
+
+R4 adds a conservative Stage-3 bridge after R3 CloudBaseIllumination. It preserves six separate wavelengths (550/575/600/650/700/750 nm), uses native target-cloud optical evidence only, and never synthesizes COT from cloud fraction, RH, cloud base/top, or geometry-only evidence.
+
+The current Tier-1 response is an uncalibrated single-scatter source-function proxy: the cloud interaction fraction is `1-exp(-tau_vertical)` and is applied to confirmed full-path CloudBaseIllumination. This is **not** treated as final multiple-scattering radiance and does not replace future Tier-2/Tier-3 cloud RT. No cloud-type multiplier or Canvas distance weight is used.
+
+R4 outputs `v1_canvas_radiance_550_750nm.csv` and `v1_formation.csv`. Brightness, Redness and Effective Illuminated Area remain separate dimensions; there is no Formation Score. If CloudBaseIllumination or target-cloud optics are unresolved, Formation remains `UNCERTAIN_OPTICS`. A confirmed Earth-shadow zero remains a known zero without requiring downstream optics. Viewing, Peak Window and Decision remain later stages.
