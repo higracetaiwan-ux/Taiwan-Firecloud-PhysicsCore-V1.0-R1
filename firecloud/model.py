@@ -47,6 +47,7 @@ from .formation import build_r4_formation_tables
 from .formation_prerequisites import build_formation_prerequisite_table
 from .optical_validation import build_cloud_optical_validation_table
 from .precipitation import build_precipitation_path_evidence
+from .spectroscopy_readiness import build_six_band_spectroscopy_readiness
 
 
 def _clamp01(x):
@@ -1210,6 +1211,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_canvas_radiance_frames = []
     v1_formation_frames = []
     v1_spectral_colour_frames = []
+    v1_precipitation_path_frames = []
     native_cache = {}
     cams_native_cache = {}
     native_volume_cache = {}
@@ -1575,6 +1577,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         # already-known CloudScene or DirectSolarFraction.
         _angle_progress(candidate_index, 0.955, f"{label}：建立 V1.0 六波段 OpticalPathResult…")
         _precip_path_evidence = build_precipitation_path_evidence(_v1.get("canvas_objects", ()), snap, valid_time=t)
+        _v1["precipitation_path_evidence"] = _precip_path_evidence
+        if _precip_path_evidence is not None and not _precip_path_evidence.empty:
+            _pp=_precip_path_evidence.copy(); _pp.insert(1,"solar_altitude_deg",float(angle)); v1_precipitation_path_frames.append(_pp)
         _r3 = build_r3_optical_tables(
             scene=_v1["scene"],
             canvases=_v1.get("canvas_objects", ()),
@@ -1764,6 +1769,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_canvas_radiance = pd.concat(v1_canvas_radiance_frames, ignore_index=True) if v1_canvas_radiance_frames else pd.DataFrame()
     v1_formation = pd.concat(v1_formation_frames, ignore_index=True) if v1_formation_frames else pd.DataFrame()
     v1_spectral_colour = pd.concat(v1_spectral_colour_frames, ignore_index=True) if v1_spectral_colour_frames else pd.DataFrame()
+    v1_precipitation_path_evidence = pd.concat(v1_precipitation_path_frames, ignore_index=True) if v1_precipitation_path_frames else pd.DataFrame()
+    _lut_path = Path(__file__).resolve().parent.parent / "hitran_runtime" / "firecloud_600_750nm_band_coefficients.csv"
+    v1_six_band_spectroscopy_readiness = build_six_band_spectroscopy_readiness(_lut_path)
     v1_cloud_optical_validation = build_cloud_optical_validation_table(
         cloud_layers=v1_cloud_layers, canvases=v1_canvas_candidates,
         horizontal_support=v1_cloud_horizontal_support, intersections=v1_ray_cloud_intersections,
@@ -1962,6 +1970,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_spectral_colour": v1_spectral_colour,
         "v1_cloud_optical_validation": v1_cloud_optical_validation,
         "v1_formation_prerequisites": v1_formation_prerequisites,
+        "v1_precipitation_path_evidence": v1_precipitation_path_evidence,
+        "v1_six_band_spectroscopy_readiness": v1_six_band_spectroscopy_readiness,
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
         "performance_diagnostics": pd.DataFrame(performance_rows),

@@ -78,6 +78,22 @@ class PrecipitationRole(str, Enum):
 
 
 @dataclass(frozen=True)
+class PrecipitationVolume:
+    volume_id: str
+    latitude: float
+    longitude: float
+    z_base_km: float
+    z_top_km: float
+    precipitation_type: str = "UNKNOWN"
+    rain_rate_mm_h: Optional[float] = None
+    hydrometeor_evidence: EvidenceState = EvidenceState.MISSING
+    optical_evidence: EvidenceState = EvidenceState.MISSING
+    role: PrecipitationRole = PrecipitationRole.NONE
+    spectral_tau: Mapping[int, Optional[float]] = field(default_factory=dict)
+    provenance: Tuple[ForecastFieldProvenance, ...] = ()
+
+
+@dataclass(frozen=True)
 class ForecastFieldProvenance:
     provider: str
     model: str = ""
