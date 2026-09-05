@@ -16,11 +16,12 @@ STATE_CACHE_FORMAT = "Taiwan Firecloud Hybrid Gas Spectroscopy Voigt state check
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Build Taiwan Firecloud hybrid 550–750 nm gas spectroscopy LUT; supports incremental 550 nm extension")
+    p = argparse.ArgumentParser(description="Build Taiwan Firecloud hybrid 550–750 nm gas spectroscopy LUT; supports accelerated incremental 550 nm extension")
     p.add_argument("--db", default="hitran_db")
     p.add_argument("--temperatures", default="220,250,280,293")
     p.add_argument("--pressures-hpa", default="100,300,500,700,900,1000")
     p.add_argument("--wavenumber-step", type=float, default=0.02)
+    p.add_argument("--prefilter-wing-cm1", type=float, default=200.0, help="Conservative source-table prefilter margin around the requested narrow band. This reduces HAPI line scanning without changing the requested output grid; default 200 cm^-1.")
     p.add_argument("--h2o-table", default="H2O_535_765")
     p.add_argument("--o2-table", default="O2_535_765")
     p.add_argument("--o3-xsc", default=O3_XSC_FILENAME)
@@ -73,7 +74,7 @@ def _build_signature(
     """Create the identity of one scientifically distinct LUT build."""
     payload = {
         "format": STATE_CACHE_FORMAT,
-        "builder": "PhysicsCore-V1.0-R4.8.1",
+        "builder": "PhysicsCore-V1.0-R4.8.2",
         "temperatures_k": temperatures,
         "pressures_hpa": pressures,
         "wavelengths_nm": wavelengths,
@@ -318,7 +319,9 @@ def main():
     DB=Path(args.db).expanduser(); DB.mkdir(parents=True,exist_ok=True)
     h2o_table=args.h2o_table; o2_table=args.o2_table
     missing=[]
-    for gas,table in (("H2O",h2o_table),("O2",o2_table)):
+    import time as _time
+    _state_durations=[]
+    for gas,table in (("H2O",source_tables["H2O"]),("O2",source_tables["O2"])):
         for suffix in (".data",".header"):
             if not (DB/f"{table}{suffix}").is_file():
                 missing.append(f"{gas}:{table}{suffix}")
@@ -332,7 +335,7 @@ def main():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", SyntaxWarning)
             import hapi
-            from hapi import db_begin, absorptionCoefficient_Voigt
+            from hapi import db_begin, absorptionCoefficient_Voigt, select, dropTable, tableList
     except Exception as exc:
         raise SystemExit(f"HAPI unavailable for H2O/O2 build: {exc}")
 
@@ -384,11 +387,36 @@ def main():
     state_cache_dir = DB / STATE_CACHE_DIRNAME
     state_cache_dir.mkdir(parents=True, exist_ok=True)
     rows=[]
-    # V8.4.16 performance path: HAPI is expensive mainly per Voigt call.
-    # Build one full requested-range spectrum for each (gas,T,P), then integrate
-    # every requested diagnostic band from that shared spectrum.
+    # R4.8.2 performance path.  In incremental mode build_wavelengths contains
+    # only 550 nm, so there is no reason for HAPI to scan the complete
+    # 535–765 nm source table for every T/P state.  Create an in-memory HAPI
+    # narrow-band table once per gas, using a deliberately conservative
+    # transition-center margin around the requested output range.  The output
+    # spectral grid and Voigt settings remain unchanged.
     full_nu_min=1e7/requested_max
     full_nu_max=1e7/requested_min
+    prefilter_margin=max(20.0, float(args.prefilter_wing_cm1))
+    source_tables={"H2O": h2o_table, "O2": o2_table}
+    if len(build_wavelengths) == 1 and abs(float(build_wavelengths[0]) - 550.0) < 1e-9:
+        for gas, table in (("H2O", h2o_table), ("O2", o2_table)):
+            tmp=f"__FC_R482_{gas}_550__"
+            try:
+                if tmp in set(tableList() or []):
+                    dropTable(tmp)
+            except Exception:
+                pass
+            lo=full_nu_min-prefilter_margin
+            hi=full_nu_max+prefilter_margin
+            try:
+                select(table, DestinationTableName=tmp, Conditions=("BETWEEN","nu",lo,hi), Output=False)
+                source_tables[gas]=tmp
+                print(f"NARROW_TABLE_READY gas={gas} source={table} temp={tmp} nu={lo:.3f}:{hi:.3f} margin={prefilter_margin:.1f}", flush=True)
+            except Exception as exc:
+                # Fail soft to the original source table: correctness first,
+                # optimization second.  The build is still scientifically the
+                # same, only slower.
+                source_tables[gas]=table
+                print(f"NARROW_TABLE_FALLBACK gas={gas} reason={type(exc).__name__}:{exc}", flush=True)
     band_defs=[]
     for wl in build_wavelengths:
         lo_nm,hi_nm=wl-12.5,wl+12.5
@@ -396,7 +424,9 @@ def main():
 
     total_states=2*len(temps)*len(pressures)
     state_index=0
-    for gas,table in (("H2O",h2o_table),("O2",o2_table)):
+    import time as _time
+    _state_durations=[]
+    for gas,table in (("H2O",source_tables["H2O"]),("O2",source_tables["O2"])):
         for T in temps:
             for ph in pressures:
                 state_index += 1
@@ -417,7 +447,10 @@ def main():
                         flush=True,
                     )
                     continue
-                print(f"VOIGT_STATE {state_index}/{total_states} gas={gas} T={T:g}K P={ph:g}hPa", flush=True)
+                _state_t0=_time.monotonic()
+                avg=(sum(_state_durations)/len(_state_durations)) if _state_durations else float("nan")
+                eta=avg*(total_states-state_index+1) if _state_durations else float("nan")
+                print(f"FC_PROGRESS state={state_index}/{total_states} gas={gas} T={T:g}K P={ph:g}hPa avg_s={avg:.2f} eta_s={eta:.1f}", flush=True)
                 try:
                     nu,k=absorptionCoefficient_Voigt(
                         SourceTables=table,
@@ -428,6 +461,11 @@ def main():
                     )
                 except Exception as exc:
                     raise SystemExit(f"Cannot calculate {gas} from local table {table}: {exc}")
+                _state_elapsed=_time.monotonic()-_state_t0
+                _state_durations.append(_state_elapsed)
+                avg=sum(_state_durations)/len(_state_durations)
+                eta=avg*(total_states-state_index)
+                print(f"FC_PROGRESS_DONE state={state_index}/{total_states} gas={gas} elapsed_s={_state_elapsed:.2f} avg_s={avg:.2f} eta_s={eta:.1f}", flush=True)
                 nu=np.asarray(nu,float); k=np.asarray(k,float)
                 finite=np.isfinite(nu)&np.isfinite(k)
                 if finite.sum()<2:
@@ -485,7 +523,8 @@ def main():
     sha256=hashlib.sha256(path.read_bytes()).hexdigest()
     manifest={
         "format":"Taiwan Firecloud Hybrid Gas Spectroscopy diagnostic-band LUT",
-        "builder_optimization":"incremental 550 nm extension from validated 360-row 575–750 nm LUT when --incremental-base-lut is supplied; otherwise single full-range Voigt spectrum per gas/T/P",
+        "builder_optimization":"R4.8.2 accelerated incremental 550 nm extension: validated 360-row 575–750 nm reuse + conservative HAPI narrow-band transition prefilter + unchanged 550 nm Voigt output grid; fallback to full source table if prefilter cannot be created",
+        "narrow_band_prefilter": {"enabled_for_incremental_550": bool(len(build_wavelengths)==1 and abs(float(build_wavelengths[0])-550.0)<1e-9), "transition_center_margin_cm-1": float(prefilter_margin), "fallback_policy": "full source table; optimization failure never changes scientific readiness"},
         "incremental_build": {
             "used": bool(base_rows is not None),
             "base_rows": int(len(base_rows)) if base_rows is not None else 0,
@@ -498,7 +537,7 @@ def main():
             "directory": STATE_CACHE_DIRNAME,
             "scope": "H2O/O2 completed temperature-pressure states; checkpoints are build-only and not promoted to runtime",
         },
-        "version":"PhysicsCore-V1.0-R4.8.1",
+        "version":"PhysicsCore-V1.0-R4.8.2",
         "coefficient_file":path.name,"sha256":sha256,"rows":int(len(out)),
         "gases":["H2O","O3","O2"],"wavelengths_nm":[int(w) if float(w).is_integer() else float(w) for w in wavelengths],
         "temperatures_k":temps,"pressures_hpa":pressures,"band_half_width_nm":12.5,

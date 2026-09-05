@@ -159,7 +159,22 @@ def _run_hitran_builder_step(
             if sec != last_update and progress_callback is not None:
                 last_update = sec
                 remaining = max(0, int(timeout_seconds - elapsed))
-                progress_callback(label, elapsed, remaining)
+                live_label = label
+                try:
+                    tail = _tail_text(log_path, 5000)
+                    lines = [ln.strip() for ln in tail.splitlines() if ln.strip().startswith(("FC_PROGRESS ", "FC_PROGRESS_DONE ", "NARROW_TABLE_"))]
+                    if lines:
+                        detail = lines[-1]
+                        if detail.startswith("FC_PROGRESS_DONE "):
+                            detail = detail.replace("FC_PROGRESS_DONE ", "完成 ", 1)
+                        elif detail.startswith("FC_PROGRESS "):
+                            detail = detail.replace("FC_PROGRESS ", "進度 ", 1)
+                        elif detail.startswith("NARROW_TABLE_READY "):
+                            detail = detail.replace("NARROW_TABLE_READY ", "窄頻表 ", 1)
+                        live_label = f"{label}｜{detail}"
+                except Exception:
+                    pass
+                progress_callback(live_label, elapsed, remaining)
             if elapsed >= timeout_seconds:
                 _kill_process_tree(proc)
                 elapsed = time.monotonic() - t0
@@ -228,7 +243,7 @@ def _hitran_one_click_bootstrap(progress_callback=None) -> tuple[bool, str]:
          "--incremental-base-manifest", str(root / "hitran_runtime" / HITRAN_MANIFEST_FILENAME)],
         timeout_seconds=build_timeout,
         progress_callback=progress_callback,
-        label="增量建立 PhysicsCore 550 nm coefficient（沿用已驗證 575–750 nm）",
+        label="R4.8.2 窄頻建立 PhysicsCore 550 nm coefficient（沿用已驗證 575–750 nm）",
     )
     logs.append(f"=== FIRECLOUD LUT BUILD ({elapsed:.1f}s, timeout={timed_out}) ===\n" + out)
     if not ok:
@@ -260,7 +275,7 @@ def _hitran_build_lut_only(progress_callback=None) -> tuple[bool, str]:
          "--incremental-base-manifest", str(root / "hitran_runtime" / HITRAN_MANIFEST_FILENAME)],
         timeout_seconds=build_timeout,
         progress_callback=progress_callback,
-        label="增量建立 PhysicsCore 550 nm coefficient（沿用已驗證 575–750 nm）",
+        label="R4.8.2 窄頻建立 PhysicsCore 550 nm coefficient（沿用已驗證 575–750 nm）",
     )
     logs.append(f"=== FIRECLOUD LUT BUILD ({elapsed:.1f}s, timeout={timed_out}) ===\n" + out)
     if not ok:
@@ -706,7 +721,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.8.1 Incremental 550 nm LUT Builder｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.9 Target Canvas Optical Evidence Resolver｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -899,7 +914,7 @@ with st.sidebar:
                 disabled=not _hybrid_sources_ready,
                 key="hitran_lut_only",
             ):
-                with st.status("HITRAN LUT 建立中…", expanded=True) as _lut_status:
+                with st.status("PhysicsCore 550 nm 光譜建表中…", expanded=True) as _lut_status:
                     _lut_live = st.empty()
                     _lut_bar = st.progress(0.0)
                     def _lut_progress(label, elapsed, remaining):
@@ -1235,7 +1250,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R4.8.1：Incremental 550 nm LUT Builder")
+    st.subheader("PhysicsCore V1.0-R4.9：Target Canvas Optical Evidence Resolver")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1714,6 +1729,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_cloud_optical_validation.csv", result.get("v1_cloud_optical_validation", pd.DataFrame())),
             ("v1_formation_prerequisites.csv", result.get("v1_formation_prerequisites", pd.DataFrame())),
             ("v1_precipitation_path_evidence.csv", result.get("v1_precipitation_path_evidence", pd.DataFrame())),
+            ("v1_target_canvas_optical_evidence.csv", result.get("v1_target_canvas_optical_evidence", pd.DataFrame())),
+            ("v1_target_canvas_optical_summary.csv", result.get("v1_target_canvas_optical_summary", pd.DataFrame())),
             ("v1_six_band_spectroscopy_readiness.csv", result.get("v1_six_band_spectroscopy_readiness", pd.DataFrame())),
             ("spectral_rt_coverage_diagnostics.csv", result.get("spectral_coverage_diagnostics", pd.DataFrame())),
             (
@@ -1795,7 +1812,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.8.1_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.9_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

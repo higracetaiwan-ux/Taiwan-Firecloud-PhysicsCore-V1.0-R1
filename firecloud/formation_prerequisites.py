@@ -20,6 +20,7 @@ def build_formation_prerequisite_table(*, spectral_paths: pd.DataFrame, canvas_r
             return int(pd.to_numeric(q.get(col, pd.Series(dtype=float)), errors="coerce").notna().sum())
         total_canvas=int(cr.get("canvas_id", pd.Series(dtype=str)).astype(str).nunique()) if not cr.empty else 0
         target_ready=int(cr.get("target_optics_ready", pd.Series(dtype=bool)).astype(bool).sum()) if not cr.empty else 0
+        target_bounded=int(cr.get("target_optics_bounded", pd.Series(dtype=bool)).astype(bool).sum()) if not cr.empty else 0
         full_paths=int(sp.get("evidence_state", pd.Series(dtype=str)).astype(str).eq("FULL").sum()) if not sp.empty else 0
         precip_resolved=int(pd.to_numeric(sp.get("tau_precip", pd.Series(dtype=float)), errors="coerce").notna().sum()) if not sp.empty else 0
         gas550=wl_count(550,"tau_gas")
@@ -27,6 +28,7 @@ def build_formation_prerequisite_table(*, spectral_paths: pd.DataFrame, canvas_r
             "solar_altitude_deg":a,
             "canvas_count":total_canvas,
             "target_optics_ready_canvas_count":target_ready,
+            "target_optics_bounded_canvas_count":target_bounded,
             "target_optics_ready": bool(total_canvas>0 and target_ready>0),
             "gas_550nm_resolved_path_count":gas550,
             "gas_550nm_ready":bool(gas550>0),
@@ -39,6 +41,6 @@ def build_formation_prerequisite_table(*, spectral_paths: pd.DataFrame, canvas_r
             ),
             "missing_prerequisites": ";".join([x for x,ok in [
                 ("TARGET_CANVAS_OPTICS",target_ready>0),("550NM_GAS_SPECTROSCOPY",gas550>0),("PRECIPITATION_PATH_OPTICS",precip_resolved>0),("FULL_SIX_BAND_PATH",full_paths>0)] if not ok]),
-            "note":"NO_INTERPOLATED_550NM;NO_SURFACE_RAIN_TO_TAU;NO_CLOUD_FRACTION_TO_COT",
+            "note":"NO_INTERPOLATED_550NM;NO_SURFACE_RAIN_TO_TAU;NO_CLOUD_FRACTION_TO_COT;BOUNDED_TARGET_COT_NOT_PROMOTED_TO_EXACT_FORMATION",
         })
     return pd.DataFrame(rows)

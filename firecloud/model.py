@@ -45,6 +45,7 @@ from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot
 from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
 from .formation import build_r4_formation_tables
+from .target_canvas_optics import build_target_canvas_optical_evidence, summarize_target_canvas_optical_evidence
 from .formation_prerequisites import build_formation_prerequisite_table
 from .optical_validation import build_cloud_optical_validation_table
 from .precipitation import build_precipitation_path_evidence
@@ -1213,6 +1214,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_formation_frames = []
     v1_spectral_colour_frames = []
     v1_precipitation_path_frames = []
+    v1_target_canvas_optical_evidence_frames = []
+    v1_target_canvas_optical_summary_frames = []
     native_cache = {}
     cams_native_cache = {}
     native_volume_cache = {}
@@ -1605,10 +1608,25 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             if _df is not None and not _df.empty:
                 _dest.append(_df)
 
-        # PhysicsCore V1.0-R4.1: native Cloud Optical Evidence Bridge + Formation foundation.
-        # R4 consumes only confirmed full-path CloudBaseIllumination plus native
-        # target-cloud optical evidence. Missing cloud/path optics stays Unknown.
-        _angle_progress(candidate_index, 0.972, f"{label}：建立 R4 Canvas Optical Response／Formation…")
+        # PhysicsCore V1.0-R4.9: resolve target-Canvas optical evidence before
+        # Formation.  Exact direct-native COT and bounded adjacent-native
+        # hypotheses remain distinct; CF/RH/geometry never fabricate COT.
+        _angle_progress(candidate_index, 0.968, f"{label}：解析 Target Canvas Optical Evidence…")
+        _target_canvas_optics = build_target_canvas_optical_evidence(
+            _v1["scene"], _v1.get("canvas_objects", ()),
+            solar_altitude_deg=float(angle), valid_time=t,
+        )
+        if _target_canvas_optics is not None and not _target_canvas_optics.empty:
+            v1_target_canvas_optical_evidence_frames.append(_target_canvas_optics)
+            _target_summary = summarize_target_canvas_optical_evidence(_target_canvas_optics)
+            if _target_summary is not None and not _target_summary.empty:
+                _target_summary.insert(0, "time", t)
+                v1_target_canvas_optical_summary_frames.append(_target_summary)
+
+        # PhysicsCore V1.0-R4.9 Formation consumes the resolver output. Missing
+        # or conflicting target optics stays Unknown; bounded hypotheses are
+        # exported but not silently promoted to exact radiance.
+        _angle_progress(candidate_index, 0.972, f"{label}：建立 R4.9 Canvas Optical Response／Formation…")
         _r4 = build_r4_formation_tables(
             scene=_v1["scene"],
             canvases=_v1.get("canvas_objects", ()),
@@ -1616,6 +1634,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             spectral_voxels=spectral_voxels,
             solar_altitude_deg=float(angle),
             valid_time=t,
+            target_optical_evidence=_target_canvas_optics,
         )
         if not _r4.get("canvas_radiance", pd.DataFrame()).empty:
             v1_canvas_radiance_frames.append(_r4["canvas_radiance"])
@@ -1771,6 +1790,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_formation = pd.concat(v1_formation_frames, ignore_index=True) if v1_formation_frames else pd.DataFrame()
     v1_spectral_colour = pd.concat(v1_spectral_colour_frames, ignore_index=True) if v1_spectral_colour_frames else pd.DataFrame()
     v1_precipitation_path_evidence = pd.concat(v1_precipitation_path_frames, ignore_index=True) if v1_precipitation_path_frames else pd.DataFrame()
+    v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame()
+    v1_target_canvas_optical_summary = pd.concat(v1_target_canvas_optical_summary_frames, ignore_index=True) if v1_target_canvas_optical_summary_frames else pd.DataFrame()
     _lut_path = Path(__file__).resolve().parent.parent / "hitran_runtime" / "firecloud_600_750nm_band_coefficients.csv"
     v1_six_band_spectroscopy_readiness = build_six_band_spectroscopy_readiness(_lut_path)
     v1_cloud_optical_validation = build_cloud_optical_validation_table(
@@ -1972,6 +1993,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_cloud_optical_validation": v1_cloud_optical_validation,
         "v1_formation_prerequisites": v1_formation_prerequisites,
         "v1_precipitation_path_evidence": v1_precipitation_path_evidence,
+        "v1_target_canvas_optical_evidence": v1_target_canvas_optical_evidence,
+        "v1_target_canvas_optical_summary": v1_target_canvas_optical_summary,
         "v1_six_band_spectroscopy_readiness": v1_six_band_spectroscopy_readiness,
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
