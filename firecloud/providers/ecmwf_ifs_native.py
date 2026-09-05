@@ -1,4 +1,4 @@
-"""PhysicsCore V1.0-R5.1 ECMWF IFS native cloud-microphysics provider.
+"""PhysicsCore V1.0-R5.2 ECMWF IFS native cloud-microphysics provider.
 
 The provider is deliberately fail-closed.  It consumes a *forecast* IFS GRIB
 containing model-level CLWC/CIWC/CC/T/Q plus hybrid coefficients and surface

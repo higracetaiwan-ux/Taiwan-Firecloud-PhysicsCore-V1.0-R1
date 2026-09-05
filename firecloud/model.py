@@ -53,6 +53,7 @@ from .optical_validation import build_cloud_optical_validation_table
 from .precipitation import build_precipitation_path_evidence
 from .spectroscopy_readiness import build_six_band_spectroscopy_readiness
 from .formation_gates import build_formation_gate_table
+from .penumbra_red import build_earth_shadow_penumbra_matrix, build_canvas_penumbra_red_illumination
 
 
 def _clamp01(x):
@@ -1416,7 +1417,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _progress(0.395 + 0.005 * (_si + 1) / max(1, len(candidates)), f"路徑預報內插：{_si+1}/{len(candidates)}")
     performance_rows.append({"stage": "OPENMETEO_ROUTE_INTERPOLATION_TOTAL", "elapsed_seconds": perf_counter()-_snapshot_t0, "cache_status": "PRECOMPUTED"})
 
-    # PhysicsCore V1.0-R5.1: prefetch configured ECMWF IFS native cloud
+    # PhysicsCore V1.0-R5.2: prefetch configured ECMWF IFS native cloud
     # microphysics once per unique valid time. No configured/entitled GRIB means
     # explicit Missing; no satellite or geometry fallback is substituted.
     _ifs_t0 = perf_counter()
@@ -1830,6 +1831,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_target_canvas_optical_summary = pd.concat(v1_target_canvas_optical_summary_frames, ignore_index=True) if v1_target_canvas_optical_summary_frames else pd.DataFrame()
     v1_secondary_target_optics = pd.concat(v1_secondary_target_optics_frames, ignore_index=True) if v1_secondary_target_optics_frames else pd.DataFrame()
     v1_formation_gates = pd.concat(v1_formation_gate_frames, ignore_index=True) if v1_formation_gate_frames else pd.DataFrame()
+    v1_earth_shadow_penumbra_matrix = build_earth_shadow_penumbra_matrix([float(a) for a, _, _ in candidates])
+    v1_canvas_penumbra_red_illumination = build_canvas_penumbra_red_illumination(
+        v1_canvas_candidates, v1_spectral_optical_paths, v1_cloud_base_illumination
+    )
     ecmwf_ifs_request_audit = pd.DataFrame(ecmwf_ifs_request_audit_rows)
     _lut_path = Path(__file__).resolve().parent.parent / "hitran_runtime" / "firecloud_600_750nm_band_coefficients.csv"
     v1_six_band_spectroscopy_readiness = build_six_band_spectroscopy_readiness(_lut_path)
@@ -2036,6 +2041,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_target_canvas_optical_summary": v1_target_canvas_optical_summary,
         "v1_secondary_target_optics": v1_secondary_target_optics,
         "v1_formation_gates": v1_formation_gates,
+        "v1_earth_shadow_penumbra_matrix": v1_earth_shadow_penumbra_matrix,
+        "v1_canvas_penumbra_red_illumination": v1_canvas_penumbra_red_illumination,
         "ecmwf_ifs_request_audit": ecmwf_ifs_request_audit,
         "v1_six_band_spectroscopy_readiness": v1_six_band_spectroscopy_readiness,
         "v1_core_summary": v1_core_summary,

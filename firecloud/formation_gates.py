@@ -1,4 +1,4 @@
-"""PhysicsCore V1.0-R5.1 causal Formation gate diagnostics.
+"""PhysicsCore V1.0-R5.2 causal Formation gate diagnostics.
 
 Formation is a Sun→CloudBase problem.  This table does not use observer-path
 visibility and does not collapse Formation into a score.
@@ -6,6 +6,7 @@ visibility and does not collapse Formation into a score.
 from __future__ import annotations
 import math
 import pandas as pd
+from .geometry import finite_solar_disk_penumbra_heights_km
 
 RED_BANDS=(650.0,700.0,750.0)
 
@@ -22,7 +23,12 @@ def build_formation_gate_table(canvases: pd.DataFrame, direct_solar: pd.DataFram
         fvals=pd.to_numeric(d.get("direct_solar_fraction",pd.Series(dtype=float)),errors="coerce").dropna()
         fs=float(fvals.max()) if not fvals.empty else float("nan")
         geometry_resolved=math.isfinite(fs)
-        above_shadow=bool(geometry_resolved and fs>0.0)
+        receives_any_direct_solar=bool(geometry_resolved and fs>0.0)
+        distance_km=float(c.get("distance_km", float("nan")))
+        cloud_base_km=float(c.get("cloud_base_altitude_km", float("nan")))
+        pen=finite_solar_disk_penumbra_heights_km(distance_km, a) if math.isfinite(distance_km) else {"h_any_sun_km":float("nan"),"h_solar_center_km":float("nan"),"h_full_solar_disk_km":float("nan"),"penumbra_vertical_span_km":float("nan"),"solar_angular_radius_deg":float("nan")}
+        above_center=bool(math.isfinite(cloud_base_km) and math.isfinite(pen["h_solar_center_km"]) and cloud_base_km>=pen["h_solar_center_km"]-1e-9)
+        above_full=bool(math.isfinite(cloud_base_km) and math.isfinite(pen["h_full_solar_disk_km"]) and cloud_base_km>=pen["h_full_solar_disk_km"]-1e-9)
 
         spp=sp[sp.get("canvas_id",pd.Series(dtype=str)).astype(str).eq(cid)] if not sp.empty and "canvas_id" in sp else pd.DataFrame()
         red=spp[pd.to_numeric(spp.get("wavelength_nm",pd.Series(dtype=float)),errors="coerce").isin(RED_BANDS)] if not spp.empty else pd.DataFrame()
@@ -41,8 +47,8 @@ def build_formation_gate_table(canvases: pd.DataFrame, direct_solar: pd.DataFram
 
         if not geometry_resolved:
             state="EARTH_SHADOW_GEOMETRY_UNRESOLVED"
-        elif not above_shadow:
-            state="EARTH_SHADOW_BLOCKED"
+        elif not receives_any_direct_solar:
+            state="FULL_UMBRA_EARTH_OCCULTED"
         elif not path_resolved:
             state="SUN_TO_CLOUDBASE_PATH_OPTICS_UNRESOLVED"
         elif not red_base_resolved:
@@ -54,12 +60,15 @@ def build_formation_gate_table(canvases: pd.DataFrame, direct_solar: pd.DataFram
         rows.append({
             "solar_altitude_deg":a,"canvas_id":cid,"cloud_layer_id":c.get("cloud_layer_id"),
             "cloud_exists":True,"direct_solar_fraction":fs,"earth_shadow_geometry_resolved":geometry_resolved,
-            "cloud_receives_direct_solar_geometry":above_shadow,"sun_to_cloudbase_red_path_resolved":path_resolved,
+            "h_any_sun_km":pen["h_any_sun_km"],"h_solar_center_km":pen["h_solar_center_km"],"h_full_solar_disk_km":pen["h_full_solar_disk_km"],
+            "penumbra_vertical_span_km":pen["penumbra_vertical_span_km"],
+            "cloudbase_above_center_shadow_height":above_center,"cloudbase_above_full_disk_height":above_full,
+            "cloud_receives_direct_solar_geometry":receives_any_direct_solar,"sun_to_cloudbase_red_path_resolved":path_resolved,
             "red_cloudbase_illumination_resolved":red_base_resolved,"red_light_reaches_cloudbase":red_reaches,
             "relative_base_illumination_650nm":red_vals[0] if len(red_vals)>0 else float("nan"),
             "relative_base_illumination_700nm":red_vals[1] if len(red_vals)>1 else float("nan"),
             "relative_base_illumination_750nm":red_vals[2] if len(red_vals)>2 else float("nan"),
             "formation_gate_state":state,
-            "note":"FORMATION_ONLY_SUN_TO_CLOUDBASE;VIEWING_PATH_EXCLUDED;F_SUN_FINITE_SOLAR_DISK_NOT_SHADOW_HEIGHT_ONLY",
+            "note":"FORMATION_ONLY_SUN_TO_CLOUDBASE;VIEWING_PATH_EXCLUDED;FINITE_SOLAR_DISK_PENUMBRA;H_CENTER_DIAGNOSTIC_ONLY;FORMATION_USES_F_SUN_AND_SPECTRAL_PATH",
         })
     return pd.DataFrame(rows)

@@ -24,3 +24,7 @@ R5.1 adds a provider-neutral forecast-only secondary Target Canvas optical contr
 
 ## R5.1 ECMWF IFS secondary cloud optics
 Set `FIRECLOUD_ECMWF_IFS_GRIB_PATH` to an entitled/mounted IFS model-level forecast GRIB containing CLWC/CIWC/CC/T/Q plus hybrid coefficients and surface pressure/geopotential. Missing access remains explicit Missing.
+
+
+## R5.2 finite-solar-disk penumbra
+R5.2 exports H_any_sun / H_solar_center / H_full_solar_disk and actual F_sun + 650/700/750 nm Sun-to-CloudBase evidence. The traditional Earth-shadow height is diagnostic only; the transition zone is explicitly retained.

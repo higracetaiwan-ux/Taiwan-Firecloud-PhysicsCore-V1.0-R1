@@ -205,3 +205,56 @@ def direct_solar_fraction_g0(
         distance_km, altitude_km, solar_altitude_deg, radius_km
     )
     return circular_disk_visible_fraction(clearance, angular_diameter_deg)
+
+# ---------------------------------------------------------------------------
+# PhysicsCore V1.0-R5.2 finite-solar-disk penumbra height diagnostics.
+# These are geometry diagnostics only. They do not substitute for spectral
+# Sun→CloudBase transmission or an effective-red radiometric threshold.
+# ---------------------------------------------------------------------------
+def solar_disk_transition_altitude_km(
+    distance_km: float,
+    solar_altitude_deg: float,
+    center_clearance_target_deg: float,
+    radius_km: float = EARTH_RADIUS_KM,
+) -> float:
+    """Altitude where solar-center clearance above the Earth limb reaches target.
+
+    center_clearance_target_deg=-solar_radius: upper solar limb first appears
+    (any direct solar disk visible); 0: disk center clears limb; +solar_radius:
+    full disk clears the limb.  Returns 0 when the surface already satisfies the
+    target geometry.
+    """
+    local_center_elev = float(solar_altitude_deg) + math.degrees(float(distance_km) / float(radius_km))
+    required_limb_depression_deg = float(center_clearance_target_deg) - local_center_elev
+    if required_limb_depression_deg <= 0.0:
+        return 0.0
+    gamma = math.radians(required_limb_depression_deg)
+    c = math.cos(gamma)
+    if c <= 0.0:
+        return float("inf")
+    return float(radius_km) * (1.0 / c - 1.0)
+
+
+def finite_solar_disk_penumbra_heights_km(
+    distance_km: float,
+    solar_altitude_deg: float,
+    radius_km: float = EARTH_RADIUS_KM,
+    angular_diameter_deg: float = SOLAR_ANGULAR_DIAMETER_DEG,
+) -> dict:
+    """Return G0 any-sun / center / full-disk transition heights.
+
+    The traditional geometric Earth-shadow height is the solar-center boundary,
+    not the top of the finite-disk penumbra.  The interval [H_any, H_full] is the
+    solar-disk transition zone where 0 < F_sun < 1 (except endpoints).
+    """
+    sr = float(angular_diameter_deg) / 2.0
+    h_any = solar_disk_transition_altitude_km(distance_km, solar_altitude_deg, -sr, radius_km)
+    h_center = solar_disk_transition_altitude_km(distance_km, solar_altitude_deg, 0.0, radius_km)
+    h_full = solar_disk_transition_altitude_km(distance_km, solar_altitude_deg, +sr, radius_km)
+    return {
+        "h_any_sun_km": h_any,
+        "h_solar_center_km": h_center,
+        "h_full_solar_disk_km": h_full,
+        "penumbra_vertical_span_km": max(0.0, h_full - h_any) if math.isfinite(h_full) and math.isfinite(h_any) else float("nan"),
+        "solar_angular_radius_deg": sr,
+    }
