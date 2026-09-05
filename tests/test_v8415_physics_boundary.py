@@ -78,6 +78,6 @@ def test_pressure_profile_bottom_exit_is_expected_termination(monkeypatch):
 
 def test_575_builder_is_explicitly_configurable_without_changing_runtime_default():
     builder = (ROOT / "build_hitran_band_coefficients.py").read_text(encoding="utf-8")
-    assert 'default="600,650,700,750"' in builder
+    assert 'default="550,575,600,650,700,750"' in builder
     assert '"--wavelengths"' in builder
     assert "requested_min=min(wavelengths)-12.5" in builder

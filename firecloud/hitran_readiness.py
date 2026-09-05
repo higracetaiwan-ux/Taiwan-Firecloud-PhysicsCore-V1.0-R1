@@ -12,6 +12,7 @@ import pandas as pd
 
 REQUIRED_WAVELENGTHS_NM = (600, 650, 700, 750)
 EXTENDED_WAVELENGTHS_NM = (575, 600, 650, 700, 750)
+SIX_BAND_WAVELENGTHS_NM = (550, 575, 600, 650, 700, 750)
 REQUIRED_GASES = ("H2O", "O3", "O2")
 REQUIRED_TEMPERATURES_K = (220.0, 250.0, 280.0, 293.0)
 REQUIRED_PRESSURES_HPA = (100.0, 300.0, 500.0, 700.0, 900.0, 1000.0)
@@ -155,7 +156,8 @@ def inspect_hitran_coefficient_table(db_path: str | Path | None = None) -> dict[
         work["sigma"] = pd.to_numeric(work["sigma_cm2_molecule"], errors="coerce")
         finite_rows = int((np.isfinite(work["sigma"]) & (work["sigma"] >= 0)).sum())
         has_575 = bool(np.isclose(work["wl"], 575.0, equal_nan=False).any())
-        active_wavelengths = EXTENDED_WAVELENGTHS_NM if has_575 else REQUIRED_WAVELENGTHS_NM
+        has_550 = bool(np.isclose(work["wl"], 550.0, equal_nan=False).any())
+        active_wavelengths = SIX_BAND_WAVELENGTHS_NM if (has_550 and has_575) else (EXTENDED_WAVELENGTHS_NM if has_575 else REQUIRED_WAVELENGTHS_NM)
         for gas in REQUIRED_GASES:
             for wl in active_wavelengths:
                 mask = (
@@ -216,7 +218,8 @@ def inspect_hitran_coefficient_table(db_path: str | Path | None = None) -> dict[
             if np.isfinite(sig) and sig>=0:
                 keys.add((g,wl,t,ph))
         required={(g,float(wl),float(t),float(ph)) for g in REQUIRED_GASES for wl in active_wavelengths for t in REQUIRED_TEMPERATURES_K for ph in REQUIRED_PRESSURES_HPA}
-        grid_complete = required.issubset(keys) and len(required)==(360 if len(active_wavelengths)==5 else 288)
+        expected_states = len(REQUIRED_GASES)*len(active_wavelengths)*len(REQUIRED_TEMPERATURES_K)*len(REQUIRED_PRESSURES_HPA)
+        grid_complete = required.issubset(keys) and len(required)==expected_states
 
     complete = bool(pair_complete and grid_complete and provenance_ok and not read_error)
     reason = ""
@@ -245,6 +248,8 @@ def inspect_hitran_coefficient_table(db_path: str | Path | None = None) -> dict[
         "active_wavelengths_nm": list(active_wavelengths),
         "extended_575nm_detected": bool(575 in active_wavelengths),
         "extended_575nm_ready": bool(575 in active_wavelengths and complete),
+        "six_band_550nm_detected": bool(550 in active_wavelengths),
+        "six_band_550nm_ready": bool(550 in active_wavelengths and complete),
         "required_pair_status": pair_status,
         "spectroscopy_sources": sources,
         "spectroscopy_provenance_by_gas": provenance_by_gas,
@@ -289,10 +294,11 @@ def hitran_backend_status(db_path: str | Path | None = None) -> dict[str, Any]:
             # is a build-time dependency and is not required once the LUT exists.
             "runtime_spectroscopy_ready": bool(status.get("coefficient_table_complete")),
             "extended_runtime_spectroscopy_ready": bool(status.get("extended_575nm_ready")),
+            "six_band_runtime_spectroscopy_ready": bool(status.get("six_band_550nm_ready")),
         }
     )
     if status["runtime_spectroscopy_ready"]:
-        status["gas_rt_status"] = "READY_LOCAL_HITRAN_LUT"
+        status["gas_rt_status"] = "READY_LOCAL_HITRAN_LUT_550NM" if status.get("six_band_550nm_ready") else "READY_LOCAL_HITRAN_LUT"
     elif not status.get("database_exists"):
         status["gas_rt_status"] = "LOCAL_HITRAN_DB_REQUIRED"
     elif not status.get("coefficient_table_exists"):

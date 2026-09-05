@@ -26,8 +26,8 @@ def parse_args():
     p.add_argument("--o3-xsc", default=O3_XSC_FILENAME)
     p.add_argument(
         "--wavelengths",
-        default="600,650,700,750",
-        help="Comma-separated diagnostic band centers in nm. Legacy default retained for reproducibility.",
+        default="550,575,600,650,700,750",
+        help="Comma-separated diagnostic band centers in nm. PhysicsCore V1.0 runtime default is the full six-band grid.",
     )
     p.add_argument(
         "--v1-six-band", action="store_true",
@@ -65,7 +65,7 @@ def _build_signature(
     """Create the identity of one scientifically distinct LUT build."""
     payload = {
         "format": STATE_CACHE_FORMAT,
-        "builder": "V8.4.16.3",
+        "builder": "PhysicsCore-V1.0-R4.8",
         "temperatures_k": temperatures,
         "pressures_hpa": pressures,
         "wavelengths_nm": wavelengths,
@@ -405,7 +405,7 @@ def main():
             "directory": STATE_CACHE_DIRNAME,
             "scope": "H2O/O2 completed temperature-pressure states; checkpoints are build-only and not promoted to runtime",
         },
-        "version":"V8.4.16.3",
+        "version":"PhysicsCore-V1.0-R4.8",
         "coefficient_file":path.name,"sha256":sha256,"rows":int(len(out)),
         "gases":["H2O","O3","O2"],"wavelengths_nm":[int(w) if float(w).is_integer() else float(w) for w in wavelengths],
         "temperatures_k":temps,"pressures_hpa":pressures,"band_half_width_nm":12.5,

@@ -29,10 +29,10 @@ if str(ROOT) not in sys.path:
 from firecloud.hitran_readiness import hitran_backend_status, inspect_hitran_coefficient_table
 
 NUMIN = 1e7 / 765.0
-NUMAX = 1e7 / 560.0
+NUMAX = 1e7 / 535.0
 TABLES = {"H2O": "H2O_535_765", "O3": "O3_535_765", "O2": "O2_535_765"}
 MIN_SOURCE_COVERAGE_MARGIN_CM = 100.0
-DIAGNOSTIC_BANDS_NM = (575.0, 600.0, 650.0, 700.0, 750.0)
+DIAGNOSTIC_BANDS_NM = (550.0, 575.0, 600.0, 650.0, 700.0, 750.0)
 # Official HITRAN global isotopologue IDs (natural isotopologues used by Firecloud).
 # H2O: 1-6 + 129; O3: 16-20; O2: 36-38.
 HAPI1_ISO_IDS = {"H2O": [1, 2, 3, 4, 5, 6, 129], "O3": [16, 17, 18, 19, 20], "O2": [36, 37, 38]}
@@ -199,7 +199,7 @@ def _validate_and_import_par(db: Path, gas: str, source_path: Path) -> None:
     This is an explicit fallback for deployments where HITRAN's remote HAPI/HAPI2
     transition endpoints return HTTP 404.  It does not fabricate spectroscopy.
     The input must be a standard 160-character HITRAN line-by-line file for the
-    selected molecule, and lines outside Firecloud's 600-750 nm interval are
+    selected molecule, and lines outside Firecloud's 535-765 nm source interval are
     discarded before the HAPI-native .data/.header table is written.
     """
     if gas not in TABLES:
@@ -336,7 +336,7 @@ def main() -> int:
         print("Then rerun this helper to verify coefficient_table_complete=true.")
     else:
         if status.get("extended_575nm_ready", False):
-            print("\nHITRAN runtime spectroscopy: READY_LOCAL_HITRAN_LUT_575NM")
+            print("\nHITRAN runtime spectroscopy: READY_LOCAL_HITRAN_LUT_550NM")
         else:
             print("\nHITRAN runtime spectroscopy: READY_LOCAL_HITRAN_LUT")
     return 0

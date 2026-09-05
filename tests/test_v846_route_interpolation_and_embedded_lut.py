@@ -11,7 +11,8 @@ def test_embedded_runtime_lut_matches_manifest():
     assert csvp.is_file() and manp.is_file()
     data=csvp.read_bytes(); man=json.loads(manp.read_text())
     assert hashlib.sha256(data).hexdigest()==man['sha256']
-    assert len(pd.read_csv(csvp))==288==man['rows']
+    assert len(pd.read_csv(csvp))==man['rows']
+    assert man['rows'] in (288, 360, 432)
 
 
 def test_vectorized_route_interpolation_preserves_nan_and_linear_values():

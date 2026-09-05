@@ -221,12 +221,12 @@ def _hitran_one_click_bootstrap(progress_callback=None) -> tuple[bool, str]:
 
     ok, out, elapsed, timed_out = _run_hitran_builder_step(
         [sys.executable, str(root / "build_hitran_band_coefficients.py"), "--db", db_path,
-         "--h2o-table", "H2O_560_765", "--o2-table", "O2_560_765",
+         "--h2o-table", "H2O_535_765", "--o2-table", "O2_535_765",
          "--o3-xsc", o3_xsc_arg,
-         "--wavelengths", "575,600,650,700,750"],
+         "--v1-six-band"],
         timeout_seconds=build_timeout,
         progress_callback=progress_callback,
-        label="建立 Hybrid 575–750 nm coefficient LUT",
+        label="建立 PhysicsCore 550–750 nm 六波段 coefficient LUT",
     )
     logs.append(f"=== FIRECLOUD LUT BUILD ({elapsed:.1f}s, timeout={timed_out}) ===\n" + out)
     if not ok:
@@ -239,7 +239,7 @@ def _hitran_one_click_bootstrap(progress_callback=None) -> tuple[bool, str]:
         label="readiness audit",
     )
     logs.append(f"=== READINESS AUDIT ({elapsed:.1f}s, timeout={timed_out}) ===\n" + out)
-    return ok and ("READY_LOCAL_HITRAN_LUT_575NM" in out), "\n\n".join(logs)
+    return ok and ("READY_LOCAL_HITRAN_LUT_550NM" in out), "\n\n".join(logs)
 
 
 def _hitran_build_lut_only(progress_callback=None) -> tuple[bool, str]:
@@ -251,12 +251,12 @@ def _hitran_build_lut_only(progress_callback=None) -> tuple[bool, str]:
     logs = []
     ok, out, elapsed, timed_out = _run_hitran_builder_step(
         [sys.executable, str(root / "build_hitran_band_coefficients.py"), "--db", db_path,
-         "--h2o-table", "H2O_560_765", "--o2-table", "O2_560_765",
+         "--h2o-table", "H2O_535_765", "--o2-table", "O2_535_765",
          "--o3-xsc", o3_xsc_arg,
-         "--wavelengths", "575,600,650,700,750"],
+         "--v1-six-band"],
         timeout_seconds=build_timeout,
         progress_callback=progress_callback,
-        label="建立 Hybrid 575–750 nm coefficient LUT",
+        label="建立 PhysicsCore 550–750 nm 六波段 coefficient LUT",
     )
     logs.append(f"=== FIRECLOUD LUT BUILD ({elapsed:.1f}s, timeout={timed_out}) ===\n" + out)
     if not ok:
@@ -268,7 +268,7 @@ def _hitran_build_lut_only(progress_callback=None) -> tuple[bool, str]:
         label="readiness audit",
     )
     logs.append(f"=== READINESS AUDIT ({elapsed:.1f}s, timeout={timed_out}) ===\n" + out)
-    return ok and ("READY_LOCAL_HITRAN_LUT_575NM" in out), "\n\n".join(logs)
+    return ok and ("READY_LOCAL_HITRAN_LUT_550NM" in out), "\n\n".join(logs)
 
 
 def _import_manual_hitran_par(gas: str, uploaded_bytes: bytes, original_name: str = "") -> tuple[bool, str]:
@@ -702,7 +702,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.7.1 Runtime Hotfix｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R4.8 Runtime Hotfix｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -805,9 +805,9 @@ with st.sidebar:
         "若未設定憑證則明確標示 Missing／Unavailable，不會以固定氣膠值冒充實際資料。"
     )
 
-    with st.expander("HITRAN 575–750 nm 本地光譜", expanded=False):
+    with st.expander("HITRAN 550–750 nm 六波段本地光譜", expanded=False):
         _hs = hitran_backend_status()
-        if _hs.get("runtime_spectroscopy_ready", False) and _hs.get("extended_runtime_spectroscopy_ready", False):
+        if _hs.get("runtime_spectroscopy_ready", False) and _hs.get("six_band_runtime_spectroscopy_ready", False):
             st.success(
                 f"READY｜LUT {_hs.get('coefficient_table_rows', 0)} 列｜來源 {_hs.get('coefficient_table_source', '')}"
             )
@@ -824,7 +824,7 @@ with st.sidebar:
                     )
         else:
             st.caption(
-                "正式工作流：匯入 H₂O/O₂ line lists 與 O₃ XSC → 離線建立 360-state LUT → 保存／部署 Runtime LUT。"
+                "正式工作流：匯入 H₂O/O₂ line lists 與 O₃ XSC → 離線建立 432-state LUT → 保存／部署 Runtime LUT。"
                 "正式 Runtime 不需要 HAPI 遠端下載，也不會因 HITRAN endpoint 404 而阻塞分析。"
             )
 
@@ -832,8 +832,8 @@ with st.sidebar:
             # explicit advanced opt-in because current transition endpoints may return 404.
             st.markdown("**① Hybrid Gas Spectroscopy 原始資料／手動匯入（正式）**")
             _legacy_db = Path(os.environ.get("FIRECLOUD_HITRAN_DB", "hitran_db")).expanduser()
-            _h2o_base = _legacy_db / "H2O_560_765"
-            _o2_base = _legacy_db / "O2_560_765"
+            _h2o_base = _legacy_db / "H2O_535_765"
+            _o2_base = _legacy_db / "O2_535_765"
             _packaged_o3_xsc_path = Path(__file__).resolve().parent / "spectroscopy_sources" / "O3_SerdyuchenkoGorshelev_213_1100nm.dat"
             _o3_xsc_path = _legacy_db / "O3_SerdyuchenkoGorshelev_213_1100nm.dat"
             _o3_xsc_ready_path = _o3_xsc_path if _o3_xsc_path.is_file() else _packaged_o3_xsc_path
@@ -844,9 +844,9 @@ with st.sidebar:
             ]
             st.dataframe(pd.DataFrame(_source_rows), use_container_width=True, hide_index=True)
             if _hs.get("runtime_spectroscopy_ready", False):
-                st.info("現有 600/650/700/750 nm Runtime LUT 仍可使用；575 nm 延伸資料尚未完整，分析會維持原有四波段。")
+                st.info("現有舊 Runtime LUT 仍可讀取；但 PhysicsCore Formation 六波段要求 550/575/600/650/700/750 nm，未含 550 nm 時保持 prerequisite Missing。")
             st.caption(
-                "V8.4.5.1 採混合光譜：H₂O / O₂ 使用 HITRAN 560–765 nm 標準 .par；"
+                "PhysicsCore R4.8 採混合光譜：H₂O / O₂ 使用 HITRAN 535–765 nm 標準 .par；"
                 "O₃ 使用 Serdyuchenko–Gorshelev 213–1100 nm 溫度相依 absorption cross section。"
                 "O₃ 不再要求不存在的可見光 HITRAN line table。"
             )
@@ -886,11 +886,11 @@ with st.sidebar:
                     st.code(st.session_state["hitran_o3_xsc_import_log"], language="json")
 
             _hybrid_sources_ready = all(r["資料"] == "READY" for r in _source_rows)
-            st.markdown("**② 建立 360-state Runtime LUT（575/600/650/700/750 nm）**")
+            st.markdown("**② 建立 432-state Runtime LUT（550/575/600/650/700/750 nm）**")
             if not _hybrid_sources_ready:
                 st.info("目前尚未具備 560–765 nm H₂O line table + O₂ line table + O₃ Serdyuchenko XSC；LUT 建立按鈕已停用。")
             if st.button(
-                "建立 360-state LUT 並提升至 Runtime",
+                "建立 432-state LUT 並提升至 Runtime",
                 use_container_width=True,
                 disabled=not _hybrid_sources_ready,
                 key="hitran_lut_only",
@@ -908,7 +908,7 @@ with st.sidebar:
                         _promote_ok, _promote_log = _promote_built_hitran_lut()
                         st.session_state["hitran_runtime_promote_log"] = _promote_log
                         if _promote_ok:
-                            _lut_status.update(label="Hybrid 360-state LUT 建立並提升至 Runtime 完成", state="complete", expanded=True)
+                            _lut_status.update(label="Hybrid 432-state LUT 建立並提升至 Runtime 完成", state="complete", expanded=True)
                             st.success("HYBRID_GAS_SPECTROSCOPY = READY；正式分析只讀衍生 Runtime LUT。")
                             st.rerun()
                         else:
@@ -1007,7 +1007,7 @@ with st.sidebar:
                         st.code(st.session_state["hitran_bootstrap_log"], language="text")
 
             st.caption(
-                "V8.4.16.7：575 nm 延伸光譜採完整 H₂O/O₂ HITRAN 560–765 nm line coverage + O₃ Serdyuchenko–Gorshelev XSC；"
+                "V8.4.16.7：550/575 nm 延伸光譜採完整 H₂O/O₂ HITRAN 535–765 nm line coverage + O₃ Serdyuchenko–Gorshelev XSC；"
                 "Embedded Runtime Spectroscopy + 路徑內插效能修正。Remote HAPI 只保留手動 opt-in 建置／診斷。"
                 "更換觀測地點或國家不需要重建 LUT；只有更新 spectroscopy／網格／氣體集合時才需要。"
             )
@@ -1231,7 +1231,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R4.7.1：Runtime Hotfix")
+    st.subheader("PhysicsCore V1.0-R4.8：Runtime Hotfix")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1536,7 +1536,7 @@ if run or st.session_state.analysis_result is not None:
     else:
         key_msg = "已偵測 HITRAN API Key" if hitran_status.get("api_key_configured", False) else "尚未偵測 HITRAN API Key"
         reason = str(hitran_status.get("coefficient_table_missing_reason") or hitran_status.get("gas_rt_status") or "LOCAL_HITRAN_DATA_REQUIRED")
-        st.info(f"HITRAN Spectroscopy：尚未就緒｜{key_msg}｜{reason}。HITRAN line data 不隨程式包發佈；需先建立 560–765 nm 本地 line tables，再產生 Firecloud LUT。")
+        st.info(f"HITRAN Spectroscopy：尚未就緒｜{key_msg}｜{reason}。HITRAN line data 不隨程式包發佈；需先建立 535–765 nm 本地 line tables，再產生 PhysicsCore 六波段 LUT。")
 
     spectral = result.get("spectral_rt_voxel_matrix", pd.DataFrame())
     if not spectral.empty:
@@ -1791,7 +1791,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.7.1_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R4.8_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",
