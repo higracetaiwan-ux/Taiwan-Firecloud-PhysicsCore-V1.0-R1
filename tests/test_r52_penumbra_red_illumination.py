@@ -20,10 +20,12 @@ def test_fsun_tracks_penumbra_boundaries():
     assert direct_solar_fraction_g0(30.0,h['h_full_solar_disk_km']+0.01,-2.5) == 1.0
 
 
-def test_core_matrix_has_36_rows():
+def test_core_matrix_uses_full_0_100km_adaptive_sampling():
     df=build_earth_shadow_penumbra_matrix([0,-0.5,-1,-1.5,-2,-2.5,-3,-3.5,-4])
-    assert len(df)==36
-    assert set(df['distance_km'])=={10.0,20.0,30.0,40.0}
+    expected={0.0,5.0,10.0,15.0,20.0,25.0,30.0,35.0,40.0,50.0,60.0,70.0,80.0,90.0,100.0}
+    assert len(df)==9*len(expected)
+    assert set(df['distance_km'])==expected
+    assert df['sampling_step_is_cloud_width'].eq(False).all()
 
 
 def test_canvas_red_diagnostic_does_not_invent_effective_red_threshold():

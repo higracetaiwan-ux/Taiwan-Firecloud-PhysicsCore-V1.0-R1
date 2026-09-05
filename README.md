@@ -1,3 +1,6 @@
+## R5.2.1 Full 0–100 km Penumbra Matrix
+R5.2.1 extends the Earth-shadow / finite-solar-disk penumbra matrix to the complete shared adaptive Canvas distance grid: 0–40 km every 5 km and 40–100 km every 10 km. The matrix is diagnostic; Formation still depends on F_sun × spectral Sun→CloudBase transmission.
+
 
 ## PhysicsCore V1.0-R4.9.1 — Target Canvas Optics + Packaged Six-Band LUT
 

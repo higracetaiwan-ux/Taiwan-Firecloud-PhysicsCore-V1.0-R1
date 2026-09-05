@@ -1,4 +1,4 @@
-"""PhysicsCore V1.0-R5.2 finite-solar-disk penumbra + red illumination diagnostics.
+"""PhysicsCore V1.0-R5.2.1 finite-solar-disk penumbra + red illumination diagnostics.
 
 No arbitrary 'effective red height' is invented. Geometry supplies H_any,
 H_center, H_full and F_sun. Spectral path/base-illumination evidence supplies
@@ -10,7 +10,7 @@ import pandas as pd
 from .geometry import finite_solar_disk_penumbra_heights_km, direct_solar_fraction_g0
 
 RED_BANDS=(650,700,750)
-CORE_DISTANCES_KM=(10.0,20.0,30.0,40.0)
+CORE_DISTANCES_KM=tuple([float(x) for x in range(0, 45, 5)] + [float(x) for x in range(50, 101, 10)])
 
 
 def build_earth_shadow_penumbra_matrix(solar_altitudes_deg, *, distances_km=CORE_DISTANCES_KM) -> pd.DataFrame:
@@ -21,7 +21,9 @@ def build_earth_shadow_penumbra_matrix(solar_altitudes_deg, *, distances_km=CORE
             rows.append({
                 "solar_altitude_deg":float(a),"distance_km":float(d),**h,
                 "geometry_mode":"G0_FINITE_SOLAR_DISK",
-                "note":"H_CENTER_IS_TRADITIONAL_EARTH_SHADOW_DIAGNOSTIC;H_ANY_TO_H_FULL_IS_PENUMBRA_TRANSITION",
+                "sampling_regime":"0-40KM_5KM;40-100KM_10KM",
+                "sampling_step_is_cloud_width":False,
+                "note":"H_CENTER_IS_TRADITIONAL_EARTH_SHADOW_DIAGNOSTIC;H_ANY_TO_H_FULL_IS_PENUMBRA_TRANSITION;DISTANCE_GRID_FOLLOWS_SHARED_ADAPTIVE_HORIZONTAL_SAMPLING",
             })
     return pd.DataFrame(rows)
 
