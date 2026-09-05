@@ -14,6 +14,7 @@ MANIFEST_FILENAME = "firecloud_600_750nm_band_coefficients.manifest.json"
 REQUIRED_GASES = ("H2O", "O3", "O2")
 REQUIRED_WAVELENGTHS_NM = (600.0, 650.0, 700.0, 750.0)
 EXTENDED_WAVELENGTHS_NM = (575.0, 600.0, 650.0, 700.0, 750.0)
+SIX_BAND_WAVELENGTHS_NM = (550.0, 575.0, 600.0, 650.0, 700.0, 750.0)
 REQUIRED_TEMPERATURES_K = (220.0, 250.0, 280.0, 293.0)
 REQUIRED_PRESSURES_HPA = (100.0, 300.0, 500.0, 700.0, 900.0, 1000.0)
 EXPECTED_ROWS = (
@@ -65,7 +66,8 @@ def validate_runtime_lut_bytes(csv_bytes: bytes, manifest_bytes: bytes | None = 
         work[col] = pd.to_numeric(work[col], errors="coerce")
 
     has_575 = bool(np.isclose(work["wavelength_nm"], 575.0, equal_nan=False).any())
-    active_wavelengths = EXTENDED_WAVELENGTHS_NM if has_575 else REQUIRED_WAVELENGTHS_NM
+    has_550 = bool(np.isclose(work["wavelength_nm"], 550.0, equal_nan=False).any())
+    active_wavelengths = SIX_BAND_WAVELENGTHS_NM if (has_550 and has_575) else (EXTENDED_WAVELENGTHS_NM if has_575 else REQUIRED_WAVELENGTHS_NM)
     expected_rows = len(REQUIRED_GASES) * len(active_wavelengths) * len(REQUIRED_TEMPERATURES_K) * len(REQUIRED_PRESSURES_HPA)
     result["expected_rows"] = expected_rows
     result["active_wavelengths_nm"] = list(active_wavelengths)

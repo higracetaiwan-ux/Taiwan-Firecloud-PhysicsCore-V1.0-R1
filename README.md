@@ -1,10 +1,10 @@
 # Taiwan Firecloud PhysicsCore V1.0
 
-**Current checkpoint: V1.0-R3.1 — Canvas-specific ray/cloud intersection + six-band OpticalPathResult + CloudBaseIllumination foundation.**
+**Current checkpoint: V1.0-R3.2 — Canvas-specific ray/cloud intersection + six-band OpticalPathResult + CloudBaseIllumination foundation.**
 
 This is the new main-program identity. The package is a full runnable replacement built from the V8.4.16.7 compatibility baseline while the frozen PhysicsCore V1.0 architecture is refactored stage-by-stage.
 
-See `RELEASE_NOTES_PhysicsCore_V1.0-R3.1.md` for the exact implemented boundary.
+See `RELEASE_NOTES_PhysicsCore_V1.0-R3.2.md` for the exact implemented boundary.
 
 ---
 
@@ -533,9 +533,9 @@ V8.4.16.5 notes.
 - `RELEASE_NOTES_PhysicsCore_V1.0-R1.md` — previous V1.0 checkpoint notes.
 - `V1.0_MIGRATION_FROM_V8.md` — concise historical migration record; individual V8.x release-note files are intentionally excluded from this package.
 
-## R3.1 six-band gas spectroscopy
+## R3.2 six-band gas spectroscopy
 
-The embedded compatibility LUT may still lack 550 nm H2O/O2 coefficients. R3.1 therefore keeps 550-nm gas optical depth **Missing** rather than inventing a value. To build a true six-band LUT from local HITRAN line data, use the broadened 535–765 nm local tables and run:
+The embedded compatibility LUT may still lack 550 nm H2O/O2 coefficients. R3.2 therefore keeps 550-nm gas optical depth **Missing** rather than inventing a value. To build a true six-band LUT from local HITRAN line data, use the broadened 535–765 nm local tables and run:
 
 ```bash
 python build_hitran_band_coefficients.py --v1-six-band

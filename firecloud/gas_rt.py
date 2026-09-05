@@ -1,5 +1,6 @@
 from __future__ import annotations
 import math, os
+from functools import lru_cache
 import numpy as np
 import pandas as pd
 
@@ -163,6 +164,15 @@ def build_gas_profile(snapshot:pd.DataFrame, pressure_levels_hpa, surface_elevat
     return pd.DataFrame(rows)
 
 
+@lru_cache(maxsize=8)
+def _local_band_coefficients_cached(path: str, mtime_ns: int, size: int):
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame()
+    need={"wavelength_nm","gas","sigma_cm2_molecule"}
+    return df if need.issubset(df.columns) else pd.DataFrame()
+
 def _local_band_coefficients_from_csv(db_path: str | None = None):
     """Load the derived HITRAN runtime LUT; raw line tables are not needed at runtime.
 
@@ -174,9 +184,11 @@ def _local_band_coefficients_from_csv(db_path: str | None = None):
     else:
         path = str(resolve_hitran_lut_path()[0])
     if not os.path.exists(path): return pd.DataFrame()
-    df=pd.read_csv(path)
-    need={"wavelength_nm","gas","sigma_cm2_molecule"}
-    return df if need.issubset(df.columns) else pd.DataFrame()
+    try:
+        st=os.stat(path)
+        return _local_band_coefficients_cached(os.path.abspath(path), int(st.st_mtime_ns), int(st.st_size)).copy()
+    except Exception:
+        return pd.DataFrame()
 
 
 def _sigma_for_state(coeff: pd.DataFrame, gas: str, wavelength_nm: float, temperature_k: float, pressure_hpa: float) -> float:
@@ -219,39 +231,37 @@ def _interp_profile_state(g: pd.DataFrame, altitude_km: float):
 
 
 def active_gas_wavelengths(coeff: pd.DataFrame) -> tuple[int, ...]:
-    """Return base wavelengths plus 575 nm only for a complete extended LUT.
+    """Return only production bands that have a complete real LUT grid.
 
-    A single accidental 575-nm row must never make the hot RT path emit a
-    partially supported band. The optional band is enabled only when every
-    gas has the complete production T/P grid at 575 nm.
+    R3.2 supports the frozen six-band contract. 550/575 nm are enabled only
+    when every gas has the full real T/P grid. Missing spectroscopy is never
+    interpolated from neighbouring diagnostic bands.
     """
     if coeff is None or coeff.empty or "gas" not in coeff or "wavelength_nm" not in coeff:
         return GAS_WAVELENGTHS_NM
-    required_t = (220.0, 250.0, 280.0, 293.0)
-    required_p = (100.0, 300.0, 500.0, 700.0, 900.0, 1000.0)
-    required_tp = {(float(t), float(p)) for t in required_t for p in required_p}
-    has_575 = True
-    for gas in ("O3", "O2", "H2O"):
-        mask = (
-            coeff["gas"].astype(str).str.upper().str.strip().eq(gas)
-            & np.isclose(pd.to_numeric(coeff["wavelength_nm"], errors="coerce"), 575.0, equal_nan=False)
-        )
-        if not mask.any():
-            has_575 = False
-            break
-        sub = coeff.loc[mask].copy()
-        if not {"temperature_k", "pressure_hpa", "sigma_cm2_molecule"}.issubset(sub.columns):
-            has_575 = False
-            break
-        sub["temperature_k"] = pd.to_numeric(sub["temperature_k"], errors="coerce")
-        sub["pressure_hpa"] = pd.to_numeric(sub["pressure_hpa"], errors="coerce")
-        sub["sigma_cm2_molecule"] = pd.to_numeric(sub["sigma_cm2_molecule"], errors="coerce")
-        valid = sub["sigma_cm2_molecule"].notna() & np.isfinite(sub["sigma_cm2_molecule"]) & (sub["sigma_cm2_molecule"] >= 0)
-        tp = set(zip(sub.loc[valid, "temperature_k"], sub.loc[valid, "pressure_hpa"]))
-        if not required_tp.issubset(tp):
-            has_575 = False
-            break
-    return EXTENDED_GAS_WAVELENGTHS_NM if has_575 else GAS_WAVELENGTHS_NM
+    required_t=(220.0,250.0,280.0,293.0)
+    required_p=(100.0,300.0,500.0,700.0,900.0,1000.0)
+    required_tp={(float(t),float(p)) for t in required_t for p in required_p}
+    def band_complete(wl: float) -> bool:
+        for gas in ("O3","O2","H2O"):
+            mask=(coeff["gas"].astype(str).str.upper().str.strip().eq(gas) &
+                  np.isclose(pd.to_numeric(coeff["wavelength_nm"],errors="coerce"),float(wl),equal_nan=False))
+            if not mask.any(): return False
+            sub=coeff.loc[mask].copy()
+            if not {"temperature_k","pressure_hpa","sigma_cm2_molecule"}.issubset(sub.columns): return False
+            for c in ("temperature_k","pressure_hpa","sigma_cm2_molecule"):
+                sub[c]=pd.to_numeric(sub[c],errors="coerce")
+            valid=sub["sigma_cm2_molecule"].notna() & np.isfinite(sub["sigma_cm2_molecule"]) & (sub["sigma_cm2_molecule"]>=0)
+            tp=set(zip(sub.loc[valid,"temperature_k"],sub.loc[valid,"pressure_hpa"]))
+            if not required_tp.issubset(tp): return False
+        return True
+    has575=band_complete(575.0)
+    has550=band_complete(550.0)
+    if has550 and has575:
+        return SIX_BAND_GAS_WAVELENGTHS_NM
+    if has575:
+        return EXTENDED_GAS_WAVELENGTHS_NM
+    return GAS_WAVELENGTHS_NM
 
 
 def _prepare_fast_lut(coeff: pd.DataFrame, wavelengths=GAS_WAVELENGTHS_NM):
