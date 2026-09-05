@@ -317,6 +317,14 @@ def merge_native_into_snapshot(snapshot: pd.DataFrame, native: pd.DataFrame) -> 
             can = pd.to_numeric(out[canonical], errors='coerce')
             nat = pd.to_numeric(out[native_col], errors='coerce')
             out[canonical] = can.where(can.notna(), nat)
+        # R4.5.1: canonical native-condensate contract is explicitly kg/kg.
+        # Native ecCodes decode already emits these names; the legacy aliases are
+        # accepted only as an input-compatibility fallback for older CASE/replay data.
+        for phase_name in ('liquid', 'ice'):
+            canonical_q=f'cloud_{phase_name}_water_kgkg_{p}hPa'
+            legacy_q=f'cloud_{phase_name}_water_{p}hPa'
+            if canonical_q not in out.columns and legacy_q in out.columns:
+                out[canonical_q]=pd.to_numeric(out[legacy_q],errors='coerce')
         native_cc=f'cloud_fraction_{p}hPa'
         canonical_cc=f'cloud_cover_{p}hPa'
         if native_cc in out.columns:

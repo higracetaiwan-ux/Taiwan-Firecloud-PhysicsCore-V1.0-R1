@@ -22,7 +22,7 @@ def test_nomads_request_has_native_fields_and_levels():
 
 def test_merge_native_preserves_missing_policy():
     snap=pd.DataFrame([{'point_id':'a','cloud_cover_low':40.0}])
-    native=pd.DataFrame([{'point_id':'a','cloud_liquid_water_500hPa':1e-5,'native_profile_source':'GFS'}])
+    native=pd.DataFrame([{'point_id':'a','cloud_liquid_water_kgkg_500hPa':1e-5,'native_profile_source':'GFS'}])
     out=merge_native_into_snapshot(snap,native)
-    assert out.loc[0,'cloud_liquid_water_500hPa']==1e-5
-    assert 'cloud_ice_water_500hPa' not in out.columns
+    assert out.loc[0,'cloud_liquid_water_kgkg_500hPa']==1e-5
+    assert 'cloud_ice_water_kgkg_500hPa' not in out.columns

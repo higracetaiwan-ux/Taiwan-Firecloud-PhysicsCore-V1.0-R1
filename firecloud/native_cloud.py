@@ -22,7 +22,7 @@ def _interp_pair(z, a, b, key):
 def native_levels_from_row(row: pd.Series, pressure_levels_hpa) -> list[dict]:
     """Extract native cloud microphysics on pressure levels.
 
-    Expected fields per level: cloud_liquid_water_<p>hPa, cloud_ice_water_<p>hPa,
+    Canonical fields per level: cloud_liquid_water_kgkg_<p>hPa, cloud_ice_water_kgkg_<p>hPa,
     cloud_fraction_<p>hPa, temperature_<p>hPa, relative_humidity_<p>hPa,
     geopotential_height_<p>hPa. Missing native fields remain NaN.
     """
@@ -39,8 +39,8 @@ def native_levels_from_row(row: pd.Series, pressure_levels_hpa) -> list[dict]:
         out.append({
             'pressure_hpa':float(p), 'altitude_agl_km':max(0.0,z),
             'cloud_fraction':row.get(f'cloud_fraction_{p}hPa', np.nan),
-            'cloud_liquid_water_kgkg':row.get(f'cloud_liquid_water_{p}hPa', np.nan),
-            'cloud_ice_water_kgkg':row.get(f'cloud_ice_water_{p}hPa', np.nan),
+            'cloud_liquid_water_kgkg':row.get(f'cloud_liquid_water_kgkg_{p}hPa', row.get(f'cloud_liquid_water_{p}hPa', np.nan)),
+            'cloud_ice_water_kgkg':row.get(f'cloud_ice_water_kgkg_{p}hPa', row.get(f'cloud_ice_water_{p}hPa', np.nan)),
             'temperature_k':row.get(f'temperature_{p}hPa', np.nan),
             'relative_humidity_pct':row.get(f'relative_humidity_{p}hPa', np.nan),
         })
