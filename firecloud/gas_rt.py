@@ -1,6 +1,7 @@
 from __future__ import annotations
 import math, os
 from functools import lru_cache
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
@@ -410,7 +411,45 @@ def _sigma_fast_vector(lut, gas: str, wl: int, tk, p_hpa):
     return ans
 
 
-def integrate_gas_sun_to_targets(targets:pd.DataFrame, gas_profile:pd.DataFrame, solar_altitude_deg:float, db_path:str|None=None, earth_radius_km:float=6371.0, progress_callback=None)->pd.DataFrame:
+@dataclass(frozen=True)
+class GasRTPreparedContext:
+    """Reusable, angle-independent gas RT preparation.
+
+    R3.3 separates expensive-but-static preparation (Runtime LUT decode, fast LUT
+    arrays, route profile indexing) from the angle-specific slant-ray integration.
+    The context contains no solar geometry and therefore is safe to reuse across
+    all core angles that share the same forecast/CAMS atmospheric state.
+    """
+    coeff: pd.DataFrame
+    wavelengths: tuple[int, ...]
+    lut: dict
+    prepared_profile: dict
+    valid: bool
+    failure_cause: str = ""
+
+
+def prepare_gas_rt_context(gas_profile: pd.DataFrame, db_path: str | None = None) -> GasRTPreparedContext:
+    coeff=_local_band_coefficients_from_csv(db_path)
+    wavelengths=active_gas_wavelengths(coeff)
+    if coeff.empty:
+        return GasRTPreparedContext(coeff, tuple(wavelengths), {}, {}, False, "HITRAN_LOCAL_BAND_TABLE_MISSING")
+    c=coeff.copy(); c["gas"]=c["gas"].astype(str).str.upper()
+    complete=all(((c["gas"]==g)&np.isclose(pd.to_numeric(c["wavelength_nm"],errors="coerce"),wl)).any()
+                 for g in ("O3","O2","H2O") for wl in wavelengths)
+    if not complete:
+        return GasRTPreparedContext(c, tuple(wavelengths), {}, {}, False, "HITRAN_BAND_TABLE_INCOMPLETE")
+    required={"distance_km","direction_offset_deg","altitude_agl_km","temperature_k","pressure_hpa","o2_mole_fraction","h2o_mole_fraction","o3_mole_fraction"}
+    if gas_profile is None or gas_profile.empty:
+        # Preserve the legacy public failure label used by diagnostic callers
+        # that invoke gas RT without any atmospheric profile at all. PhysicsCore
+        # runtime supplies a real profile and therefore does not enter this path.
+        return GasRTPreparedContext(c, tuple(wavelengths), {}, {}, False, "HITRAN_LOCAL_BAND_TABLE_MISSING")
+    if not required.issubset(gas_profile.columns):
+        return GasRTPreparedContext(c, tuple(wavelengths), {}, {}, False, "ATMOSPHERIC_GAS_PROFILE_INCOMPLETE")
+    return GasRTPreparedContext(c, tuple(wavelengths), _prepare_fast_lut(c,wavelengths), _prepare_fast_profile(gas_profile), True, "")
+
+
+def integrate_gas_sun_to_targets(targets:pd.DataFrame, gas_profile:pd.DataFrame, solar_altitude_deg:float, db_path:str|None=None, earth_radius_km:float=6371.0, progress_callback=None, prepared_context: GasRTPreparedContext | None = None)->pd.DataFrame:
     """Hybrid gas RT with physics-aware applicability and model-top termination.
 
     V8.4.9 separates three states that older versions conflated as Missing:
@@ -423,8 +462,9 @@ def integrate_gas_sun_to_targets(targets:pd.DataFrame, gas_profile:pd.DataFrame,
     unchanged from V8.4.8. No gas is invented above the real profile top.
     """
     out=targets.copy()
-    coeff=_local_band_coefficients_from_csv(db_path)
-    wavelengths=active_gas_wavelengths(coeff)
+    ctx = prepared_context if prepared_context is not None else prepare_gas_rt_context(gas_profile, db_path)
+    coeff=ctx.coeff
+    wavelengths=ctx.wavelengths
     for wl in wavelengths:
         for gas in ("o3","o2","h2o"):
             out[f"gas_tau_{gas}_{wl}nm"]=np.nan
@@ -442,19 +482,13 @@ def integrate_gas_sun_to_targets(targets:pd.DataFrame, gas_profile:pd.DataFrame,
     if "geometric_illuminated_fraction" in out.columns:
         gf=pd.to_numeric(out["geometric_illuminated_fraction"],errors="coerce")
         out["rt_applicable_direct_solar"]=(gf.fillna(0.0)>0.0)
-    if coeff.empty or gas_profile.empty:
+    if not ctx.valid:
+        out["gas_rt_quality"]=ctx.failure_cause or "HITRAN_LOCAL_BAND_TABLE_MISSING"
+        out["gas_rt_failure_cause"]=ctx.failure_cause or "HITRAN_LOCAL_BAND_TABLE_MISSING"
         return out
 
-    c=coeff.copy(); c["gas"]=c["gas"].astype(str).str.upper()
-    complete=all(((c["gas"]==g)&np.isclose(pd.to_numeric(c["wavelength_nm"],errors="coerce"),wl)).any() for g in ("O3","O2","H2O") for wl in wavelengths)
-    if not complete:
-        out["gas_rt_quality"]="HITRAN_BAND_TABLE_INCOMPLETE"; return out
-    required={"distance_km","direction_offset_deg","altitude_agl_km","temperature_k","pressure_hpa","o2_mole_fraction","h2o_mole_fraction","o3_mole_fraction"}
-    if not required.issubset(gas_profile.columns):
-        out["gas_rt_quality"]="ATMOSPHERIC_GAS_PROFILE_INCOMPLETE"; return out
-
-    lut=_prepare_fast_lut(c,wavelengths)
-    prepared=_prepare_fast_profile(gas_profile)
+    lut=ctx.lut
+    prepared=ctx.prepared_profile
     try:
         boundary_tol=max(1.0e-6, float(os.getenv(
             "FIRECLOUD_GAS_PROFILE_BOUNDARY_TOLERANCE_KM",

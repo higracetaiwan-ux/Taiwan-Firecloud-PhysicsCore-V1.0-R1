@@ -1,10 +1,10 @@
 # Taiwan Firecloud PhysicsCore V1.0
 
-**Current checkpoint: V1.0-R3.2 — Canvas-specific ray/cloud intersection + six-band OpticalPathResult + CloudBaseIllumination foundation.**
+**Current checkpoint: V1.0-R3.3 — Canvas-specific ray/cloud intersection + six-band OpticalPathResult + CloudBaseIllumination foundation.**
 
 This is the new main-program identity. The package is a full runnable replacement built from the V8.4.16.7 compatibility baseline while the frozen PhysicsCore V1.0 architecture is refactored stage-by-stage.
 
-See `RELEASE_NOTES_PhysicsCore_V1.0-R3.2.md` for the exact implemented boundary.
+See `RELEASE_NOTES_PhysicsCore_V1.0-R3.3.md` for the exact implemented boundary.
 
 ---
 
@@ -542,3 +542,12 @@ python build_hitran_band_coefficients.py --v1-six-band
 ```
 
 This preserves the V8 legacy default build for regression while making the V1 six-band build explicit.
+
+
+## R3.3 candidate-focused RT and shared gas preparation
+
+R3.3 makes PhysicsCore V1 candidate filtering the default radiative-transfer target mode. The full native cloud volume is still used for geometry and ray/cloud blocker intersections, while expensive spectral target RT is solved only for the native optical voxels nearest the active Canvas bases. Set `FIRECLOUD_V1_RT_TARGET_MODE=ALL_VOXELS` only when the legacy full-voxel spectral diagnostic is specifically required.
+
+R3.3 also reuses one angle-independent gas RT preparation context per forecast/CAMS atmospheric state (Runtime LUT decode, fast LUT arrays, and route profile indexing), and passes the already cached route spectral-AOD table into the spectral solver instead of deriving it again inside every angle.
+
+The embedded compatibility LUT still does **not** contain a verified complete 550-nm H2O/O2/O3 T/P grid. Therefore 550-nm gas optical depth remains Missing until a true local six-band LUT is built/imported. R3.3 does not interpolate 550 nm from 575/600 nm.

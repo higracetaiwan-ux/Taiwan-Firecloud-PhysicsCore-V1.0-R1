@@ -7,7 +7,7 @@ from .aerosol_physics import (
     integrate_native_cams_aerosol_sun_to_targets,
 )
 from .geometry import ray_altitude_km_at_surface_distance
-from .gas_rt import integrate_gas_sun_to_targets, active_gas_wavelengths, _local_band_coefficients_from_csv
+from .gas_rt import integrate_gas_sun_to_targets, active_gas_wavelengths, _local_band_coefficients_from_csv, GasRTPreparedContext
 from .contracts import SIX_BAND_WAVELENGTHS_NM
 
 SPECTRAL_WAVELENGTHS_NM = (600, 650, 700, 750)
@@ -63,7 +63,9 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
                       cams_native_aerosol_snapshot: pd.DataFrame | None = None,
                       angstrom_exponent: float | None = None,
                       pressure_hpa: float = 1013.25, earth_radius_km: float = 6371.0,
-                      gas_profile: pd.DataFrame | None = None, progress_callback=None) -> pd.DataFrame:
+                      gas_profile: pd.DataFrame | None = None, progress_callback=None,
+                      prepared_route_spectral_aod: pd.DataFrame | None = None,
+                      gas_prepared_context: GasRTPreparedContext | None = None) -> pd.DataFrame:
     """Attach 600-750 nm spectral RT with route-resolved aerosol path physics.
 
     V8.3.2 no longer multiplies one total-column AOD by a generic twilight air-mass
@@ -92,7 +94,10 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     cloud_t = np.exp(-cloud_tau)
     out["spectral_airmass_factor"] = m  # retained for Rayleigh diagnostic only
 
-    route = derive_route_spectral_aod(aerosol_snapshot, targets=wavelengths) if aerosol_snapshot is not None and not aerosol_snapshot.empty else pd.DataFrame()
+    if prepared_route_spectral_aod is not None:
+        route = prepared_route_spectral_aod.copy()
+    else:
+        route = derive_route_spectral_aod(aerosol_snapshot, targets=wavelengths) if aerosol_snapshot is not None and not aerosol_snapshot.empty else pd.DataFrame()
     _emit(0.12, "建立路徑光譜 AOD 狀態")
     if not route.empty and "point_id" in out.columns:
         attach_cols=[c for c in ["point_id","aod550","aod645","aod670","aod800","angstrom_550_800","spectral_aod_quality","aerosol_provider"] if c in route.columns]
@@ -150,6 +155,7 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     gas_out = integrate_gas_sun_to_targets(
         out, gas_profile if gas_profile is not None else pd.DataFrame(), solar_altitude_deg,
         earth_radius_km=earth_radius_km, progress_callback=_gas_progress,
+        prepared_context=gas_prepared_context,
     )
     _emit(0.92, "合成 Rayleigh／氣膠／氣體／雲光學")
     for c in [c for c in gas_out.columns if c.startswith("gas_tau_") or c.startswith("gas_transmission_") or c.startswith("o3_transmission_") or c in ("gas_rt_quality","gas_path_completeness","gas_rt_failure_cause","gas_rt_domain_status","gas_rt_expected_termination","gas_profile_top_km","gas_rt_boundary_clipped","rt_applicable_direct_solar")]:

@@ -38,7 +38,7 @@ from .aerosol_physics import derive_route_spectral_aod
 from .native_cloud import build_native_cloud_volume
 from .cloud_optics import add_native_optical_properties
 from .spectral_rt import build_spectral_rt, summarize_spectral_rt
-from .gas_rt import build_gas_profile, hitran_backend_status
+from .gas_rt import build_gas_profile, hitran_backend_status, prepare_gas_rt_context
 from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot, resolve_run_and_lead, DEFAULT_PRESSURE_LEVELS_HPA, native_provider_status
 from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
@@ -1050,6 +1050,69 @@ def _native_gfs_thermodynamic_ready(native_df: pd.DataFrame) -> bool:
     return 30 in good and len(good) >= 12
 
 
+def _select_v1_canvas_rt_targets(native_optical_voxels: pd.DataFrame, canvases, scene) -> pd.DataFrame:
+    """Return the minimal RT target set required by PhysicsCore V1 Canvas bases.
+
+    R3.3 candidate filtering removes the legacy all-voxel spectral solve from the
+    default PhysicsCore path. The full native cloud volume is still retained for
+    geometry and blocker intersection; only expensive target radiative transfer
+    is reduced to one nearest native optical voxel per Canvas base. Set
+    FIRECLOUD_V1_RT_TARGET_MODE=ALL_VOXELS to restore the legacy diagnostic solve.
+    """
+    if native_optical_voxels is None or native_optical_voxels.empty:
+        return pd.DataFrame()
+    mode=str(os.getenv("FIRECLOUD_V1_RT_TARGET_MODE","CANVAS_CANDIDATES") or "CANVAS_CANDIDATES").upper().strip()
+    if mode in {"ALL","ALL_VOXELS","LEGACY_ALL_VOXELS"}:
+        out=native_optical_voxels.copy()
+        out["v1_rt_target_mode"]="ALL_VOXELS"
+        return out
+    if not canvases or scene is None:
+        return native_optical_voxels.iloc[0:0].copy()
+    layer_by_id={layer.layer_id:layer for layer in getattr(scene,"layers",())}
+    selected=[]
+    for canvas in canvases:
+        layer=layer_by_id.get(canvas.cloud_layer_id)
+        if layer is None:
+            continue
+        g=native_optical_voxels
+        if "direction_offset_deg" in g.columns:
+            dd=pd.to_numeric(g["direction_offset_deg"],errors="coerce")
+            g=g[np.isclose(dd,float(layer.direction_offset_deg),atol=1e-6,equal_nan=False)]
+        if g.empty:
+            continue
+        if "distance_km" in g.columns:
+            dist=pd.to_numeric(g["distance_km"],errors="coerce")
+            if dist.notna().any():
+                mind=(dist-float(canvas.distance_km)).abs().min()
+                g=g[(dist-float(canvas.distance_km)).abs() <= float(mind)+1e-9]
+        if g.empty:
+            continue
+        target=float(canvas.cloud_base_altitude_km)
+        if {"voxel_bottom_km","voxel_top_km"}.issubset(g.columns):
+            lo=pd.to_numeric(g["voxel_bottom_km"],errors="coerce")
+            hi=pd.to_numeric(g["voxel_top_km"],errors="coerce")
+            contain=g[(lo<=target)&(hi>=target)]
+            if not contain.empty:
+                g=contain
+        center_col="voxel_center_km" if "voxel_center_km" in g.columns else "altitude_agl_km"
+        if center_col in g.columns:
+            center=pd.to_numeric(g[center_col],errors="coerce")
+            chosen=(center-target).abs().idxmin() if center.notna().any() else g.index[0]
+        else:
+            chosen=g.index[0]
+        row=native_optical_voxels.loc[[chosen]].copy()
+        row["v1_canvas_id"]=str(canvas.canvas_id)
+        row["v1_cloud_layer_id"]=str(canvas.cloud_layer_id)
+        row["v1_canvas_base_altitude_km"]=target
+        row["v1_rt_target_mode"]="CANVAS_CANDIDATES"
+        selected.append(row)
+    if not selected:
+        return native_optical_voxels.iloc[0:0].copy()
+    out=pd.concat(selected,ignore_index=True)
+    subset=[c for c in ("direction_offset_deg","distance_km","voxel_center_km") if c in out.columns]
+    return out.drop_duplicates(subset=subset,keep="first").reset_index(drop=True) if subset else out.reset_index(drop=True)
+
+
 def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = "Asia/Taipei",
                   cfg: ModelConfig | None = None, progress_callback=None) -> dict:
     cfg = cfg or ModelConfig()
@@ -1128,6 +1191,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     native_volume_cache = {}
     native_optical_base_cache = {}
     gas_profile_cache = {}
+    gas_rt_context_cache = {}
     aerosol_spectral_cache = {}
     core_set = {float(x) for x in cfg.firecloud_core_angles_deg}
     late_set = {float(x) for x in cfg.late_glow_angles_deg}
@@ -1452,14 +1516,29 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             _gas_cache_status = "MISS"
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GAS_PROFILE_CACHE", "elapsed_seconds": 0.0, "cache_status": _gas_cache_status, "cache_key": str(_gas_key)})
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "CAMS_O3_PROFILE_BINDING", "elapsed_seconds": perf_counter()-_o3_bind_t0, "cache_status": "BOUND" if gas_profile.get("o3_mole_fraction", pd.Series(dtype=float)).notna().any() else "MISSING"})
-        _angle_progress(candidate_index, 0.61, f"{label}：開始 575–750 nm 光譜 RT…")
+        _gas_ctx_t0 = perf_counter()
+        if _gas_key in gas_rt_context_cache:
+            gas_rt_context = gas_rt_context_cache[_gas_key]
+            _gas_ctx_status = "HIT"
+        else:
+            gas_rt_context = prepare_gas_rt_context(gas_profile)
+            gas_rt_context_cache[_gas_key] = gas_rt_context
+            _gas_ctx_status = "MISS"
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GAS_RT_PREPARED_CONTEXT", "elapsed_seconds": perf_counter()-_gas_ctx_t0, "cache_status": _gas_ctx_status, "cache_key": str(_gas_key), "detail": f"bands={','.join(map(str,gas_rt_context.wavelengths))}; valid={gas_rt_context.valid}; cause={gas_rt_context.failure_cause}"})
+        _angle_progress(candidate_index, 0.61, f"{label}：開始 550–750 nm 六波段光譜 RT…")
         def _spectral_progress(_frac, _msg):
             _angle_progress(candidate_index, 0.61 + 0.25*max(0.0,min(1.0,float(_frac))), f"{label}：光譜 RT｜{_msg}")
+        _rt_filter_t0 = perf_counter()
+        rt_target_voxels = _select_v1_canvas_rt_targets(native_optical_voxels, _v1.get("canvas_objects", ()), _v1.get("scene"))
+        _mode = rt_target_voxels.get("v1_rt_target_mode", pd.Series(["NONE"])).iloc[0] if not rt_target_voxels.empty else "NONE"
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "V1_RT_CANDIDATE_FILTER", "elapsed_seconds": perf_counter()-_rt_filter_t0, "cache_status": "FILTERED", "detail": f"targets={len(rt_target_voxels)}; source_voxels={len(native_optical_voxels)}; mode={_mode}"})
         spectral_voxels = build_spectral_rt(
-            native_optical_voxels, angle, aerosol_snapshot=spectral_source_snap,
+            rt_target_voxels, angle, aerosol_snapshot=spectral_source_snap,
             cams_native_aerosol_snapshot=cams_aerosol_snap, angstrom_exponent=None,
             earth_radius_km=cfg.earth_radius_km, gas_profile=gas_profile,
             progress_callback=_spectral_progress,
+            prepared_route_spectral_aod=aerosol_spectral_snap,
+            gas_prepared_context=gas_rt_context,
         )
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GAS_AND_SPECTRAL_RT", "elapsed_seconds": perf_counter()-_ts, "cache_status": "COMPUTED"})
         _angle_progress(candidate_index, 0.88, f"{label}：彙整光譜與垂直欄位…")
