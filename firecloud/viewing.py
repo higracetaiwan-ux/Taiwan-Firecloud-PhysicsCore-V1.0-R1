@@ -21,7 +21,8 @@ import math
 import numpy as np
 import pandas as pd
 from .config import EARTH_RADIUS_KM
-from .shared_geometry.ray import observer_los_height_agl_km
+from .shared_geometry.ray import (observer_los_height_agl_km, sample_observer_los_segment,
+                                  sampled_segment_path_km)
 
 PHOTO_TARGET_MIN_BASE_KM = 2.0
 VERTICAL_CONTINUITY_MIN_OVERLAP = 0.50
@@ -136,9 +137,8 @@ def _los_intersects_projected_volume(dt: float, hs: float, support0: float, supp
         return bb - 1e-9 <= h <= bt + 1e-9
     # Curvature can make the relation slightly non-linear; dense deterministic
     # samples avoid assuming monotonicity while remaining trivial at 0–100 km.
-    xs = np.linspace(x0, x1, 17)
-    hh = [observer_los_height_agl_km(dt, hs, float(x), earth_radius_km) for x in xs]
-    hmin, hmax = min(hh), max(hh)
+    xs,hh = sample_observer_los_segment(dt, hs, x0, x1, sample_count=17, radius_km=earth_radius_km)
+    hmin, hmax = float(np.nanmin(hh)), float(np.nanmax(hh))
     return not (hmax < bb - 1e-9 or hmin > bt + 1e-9)
 
 
@@ -263,8 +263,7 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
                 if not (math.isfinite(float(s0)) and math.isfinite(float(s1))): continue
                 if not _los_intersects_projected_volume(dt,hs,s0,s1,bb,bt,earth_radius_km): continue
                 bid=str(b.get("layer_id","")); blockers.add(bid); support_blockers.add(bid); supports[bid]=f"{s0:.3f}-{s1:.3f}"
-                xs=np.linspace(max(0.0,s0),min(dt,s1),17)
-                zz=np.array([observer_los_height_agl_km(dt,hs,float(x),earth_radius_km) for x in xs],dtype=float)
+                xs,zz=sample_observer_los_segment(dt,hs,max(0.0,s0),min(dt,s1),sample_count=17,radius_km=earth_radius_km)
                 inside=np.isfinite(zz)&(zz>=bb)&(zz<=bt); xcross=float(np.mean(xs[inside])) if inside.any() else float(db)
                 cf,cf_method=_cf_at(b,transect,xcross,key)
                 if cf is None: unknown_occ=True; continue

@@ -35,6 +35,7 @@ from .contracts import (
     SpectralOpticalPath,
 )
 from .geometry import ray_altitude_km_at_surface_distance
+from .shared_geometry.ray import sample_sun_ray_segment, sampled_segment_path_km
 
 
 def _finite(v) -> bool:
@@ -225,19 +226,13 @@ def _slant_intersection_through_supported_layer(canvas, layer, support: dict, so
     # Numerical line integral along the exact spherical G0 ray geometry.  0.25 km
     # is integration resolution only; it is not a forecast/cloud sampling grid.
     n=max(2, int(math.ceil((b-a)/0.25))+1)
-    ds=np.linspace(a,b,n)
-    zs=np.array([ray_altitude_km_at_surface_distance(
-        canvas.distance_km, canvas.cloud_base_altitude_km, float(d),
-        float(solar_altitude_deg), float(earth_radius_km)) for d in ds], dtype=float)
+    ds,zs=sample_sun_ray_segment(
+        canvas.distance_km, canvas.cloud_base_altitude_km, a, b,
+        float(solar_altitude_deg), sample_count=n, radius_km=float(earth_radius_km))
     inside=np.isfinite(zs) & (zs >= float(layer.z_base_km)-1e-9) & (zs <= float(layer.z_top_km)+1e-9)
     if not inside.any():
         return False, 0.0, 0.0
-    path=0.0
-    for j in range(len(ds)-1):
-        if inside[j] or inside[j+1]:
-            dd=float(ds[j+1]-ds[j]); dz=float(zs[j+1]-zs[j]) if np.isfinite(zs[j:j+2]).all() else 0.0
-            frac=1.0 if inside[j] and inside[j+1] else 0.5
-            path += frac*math.hypot(dd,dz)
+    path=sampled_segment_path_km(ds,zs,inside)
     thick=max(0.0,float(layer.z_top_km)-float(layer.z_base_km))
     if path <= 0.0 or thick <= 0.0 or vertical_cot is None or not _finite(vertical_cot):
         return bool(path>0.0), (path if path>0.0 else 0.0), None

@@ -15,7 +15,8 @@ import math
 import re
 import numpy as np
 import pandas as pd
-from .shared_geometry.ray import observer_los_height_agl_km
+from .shared_geometry.ray import (observer_los_height_agl_km, sample_sun_ray_segment,
+                                  sample_observer_los_segment, sampled_segment_path_km)
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
 from .geometry import ray_altitude_km_at_surface_distance
@@ -252,18 +253,15 @@ def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_sn
             a=max(0.0,float(c["support_start_km"])); b=min(float(dt),float(c["support_end_km"]))
             if b<=a+1e-9: continue
             lo=float(c["z_base_km"]); hi=float(c["z_top_km"])
-            xs=np.linspace(a,b,17); zz=np.array([observer_los_height_agl_km(dt,hs,float(x),earth_radius_km) for x in xs],dtype=float)
+            xs,zz=sample_observer_los_segment(dt,hs,a,b,sample_count=17,radius_km=earth_radius_km)
             inside=np.isfinite(zz)&(zz>=lo)&(zz<=hi)
             if not inside.any(): continue
             hits+=1
             if not bool(c["all_hydrometeor_fields_resolved"]): unresolved+=1
-            seg=0.0
-            for j in range(len(xs)-1):
-                if inside[j] or inside[j+1]:
-                    frac=1.0 if inside[j] and inside[j+1] else 0.5
-                    seg += frac*math.hypot((xs[j+1]-xs[j])*1000.0,(zz[j+1]-zz[j])*1000.0)
+            seg_km=sampled_segment_path_km(xs,zz,inside)
+            seg=seg_km*1000.0
             if seg>0:
-                path_km += seg/1000.0; tau += max(0.0,float(c["extinction_m1"]))*seg
+                path_km += seg_km; tau += max(0.0,float(c["extinction_m1"]))*seg
         if not cells:
             status="VIEW_PRECIPITATION_VOLUME_UNRESOLVED"; val=None
         elif unresolved:

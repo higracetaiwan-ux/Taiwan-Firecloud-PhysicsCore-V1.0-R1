@@ -34,3 +34,45 @@ def observer_los_height_agl_km(target_distance_km: float, target_height_agl_km: 
     dt=max(float(target_distance_km),1e-9); d=min(max(float(sample_distance_km),0.0),dt); r=float(radius_km)
     target_tangent=float(target_height_agl_km)-dt*dt/(2.0*r); line=(d/dt)*target_tangent; ground=-(d*d)/(2.0*r)
     return line-ground
+
+
+def observer_los_heights_vectorized_agl_km(target_distance_km: float, target_height_agl_km: float, sample_distances_km, radius_km: float = EARTH_RADIUS_KM) -> np.ndarray:
+    ds=np.asarray(sample_distances_km,dtype=float)
+    if ds.size==0: return np.empty(0,dtype=float)
+    dt=max(float(target_distance_km),1e-9); r=float(radius_km)
+    d=np.clip(ds,0.0,dt)
+    target_tangent=float(target_height_agl_km)-dt*dt/(2.0*r)
+    line=(d/dt)*target_tangent
+    ground=-(d*d)/(2.0*r)
+    return line-ground
+
+def sampled_segment_path_km(sample_distances_km, sample_heights_km, inside_mask) -> float:
+    ds=np.asarray(sample_distances_km,dtype=float); zz=np.asarray(sample_heights_km,dtype=float); inside=np.asarray(inside_mask,dtype=bool)
+    if ds.size<2 or zz.size!=ds.size or inside.size!=ds.size: return 0.0
+    # Small deterministic ray samplers dominate PhysicsCore hot paths (17/25 points).
+    # A tight Python loop is faster than allocating several temporary NumPy arrays
+    # at this scale while preserving exactly the legacy half-segment boundary rule.
+    if ds.size <= 64:
+        path=0.0
+        for j in range(ds.size-1):
+            if not (inside[j] or inside[j+1]): continue
+            if not (math.isfinite(float(ds[j])) and math.isfinite(float(ds[j+1])) and math.isfinite(float(zz[j])) and math.isfinite(float(zz[j+1]))): continue
+            frac=1.0 if inside[j] and inside[j+1] else 0.5
+            path += frac*math.hypot(float(ds[j+1]-ds[j]),float(zz[j+1]-zz[j]))
+        return float(path)
+    valid=np.isfinite(ds)&np.isfinite(zz)
+    segmask=(inside[:-1]|inside[1:])&valid[:-1]&valid[1:]
+    if not np.any(segmask): return 0.0
+    frac=np.where(inside[:-1]&inside[1:],1.0,0.5)
+    lengths=np.hypot(np.diff(ds),np.diff(zz))*frac
+    return float(np.sum(lengths[segmask]))
+
+def sample_sun_ray_segment(target_distance_km: float, target_altitude_km: float, start_km: float, end_km: float, solar_altitude_deg: float, *, sample_count: int=17, radius_km: float = EARTH_RADIUS_KM):
+    xs=np.linspace(float(start_km),float(end_km),max(2,int(sample_count)))
+    zz=ray_altitudes_vectorized_km(target_distance_km,target_altitude_km,xs,solar_altitude_deg,radius_km)
+    return xs,zz
+
+def sample_observer_los_segment(target_distance_km: float, target_height_agl_km: float, start_km: float, end_km: float, *, sample_count: int=17, radius_km: float = EARTH_RADIUS_KM):
+    xs=np.linspace(float(start_km),float(end_km),max(2,int(sample_count)))
+    zz=observer_los_heights_vectorized_agl_km(target_distance_km,target_height_agl_km,xs,radius_km)
+    return xs,zz

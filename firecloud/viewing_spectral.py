@@ -12,6 +12,7 @@ import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
 from .viewing import _los_height_agl_km, _projected_support_interval
+from .shared_geometry.ray import sample_observer_los_segment, sampled_segment_path_km
 from .gas_rt import prepare_gas_rt_context, _interp_fast_profile_state, _sigma_fast, BOLTZMANN
 
 
@@ -157,18 +158,14 @@ def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.Da
         if _sk not in support_cache: support_cache[_sk]=_projected_support_interval(b,transect)
         s0,s1,_,_=support_cache[_sk]
         if not (math.isfinite(float(s0)) and math.isfinite(float(s1))) or s1<=s0: continue
-        xs=np.linspace(max(0.0,s0),min(dt,s1),25)
+        xs,zz=sample_observer_los_segment(dt,ht,max(0.0,s0),min(dt,s1),sample_count=25,radius_km=earth_radius_km)
         if len(xs)<2: continue
-        zz=np.array([_los_height_agl_km(dt,ht,float(x),earth_radius_km) for x in xs],dtype=float); inside=np.isfinite(zz)&(zz>=bb)&(zz<=bt)
+        inside=np.isfinite(zz)&(zz>=bb)&(zz<=bt)
         if not inside.any(): continue
         blockers+=1; bid=str(b.get("layer_id")); cotrec=cotmap.get(bid)
         if cotrec is None or cf is None:
             unresolved+=1; continue
-        cot,src=cotrec; seg=0.0
-        for j in range(len(xs)-1):
-            if inside[j] or inside[j+1]:
-                frac=1.0 if inside[j] and inside[j+1] else 0.5
-                seg += frac*math.hypot((xs[j+1]-xs[j])*1000.0,(zz[j+1]-zz[j])*1000.0)
+        cot,src=cotrec; seg=sampled_segment_path_km(xs,zz,inside)*1000.0
         thick=(bt-bb)*1000.0
         if seg<=0 or thick<=0: continue
         slant_tau=max(0.0,cot)*seg/thick; conditional_tau+=slant_tau; cf=min(1.0,max(0.0,cf)); expected_t *= (1.0-cf)+cf*math.exp(-slant_tau); sources.append(src)
