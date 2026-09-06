@@ -8,7 +8,8 @@ def test_builder_reuses_full_spectrum_per_tp_state():
     assert 'full_nu_min=1e7/requested_max' in text
     assert 'full_nu_max=1e7/requested_min' in text
     assert 'total_states=2*len(temps)*len(pressures)' in text
-    assert 'VOIGT_STATE {state_index}/{total_states}' in text
+    assert 'FC_PROGRESS state={state_index}/{total_states}' in text
+    assert 'VOIGT_STATE_CACHE_HIT {state_index}/{total_states}' in text
     # Only one HAPI Voigt call remains in the source loop, not one per band.
     assert text.count('absorptionCoefficient_Voigt(') == 1
 

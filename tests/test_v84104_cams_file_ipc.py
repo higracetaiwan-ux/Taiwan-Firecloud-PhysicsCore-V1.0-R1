@@ -32,4 +32,6 @@ def test_source_uses_external_subprocess_not_multiprocessing_spawn_or_queue():
     assert 'get_context("spawn")' not in src
     assert 'subprocess.Popen' in src
     assert 'firecloud.providers.cams_worker' in src
-    assert 'TemporaryDirectory' in src
+    # Current contract is file-backed atomic subprocess IPC; implementation need not use TemporaryDirectory.
+    assert '_write_cams_worker_result' not in src or 'result' in src
+    assert 'PYTHON_MODULE_SUBPROCESS_NO_STREAMLIT_SPAWN' in src

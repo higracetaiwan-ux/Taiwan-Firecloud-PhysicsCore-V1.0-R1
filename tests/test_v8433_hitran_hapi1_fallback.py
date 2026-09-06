@@ -6,7 +6,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_version_and_primary_hapi1_contract():
     init = (ROOT / "firecloud" / "__init__.py").read_text()
-    assert '8.4.11.1-PhysicsCore' in init
+    assert 'PROGRAM_NAME = "Taiwan Firecloud PhysicsCore V1.0"' in init
+    assert '__version__ = "1.0.0-R5.' in init
     text = (ROOT / "bootstrap_hitran_local_db.py").read_text()
     assert "def _download_with_hapi1" in text
     assert "hapi.fetch_by_ids(table, ids, NUMIN, NUMAX)" in text
@@ -30,4 +31,4 @@ def test_official_isotopologue_ids_are_pinned():
 
 def test_lut_manifest_version_updated():
     text = (ROOT / "build_hitran_band_coefficients.py").read_text()
-    assert '"version":"V8.4.5.2"' in text
+    assert '"version":"PhysicsCore-V1.0-R4.8.2"' in text

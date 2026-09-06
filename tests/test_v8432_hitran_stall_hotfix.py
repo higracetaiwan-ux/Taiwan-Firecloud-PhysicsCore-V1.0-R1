@@ -23,4 +23,4 @@ def test_streamlit_hard_timeout_kills_process_group():
 
 def test_lut_manifest_version_matches_release():
     text = (ROOT / "build_hitran_band_coefficients.py").read_text(encoding="utf-8")
-    assert '"version":"V8.4.5.2"' in text
+    assert '"version":"PhysicsCore-V1.0-R4.8.2"' in text

@@ -54,4 +54,6 @@ def test_upstream_native_cloud_reduces_transmission():
     far=out[(out.distance_km==40.0)&(out.voxel_center_km==5.25)].iloc[0]
     assert near["slant_cloud_optical_depth_estimate"] > 0
     assert near["remaining_native_cloud_transmission_estimate"] < 1.0
-    assert far["remaining_native_cloud_transmission_estimate"] == 1.0
+    # No resolved upstream optical path is not equivalent to clear/transparent.
+    # PhysicsCore contract: Missing != Clear, so unresolved far-path transmission stays NaN.
+    assert np.isnan(far["remaining_native_cloud_transmission_estimate"])

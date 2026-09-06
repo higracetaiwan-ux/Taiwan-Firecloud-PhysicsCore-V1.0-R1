@@ -7,4 +7,4 @@ def test_v8441_offline_only_ui_contract():
     assert "我了解此功能可能 404，仍要啟用 Legacy remote bootstrap" in app
     assert 'disabled=not _hybrid_sources_ready' in app
     assert "這裡的 CSV / manifest 是 Taiwan Firecloud 建立後的衍生 Runtime 成品" in app
-    assert "Taiwan-Firecloud-V8.4.11.1_" in app
+    assert "Taiwan-Firecloud-PhysicsCore-V1.0-R5." in app
