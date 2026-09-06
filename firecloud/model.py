@@ -11,6 +11,9 @@ import threading
 import time
 from time import perf_counter
 import numpy as np
+from .shared_geometry.ray import ray_altitudes_vectorized_km
+# Backward-compatible alias; implementation lives in Shared Geometry Core.
+_ray_altitudes_vectorized_km = ray_altitudes_vectorized_km
 import pandas as pd
 
 from .config import (
@@ -718,37 +721,6 @@ def build_pressure_profile_cloud_volume(
     return vox, pd.DataFrame(columns)
 
 
-def _ray_altitudes_vectorized_km(target_distance_km: float, target_altitude_km: float, sample_distances_km: np.ndarray, solar_altitude_deg: float, radius_km: float) -> np.ndarray:
-    """Vectorized equivalent of ray_altitude_km_at_surface_distance for one target.
-
-    Returns NaN where the forward solar ray does not cross the requested radial
-    line. V8.4.0.7 performance helper; geometry is algebraically identical to
-    firecloud.geometry.ray_altitude_km_at_surface_distance.
-    """
-    ds = np.asarray(sample_distances_km, dtype=float)
-    if ds.size == 0:
-        return np.empty(0, dtype=float)
-    alpha = math.radians(float(solar_altitude_deg))
-    dt = float(target_distance_km) / float(radius_km)
-    delta_s = ds / float(radius_km)
-    rho_t = float(radius_km) + float(target_altitude_km)
-    px = rho_t * math.cos(dt)
-    py = rho_t * math.sin(dt)
-    sx = math.sin(alpha); sy = math.cos(alpha)
-    rx = np.cos(delta_s); ry = np.sin(delta_s)
-    det = sx * (-ry) - sy * (-rx)
-    good = np.abs(det) >= 1.0e-12
-    t = np.full(ds.shape, np.nan, dtype=float)
-    rho = np.full(ds.shape, np.nan, dtype=float)
-    b1, b2 = -px, -py
-    t[good] = (b1 * (-ry[good]) - b2 * (-rx[good])) / det[good]
-    rho[good] = (sx * b2 - sy * b1) / det[good]
-    good &= (t >= -1.0e-8) & (rho > 0.0)
-    out = np.full(ds.shape, np.nan, dtype=float)
-    out[good] = rho[good] - float(radius_km)
-    return out
-
-
 
 def prepare_shared_ray_geometry_plan(voxels: pd.DataFrame, solar_altitude_deg: float, cfg: ModelConfig) -> dict:
     """Prepare angle-specific Sun→cloud ray geometry for reuse across optical branches.
@@ -785,7 +757,7 @@ def prepare_shared_ray_geometry_plan(voxels: pd.DataFrame, solar_altitude_deg: f
                 dx = np.empty(0, dtype=float); valid_dx = np.empty(0, dtype=bool); mids = np.empty(0, dtype=float)
             for z_t in heights:
                 if ds.size:
-                    ray_h = _ray_altitudes_vectorized_km(float(d_t), float(z_t), mids, float(solar_altitude_deg), radius)
+                    ray_h = ray_altitudes_vectorized_km(float(d_t), float(z_t), mids, float(solar_altitude_deg), radius)
                     valid = valid_dx & np.isfinite(ray_h) & (ray_h >= 0.0)
                     idx_hi = np.searchsorted(heights, ray_h, side="left")
                     idx_hi = np.clip(idx_hi, 0, len(heights)-1)
@@ -864,7 +836,7 @@ def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: 
                 if ds.size:
                     prev = np.concatenate(([d_t], ds[:-1])); dx = ds - prev
                     mids = ds - dx / 2.0
-                    ray_h = _ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
+                    ray_h = ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
                     valid = (dx > 0.0) & np.isfinite(ray_h) & (ray_h >= 0.0)
                     idx_hi = np.searchsorted(heights, ray_h, side="left"); idx_hi = np.clip(idx_hi, 0, len(heights)-1)
                     idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
@@ -973,7 +945,7 @@ def apply_native_microphysical_optical_blocking(native_voxels: pd.DataFrame, sol
                 if ds.size:
                     prev = np.concatenate(([d_t], ds[:-1])); dx = ds - prev
                     mids = ds - dx / 2.0
-                    ray_h = _ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
+                    ray_h = ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
                     valid = (dx > 0.0) & np.isfinite(ray_h) & (ray_h >= 0.0)
                     idx_hi = np.searchsorted(heights, ray_h, side="left"); idx_hi = np.clip(idx_hi, 0, len(heights)-1)
                     idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)

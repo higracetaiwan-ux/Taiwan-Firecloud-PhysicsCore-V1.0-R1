@@ -1,7 +1,7 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.7
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.8
 
 
-R5.7.7 operational focus: Physics shared-state performance optimization. Angle-specific Sun→cloud ray geometry is prepared once and reused by proxy-cloud and native-microphysics optical blocking branches when they share the same route/vertical lattice. Provider decoded caches and API efficiency auditing from R5.7.5/R5.7.6 remain enabled. No scientific thresholds or physical equations changed.
+R5.7.8 operational focus: Firecloud Shared Geometry Core V1.0. Earth/solar/ray primitives now have a single implementation source under `firecloud/shared_geometry/`; legacy `firecloud.geometry` remains a compatibility facade. Sun→Cloud vectorized ray geometry and Cloud→Observer LOS geometry used by Viewing and precipitation are unified. R5.7.7 shared ray plans and provider decoded caches remain enabled. No scientific thresholds, optical evidence rules, or Formation/Viewing separation changed.
 
 R5.7 continues from the verified R5.6.1 baseline. It keeps Formation, Viewing and Photography Decision physically separate while adding forecast-native 3-D hydrometeor optics and an independent Cloud→Observer six-band extinction branch.
 

@@ -15,6 +15,7 @@ import math
 import re
 import numpy as np
 import pandas as pd
+from .shared_geometry.ray import observer_los_height_agl_km
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
 from .geometry import ray_altitude_km_at_surface_distance
@@ -231,14 +232,6 @@ def build_precipitation_path_evidence(canvases, route_snapshot: pd.DataFrame | N
     return pd.DataFrame(rows)
 
 
-def _observer_los_height_km(target_distance_km: float, target_height_km: float, distance_km: float, earth_radius_km: float=6371.0) -> float:
-    dt=max(1e-9,float(target_distance_km)); d=min(max(0.0,float(distance_km)),dt); r=float(earth_radius_km)
-    target_tangent=float(target_height_km)-dt*dt/(2.0*r)
-    line_tangent=(d/dt)*target_tangent
-    ground_tangent=-(d*d)/(2.0*r)
-    return line_tangent-ground_tangent
-
-
 def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_snapshot: pd.DataFrame | None, *, earth_radius_km: float=6371.0) -> pd.DataFrame:
     """Cloud->Observer native-hydrometeor extinction, independent of Formation."""
     cols=["time","solar_altitude_deg","canvas_id","view_precipitation_status","view_precipitation_path_km","view_precipitation_intersection_count",*[f"view_tau_precip_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM],"note"]
@@ -259,7 +252,7 @@ def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_sn
             a=max(0.0,float(c["support_start_km"])); b=min(float(dt),float(c["support_end_km"]))
             if b<=a+1e-9: continue
             lo=float(c["z_base_km"]); hi=float(c["z_top_km"])
-            xs=np.linspace(a,b,17); zz=np.array([_observer_los_height_km(dt,hs,float(x),earth_radius_km) for x in xs],dtype=float)
+            xs=np.linspace(a,b,17); zz=np.array([observer_los_height_agl_km(dt,hs,float(x),earth_radius_km) for x in xs],dtype=float)
             inside=np.isfinite(zz)&(zz>=lo)&(zz<=hi)
             if not inside.any(): continue
             hits+=1
