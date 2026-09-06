@@ -1,7 +1,7 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.9
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.10
 
 
-R5.7.9 operational focus: Firecloud Shared Geometry Core V1.1. Optical-path cloud intersections, Formation precipitation, Viewing geometry, and Viewing spectral cloud obstruction now share one segment-sampling/slant-path primitive under `firecloud/shared_geometry/ray.py`. Sun→Cloud ray sampling is vectorized; short 17/25-point slant integrations use an allocation-light path accumulator; long arrays vectorize automatically. R5.7.8 single-source Earth/solar/ray primitives, R5.7.7 shared ray plans, and provider decoded caches remain enabled. No scientific thresholds, optical evidence rules, or Formation/Viewing separation changed.
+R5.7.10 operational focus: Firecloud Shared Geometry Core V1.2. Angle-specific Sun→voxel/layer mapping is now an authoritative `VoxelIntersectionPlan` in `firecloud/shared_geometry/intersections.py`, with exact-lattice compatibility guards and geometry-only workload counters (`target_plan_count`, `segment_count`, `valid_segment_count`) exported through performance diagnostics. `model.py` keeps a compatibility wrapper only. R5.7.9 shared segment samplers, R5.7.7 shared ray-plan reuse, and provider decoded caches remain enabled. No scientific thresholds, optical evidence rules, or Formation/Viewing separation changed.
 
 R5.7 continues from the verified R5.6.1 baseline. It keeps Formation, Viewing and Photography Decision physically separate while adding forecast-native 3-D hydrometeor optics and an independent Cloud→Observer six-band extinction branch.
 

@@ -11,6 +11,7 @@ import threading
 import time
 from time import perf_counter
 import numpy as np
+from .shared_geometry.intersections import build_voxel_intersection_plan, plan_direction_if_compatible
 from .shared_geometry.ray import ray_altitudes_vectorized_km
 # Backward-compatible alias; implementation lives in Shared Geometry Core.
 _ray_altitudes_vectorized_km = ray_altitudes_vectorized_km
@@ -723,71 +724,20 @@ def build_pressure_profile_cloud_volume(
 
 
 def prepare_shared_ray_geometry_plan(voxels: pd.DataFrame, solar_altitude_deg: float, cfg: ModelConfig) -> dict:
-    """Prepare angle-specific Sun→cloud ray geometry for reuse across optical branches.
+    """Compatibility wrapper for Shared Geometry Core V1.2.
 
-    The plan contains geometry only: route distances, vertical lattice, upstream
-    segment lengths, ray heights and nearest-voxel indices.  It intentionally
-    contains no cloud occupancy, condensate, extinction or transmission values,
-    so proxy-cloud and native-microphysics optical solvers can share it without
-    coupling their evidence or changing their physical definitions.
+    The authoritative voxel/layer mapping now lives in
+    ``firecloud.shared_geometry.intersections``.  This wrapper preserves the
+    R5.7.7 public/internal contract for existing callers and tests.
     """
-    if voxels is None or voxels.empty:
-        return {}
-    radius = float(cfg.earth_radius_km)
-    cos_sun = max(0.05, math.cos(math.radians(abs(float(solar_altitude_deg)))))
-    plan = {"solar_altitude_deg": float(solar_altitude_deg), "directions": {}}
-    for off, gdir0 in voxels.groupby("direction_offset_deg", sort=False):
-        gdir = gdir0.sort_values(["distance_km", "voxel_center_km"])
-        distances = np.array(sorted(pd.to_numeric(gdir["distance_km"], errors="coerce").dropna().unique()), dtype=float)
-        heights = np.array(sorted(pd.to_numeric(gdir["voxel_center_km"], errors="coerce").dropna().unique()), dtype=float)
-        if distances.size == 0 or heights.size == 0:
-            continue
-        di = {float(v): i for i, v in enumerate(distances)}
-        targets = {}
-        # Geometry is identical for every optical field on the same lattice.
-        for d_t in distances:
-            i0 = di[float(d_t)]
-            ds = distances[i0 + 1:]
-            if ds.size:
-                prev = np.concatenate(([float(d_t)], ds[:-1]))
-                dx = ds - prev
-                valid_dx = dx > 0.0
-                mids = ds - dx / 2.0
-            else:
-                dx = np.empty(0, dtype=float); valid_dx = np.empty(0, dtype=bool); mids = np.empty(0, dtype=float)
-            for z_t in heights:
-                if ds.size:
-                    ray_h = ray_altitudes_vectorized_km(float(d_t), float(z_t), mids, float(solar_altitude_deg), radius)
-                    valid = valid_dx & np.isfinite(ray_h) & (ray_h >= 0.0)
-                    idx_hi = np.searchsorted(heights, ray_h, side="left")
-                    idx_hi = np.clip(idx_hi, 0, len(heights)-1)
-                    idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
-                    choose_hi = np.abs(heights[idx_hi]-ray_h) < np.abs(ray_h-heights[idx_lo])
-                    k = np.where(choose_hi, idx_hi, idx_lo)
-                    rows = np.arange(i0+1, len(distances))
-                    slant_km = np.where(valid, dx / cos_sun, 0.0)
-                else:
-                    ray_h = np.empty(0, dtype=float); valid = np.empty(0, dtype=bool)
-                    k = np.empty(0, dtype=int); rows = np.empty(0, dtype=int); slant_km = np.empty(0, dtype=float)
-                targets[(float(d_t), float(z_t))] = {
-                    "i0": int(i0), "ds": ds, "dx": dx, "valid": valid,
-                    "nearest_height_index": k, "upstream_row_index": rows,
-                    "slant_km": slant_km,
-                }
-        plan["directions"][float(off)] = {"distances": distances, "heights": heights, "di": di, "targets": targets}
-    return plan
+    return build_voxel_intersection_plan(
+        voxels, float(solar_altitude_deg), radius_km=float(cfg.earth_radius_km)
+    ).as_legacy_dict()
 
 
 def _shared_ray_plan_direction(shared_ray_geometry_plan: dict | None, off: float, distances: np.ndarray, heights: np.ndarray):
-    if not shared_ray_geometry_plan:
-        return None
-    d = shared_ray_geometry_plan.get("directions", {}).get(float(off))
-    if not d:
-        return None
-    # Fail safe: never reuse a plan across a different lattice.
-    if not np.array_equal(d.get("distances"), distances) or not np.array_equal(d.get("heights"), heights):
-        return None
-    return d
+    return plan_direction_if_compatible(shared_ray_geometry_plan, float(off), distances, heights)
+
 
 def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: float, cfg: ModelConfig, *, shared_ray_geometry_plan: dict | None = None) -> pd.DataFrame:
     """Vectorized 3-D ray tracing through upstream vertical cloud columns.
@@ -1647,7 +1597,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _opt_proxy_t0 = perf_counter()
         _ray_plan_t0 = perf_counter()
         shared_ray_geometry_plan = prepare_shared_ray_geometry_plan(profile_voxels, angle, cfg)
-        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "SHARED_RAY_GEOMETRY_PLAN", "elapsed_seconds": perf_counter()-_ray_plan_t0, "cache_status": "BUILT_ONCE_PER_ANGLE"})
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "SHARED_RAY_GEOMETRY_PLAN", "elapsed_seconds": perf_counter()-_ray_plan_t0, "cache_status": "BUILT_ONCE_PER_ANGLE", "geometry_plan_type": shared_ray_geometry_plan.get("plan_type", "LEGACY"), "target_plan_count": int(shared_ray_geometry_plan.get("target_plan_count", 0)), "segment_count": int(shared_ray_geometry_plan.get("segment_count", 0)), "valid_segment_count": int(shared_ray_geometry_plan.get("valid_segment_count", 0))})
         optical_voxels = apply_3d_optical_blocking(profile_voxels, angle, cfg, shared_ray_geometry_plan=shared_ray_geometry_plan)
         optical_columns = summarize_vertical_blocking(optical_voxels)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "CLOUD_PROXY_RAY_BLOCKING", "elapsed_seconds": perf_counter()-_opt_proxy_t0, "cache_status": "COMPUTED"})

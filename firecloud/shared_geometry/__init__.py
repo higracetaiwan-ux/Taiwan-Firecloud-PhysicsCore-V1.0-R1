@@ -1,4 +1,4 @@
-"""Firecloud Shared Geometry Core V1.0.
+"""Firecloud Shared Geometry Core V1.2.
 
 Single-source geometry primitives shared by Formation, Viewing, cloud blocking,
 precipitation and spectral RT.  This package contains geometry only; it must not
@@ -12,3 +12,5 @@ from .solar import (SOLAR_ANGULAR_DIAMETER_DEG, local_solar_center_clearance_abo
                     circular_disk_visible_fraction, direct_solar_fraction_g0,
                     solar_disk_transition_altitude_km, finite_solar_disk_penumbra_heights_km)
 from .context import GeometryIdentity, SharedGeometryContext
+
+from .intersections import (LatticeSignature, VoxelIntersectionPlan, build_voxel_intersection_plan, plan_direction_if_compatible)
