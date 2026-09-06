@@ -1,4 +1,4 @@
-"""PhysicsCore V1.0-R5.6.1 Photography Decision Layer.
+"""PhysicsCore V1.0-R5.7 Photography Decision Layer.
 
 This is an outer operational interpretation layer. It never rewrites Formation
 or Viewing physics. Its single purpose is to answer whether the firecloud
@@ -9,8 +9,9 @@ import numpy as np
 import pandas as pd
 
 
-def build_photography_decision(formation: pd.DataFrame, viewing_summary: pd.DataFrame) -> pd.DataFrame:
+def build_photography_decision(formation: pd.DataFrame, viewing_summary: pd.DataFrame, viewing_spectral_summary: pd.DataFrame | None = None) -> pd.DataFrame:
     cols = ["time", "solar_altitude_deg", "formation_state", "viewing_state",
+            "viewing_spectral_state", "mean_view_transmission_650nm", "photography_spectral_modifier",
             "photography_outcome", "photography_opportunity", "reason", "note"]
     if viewing_summary is None or viewing_summary.empty:
         return pd.DataFrame(columns=cols)
@@ -21,6 +22,13 @@ def build_photography_decision(formation: pd.DataFrame, viewing_summary: pd.Data
         merged = v.merge(f[[*keys, "formation_state"]].drop_duplicates(keys), on=keys, how="left")
     else:
         merged = v.copy(); merged["formation_state"] = np.nan
+    if viewing_spectral_summary is not None and not viewing_spectral_summary.empty:
+        sk=[k for k in ["time","solar_altitude_deg"] if k in merged.columns and k in viewing_spectral_summary.columns]
+        if sk:
+            keep=sk+[c for c in ["viewing_spectral_state","mean_view_transmission_650nm"] if c in viewing_spectral_summary.columns]
+            merged=merged.merge(viewing_spectral_summary[keep].drop_duplicates(sk),on=sk,how="left")
+    if "viewing_spectral_state" not in merged: merged["viewing_spectral_state"]="VIEW_SPECTRAL_UNRESOLVED"
+    if "mean_view_transmission_650nm" not in merged: merged["mean_view_transmission_650nm"]=np.nan
     rows=[]
     for _, r in merged.iterrows():
         fs = str(r.get("formation_state") or "FORMATION_UNKNOWN")
@@ -58,9 +66,13 @@ def build_photography_decision(formation: pd.DataFrame, viewing_summary: pd.Data
             outcome = "PHOTOGRAPHY_OUTCOME_UNKNOWN"
             opp = "UNKNOWN"
             reason = "VIEWING_UNRESOLVED"
+        ss=str(r.get("viewing_spectral_state") or "VIEW_SPECTRAL_UNRESOLVED")
+        t650=r.get("mean_view_transmission_650nm")
         rows.append({"time": r.get("time"), "solar_altitude_deg": r.get("solar_altitude_deg"),
                      "formation_state": fs, "viewing_state": vs,
+                     "viewing_spectral_state":ss,"mean_view_transmission_650nm":t650,
+                     "photography_spectral_modifier":"DIAGNOSTIC_ONLY_UNCALIBRATED",
                      "photography_outcome": outcome, "photography_opportunity": opp,
                      "reason": reason,
-                     "note": "OUTER_DECISION_LAYER_ONLY;FORMATION_AND_VIEWING_REMAIN_INDEPENDENT;NO_SINGLE_PHYSICS_SCORE"})
+                     "note": "OUTER_DECISION_LAYER_ONLY;FORMATION_AND_VIEWING_REMAIN_INDEPENDENT;VIEWING_SPECTRAL_DIAGNOSTIC_DOES_NOT_REWRITE_FORMATION;NO_SINGLE_PHYSICS_SCORE"})
     return pd.DataFrame(rows, columns=cols)

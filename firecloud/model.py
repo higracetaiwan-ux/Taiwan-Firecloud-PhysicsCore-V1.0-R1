@@ -51,7 +51,7 @@ from .target_canvas_optics import build_target_canvas_optical_evidence, summariz
 from .secondary_target_optics import validate_secondary_forecast_optical_evidence, match_secondary_to_canvases
 from .formation_prerequisites import build_formation_prerequisite_table
 from .optical_validation import build_cloud_optical_validation_table
-from .precipitation import build_precipitation_path_evidence
+from .precipitation import build_precipitation_path_evidence, build_viewing_precipitation_evidence
 from .spectroscopy_readiness import build_six_band_spectroscopy_readiness
 from .formation_gates import build_formation_gate_table
 from .penumbra_red import build_earth_shadow_penumbra_matrix, build_canvas_penumbra_red_illumination
@@ -59,6 +59,7 @@ from .illuminated_canvas_retreat import build_illuminated_canvas_retreat, build_
 from .red_window import build_canvas_spectral_evolution, build_canvas_peak_windows
 from .canvas_optical_suitability import build_canvas_optical_suitability, summarize_canvas_optical_suitability
 from .viewing import build_viewing_path_geometry, summarize_viewing_path
+from .viewing_spectral import build_viewing_spectral_extinction, summarize_viewing_spectral_extinction
 from .photography_decision import build_photography_decision
 
 
@@ -1230,6 +1231,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_canvas_optical_suitability_summary_frames = []
     v1_secondary_target_optics_frames = []
     v1_formation_gate_frames = []
+    viewing_route_snapshot_frames = []
     ecmwf_ifs_request_audit_rows = []
     dwd_icon_request_audit_rows = []
     secondary_provider_audit_rows = []
@@ -1485,6 +1487,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         label = f"太陽高度角 {float(angle):.1f}°（{candidate_index+1}/{len(candidates)}）"
         _angle_progress(candidate_index, 0.00, f"{label}：載入已內插路徑預報…")
         snap = route_snapshot_cache.get(pd.Timestamp(t.replace(tzinfo=None)), pd.DataFrame()).copy()
+        if snap is not None and not snap.empty:
+            _vsnap=snap.copy(); _vsnap.insert(0,"time",t); _vsnap.insert(1,"solar_altitude_deg",float(angle)); viewing_route_snapshot_frames.append(_vsnap)
         _angle_progress(candidate_index, 0.04, f"{label}：合併 GFS 原生雲微物理…")
         native_meta = {"native_status": "UNAVAILABLE", **native_provider_status()}
         cache_key = None
@@ -1650,7 +1654,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         # the dependent optical/illumination outputs; they do not erase the
         # already-known CloudScene or DirectSolarFraction.
         _angle_progress(candidate_index, 0.955, f"{label}：建立 V1.0 六波段 OpticalPathResult…")
-        _precip_path_evidence = build_precipitation_path_evidence(_v1.get("canvas_objects", ()), snap, valid_time=t)
+        _precip_path_evidence = build_precipitation_path_evidence(_v1.get("canvas_objects", ()), snap, valid_time=t, solar_altitude_deg=float(angle), earth_radius_km=cfg.earth_radius_km)
         _v1["precipitation_path_evidence"] = _precip_path_evidence
         if _precip_path_evidence is not None and not _precip_path_evidence.empty:
             _pp=_precip_path_evidence.copy(); _pp.insert(1,"solar_altitude_deg",float(angle)); v1_precipitation_path_frames.append(_pp)
@@ -1891,11 +1895,26 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_optical_bottlenecks = pd.concat(v1_optical_bottleneck_frames, ignore_index=True) if v1_optical_bottleneck_frames else pd.DataFrame()
     v1_canvas_radiance = pd.concat(v1_canvas_radiance_frames, ignore_index=True) if v1_canvas_radiance_frames else pd.DataFrame()
     v1_formation = pd.concat(v1_formation_frames, ignore_index=True) if v1_formation_frames else pd.DataFrame()
-    # PhysicsCore V1.0-R5.6.1: projected-volume Cloud→Observer Viewing branch and outer Photography Decision.
-    # Neither table is allowed to rewrite Formation, F_sun, or Sun→CloudBase spectral RT.
+    # PhysicsCore V1.0-R5.7: projected-volume Cloud→Observer Viewing plus an
+    # independent six-band viewing extinction branch. No Sun→CloudBase optical
+    # quantity is reused here.
     v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
     v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry)
-    v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary)
+    _view_route_snapshots = pd.concat(viewing_route_snapshot_frames, ignore_index=True) if viewing_route_snapshot_frames else pd.DataFrame()
+    _view_precip_frames=[]
+    if not v1_viewing_path_geometry.empty and not _view_route_snapshots.empty:
+        for (_vt,_va),_vg in v1_viewing_path_geometry.groupby(["time","solar_altitude_deg"],dropna=False,sort=False):
+            _rs=_view_route_snapshots[(_view_route_snapshots["time"].astype(str)==str(_vt)) & (pd.to_numeric(_view_route_snapshots["solar_altitude_deg"],errors="coerce").sub(float(_va)).abs()<1e-8)]
+            _vp=build_viewing_precipitation_evidence(_vg,_rs,earth_radius_km=cfg.earth_radius_km)
+            if not _vp.empty: _view_precip_frames.append(_vp)
+    v1_viewing_precipitation_evidence = pd.concat(_view_precip_frames,ignore_index=True) if _view_precip_frames else pd.DataFrame()
+    v1_viewing_spectral_extinction = build_viewing_spectral_extinction(
+        v1_viewing_path_geometry, v1_cloud_layers, v1_target_canvas_optical_evidence,
+        aerosol_spectral_route_snapshots, gas_profile_route_snapshots,
+        v1_viewing_precipitation_evidence, earth_radius_km=cfg.earth_radius_km,
+    )
+    v1_viewing_spectral_summary = summarize_viewing_spectral_extinction(v1_viewing_spectral_extinction)
+    v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary, v1_viewing_spectral_summary)
     v1_spectral_colour = pd.concat(v1_spectral_colour_frames, ignore_index=True) if v1_spectral_colour_frames else pd.DataFrame()
     v1_precipitation_path_evidence = pd.concat(v1_precipitation_path_frames, ignore_index=True) if v1_precipitation_path_frames else pd.DataFrame()
     v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame()
@@ -2119,6 +2138,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_formation": v1_formation,
         "v1_viewing_path_geometry": v1_viewing_path_geometry,
         "v1_viewing_summary": v1_viewing_summary,
+        "v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence,
+        "v1_viewing_spectral_extinction_550_750nm": v1_viewing_spectral_extinction,
+        "v1_viewing_spectral_summary": v1_viewing_spectral_summary,
         "v1_photography_decision": v1_photography_decision,
         "v1_spectral_colour": v1_spectral_colour,
         "v1_cloud_optical_validation": v1_cloud_optical_validation,

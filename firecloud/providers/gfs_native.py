@@ -15,9 +15,10 @@ import requests
 
 NATIVE_PROVIDER_NAME = "NOAA_GFS_0P25_NOMADS_GRIB2_CLWMR_ICMR"
 NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
-GFS_PROVIDER_SCHEMA_VERSION = "R4.5_NATIVE_CONDENSATE_V2"
+GFS_PROVIDER_SCHEMA_VERSION = "R5.7_NATIVE_CLOUD_AND_HYDROMETEOR_V3"
 GFS_NATIVE_SHORTNAMES = {
     "CLWMR":"cloud_liquid_water_kgkg", "ICMR":"cloud_ice_water_kgkg",
+    "RWMR":"rain_water_kgkg", "SNMR":"snow_water_kgkg", "GRLE":"graupel_kgkg",
     "TCDC":"cloud_fraction", "TMP":"temperature_k",
     "RH":"relative_humidity_pct", "HGT":"geopotential_height_m",
 }
@@ -223,7 +224,7 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
 
 def _shortname(raw: str) -> str:
     r=raw.lower()
-    return {"clwmr":"CLWMR","icmr":"ICMR","tcc":"TCDC","tcdc":"TCDC","t":"TMP","tmp":"TMP","r":"RH","rh":"RH","gh":"HGT","hgt":"HGT"}.get(r, raw.upper())
+    return {"clwmr":"CLWMR","icmr":"ICMR","rwmr":"RWMR","snmr":"SNMR","grle":"GRLE","tcc":"TCDC","tcdc":"TCDC","t":"TMP","tmp":"TMP","r":"RH","rh":"RH","gh":"HGT","hgt":"HGT"}.get(r, raw.upper())
 
 
 def decode_grib_to_route(grib_path: str|Path, points: list[dict], pressure_levels_hpa=DEFAULT_PRESSURE_LEVELS_HPA) -> pd.DataFrame:
@@ -325,6 +326,17 @@ def merge_native_into_snapshot(snapshot: pd.DataFrame, native: pd.DataFrame) -> 
             legacy_q=f'cloud_{phase_name}_water_{p}hPa'
             if canonical_q not in out.columns and legacy_q in out.columns:
                 out[canonical_q]=pd.to_numeric(out[legacy_q],errors='coerce')
+        # R5.7 native precipitation-volume contract. These remain true model
+        # hydrometeor mixing ratios; surface rain rate is never converted to them.
+        for native_base, canonical_base in (
+            ('rain_water_kgkg','rain_water_kgkg'),
+            ('snow_water_kgkg','snow_water_kgkg'),
+            ('graupel_kgkg','graupel_kgkg'),
+        ):
+            native_q=f'{native_base}_{p}hPa'
+            canonical_q=f'{canonical_base}_{p}hPa'
+            if native_q in out.columns and canonical_q not in out.columns:
+                out[canonical_q]=pd.to_numeric(out[native_q],errors='coerce')
         native_cc=f'cloud_fraction_{p}hPa'
         canonical_cc=f'cloud_cover_{p}hPa'
         if native_cc in out.columns:

@@ -1,14 +1,17 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.6.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7
 
-R5.6.1 is the corrected Viewing / Photography release on top of the R5.5.2 optical-closure baseline.
+R5.7 continues from the verified R5.6.1 baseline. It keeps Formation, Viewing and Photography Decision physically separate while adding forecast-native 3-D hydrometeor optics and an independent Cloud→Observer six-band extinction branch.
 
-Core separation remains frozen:
+## R5.7 additions
 
-- **Formation:** Sun → CloudBase illumination physics.
-- **Viewing:** Cloud → Observer visibility/obstruction physics.
-- **Photography Decision:** outer operational interpretation of whether the event is actually photographable from the selected observer.
-- **Penumbra Geometry** and **Spectral RT** remain independent physical layers.
+- GFS native RWMR / SNMR / GRLE hydrometeor fields are requested and preserved as 3-D forecast evidence. Surface rain rate is never converted to optical depth.
+- Sun→CloudBase precipitation optical depth is integrated from native hydrometeor volume with an explicit large-particle visible-band Tier-1 optical model.
+- Cloud→Observer precipitation extinction is integrated independently along the viewing ray.
+- Viewing geometry uses angular-footprint projected cloud volumes and continuous cloud-fraction interpolation only across vertically continuous adjacent forecast nodes.
+- Cloud→Observer six-band gas / aerosol / cloud / precipitation diagnostics are exported separately from Formation RT. No Sun→CloudBase transmission is reused.
+- Photography Decision receives Viewing spectral readiness as a diagnostic only; no uncalibrated spectral threshold rewrites Formation or the geometry decision.
+- Full Six-Band Formation closure now has a forecast-native precipitation path source when native hydrometeor volume is available. Remaining Missing components stay Missing.
 
-R5.6.1 replaces the R5.6 point-node Viewing test with projected adjacent-node cloud-volume support, excludes foreground low clouds from the firecloud-target summary while retaining them as blockers, and closes the DWD ICON vertical-geometry gap using native P/T with a route-specific forecast surface anchor instead of unavailable per-level FI files.
+Core invariants remain frozen: Formation != Viewing != Glow; Penumbra Geometry != Spectral RT; Missing != Clear != Zero; Cloud Fraction != COT; Satellite Observation != Forecast Input; Brightness != Redness != Effective Illuminated Area.
 
-See `RELEASE_NOTES_PhysicsCore_V1.0-R5.6.1.md` and `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R5.6.1.md`.
+See `RELEASE_NOTES_PhysicsCore_V1.0-R5.7.md` and `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R5.7.md`.

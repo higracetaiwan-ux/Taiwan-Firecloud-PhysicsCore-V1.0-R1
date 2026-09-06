@@ -1,4 +1,4 @@
-"""PhysicsCore V1.0-R5.6.1 Cloud→Observer viewing geometry.
+"""PhysicsCore V1.0-R5.7 Cloud→Observer viewing geometry.
 
 R5.6.1 upgrades the R5.6 single-node line-of-sight test to a projected cloud-
 volume / angular-footprint diagnostic. Forecast cloud layers are sampled at
@@ -111,6 +111,26 @@ def _projected_support_interval(row: pd.Series, transect: pd.DataFrame) -> tuple
     return max(0.0, left), max(left, right), "ADJACENT_VERTICAL_OVERLAP_MIDPOINT_SUPPORT", "MEDIUM"
 
 
+def _support_cloud_fraction_at_distance(row: pd.Series, transect: pd.DataFrame, x_km: float):
+    """Interpolate CF only across vertically-continuous adjacent forecast nodes."""
+    d=_finite(row.get("distance_km")); cf=_finite(row.get("cloud_fraction"))
+    if d is None or cf is None: return None,"CF_MISSING"
+    candidates=[]
+    for _,rr in transect.iterrows():
+        od=_finite(rr.get("distance_km")); ocf=_finite(rr.get("cloud_fraction"))
+        if od is None or ocf is None or abs(od-d)<1e-9: continue
+        if not _same_cloud_neighbor(row,rr): continue
+        candidates.append((abs(od-d),od,ocf))
+    if not candidates: return min(1.0,max(0.0,cf)),"NODE_CF"
+    # Only nearest continuous neighbour on the side containing x is eligible.
+    side=[c for c in candidates if (x_km-d)*(c[1]-d)>=-1e-12]
+    if not side: return min(1.0,max(0.0,cf)),"NODE_CF"
+    _,od,ocf=min(side,key=lambda q:q[0])
+    if abs(od-d)<1e-9: return min(1.0,max(0.0,cf)),"NODE_CF"
+    w=min(1.0,max(0.0,(x_km-d)/(od-d)))
+    return min(1.0,max(0.0,(1.0-w)*cf+w*ocf)),"ADJACENT_CONTINUOUS_CF_INTERPOLATION"
+
+
 def _los_intersects_projected_volume(dt: float, hs: float, support0: float, support1: float,
                                      bb: float, bt: float, earth_radius_km: float) -> bool:
     """Test LOS against a projected cloud prism over its horizontal support."""
@@ -189,7 +209,7 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
         cand=cand[pd.to_numeric(cand.get("distance_km"),errors="coerce") < dt - 1e-9]
         cand=cand[cand.get("layer_id",pd.Series(index=cand.index,dtype=str)).astype(str)!=str(layer_id)]
 
-        sample_heights=[zb,0.5*(zb+zt),zt]
+        sample_heights=np.linspace(zb,zt,7).tolist()
         sample_occ=[]; blockers=set(); supports={}; low=mid=high=0; class_seen=set(); support_blockers=set(); unknown_occ=False
         for hs in sample_heights:
             occ_terms=[]
@@ -201,13 +221,17 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
                 if not _los_intersects_projected_volume(dt,hs,s0,s1,bb,bt,earth_radius_km): continue
                 bid=str(b.get("layer_id","")); blockers.add(bid); support_blockers.add(bid)
                 supports[bid]=f"{s0:.3f}-{s1:.3f}"
-                cf=_finite(b.get("cloud_fraction"))
+                # Estimate occupancy at the actual LOS crossing from real CF at
+                # vertically-continuous forecast nodes; never bridge a clear/data gap.
+                xs=np.linspace(max(0.0,s0),min(dt,s1),17)
+                zz=np.array([_los_height_agl_km(dt,hs,float(x),earth_radius_km) for x in xs],dtype=float)
+                inside=np.isfinite(zz)&(zz>=bb)&(zz<=bt)
+                xcross=float(np.mean(xs[inside])) if inside.any() else float(db)
+                cf,cf_method=_support_cloud_fraction_at_distance(b,transect,xcross)
                 if cf is None:
                     unknown_occ=True
-                    # Geometry says a cloud volume intersects, but occupancy is unknown.
-                    # Do not manufacture 50% cloud as R5.6 did; preserve uncertainty.
                     continue
-                cf=min(max(cf,0.0),1.0); occ_terms.append(cf)
+                occ_terms.append(cf)
                 if bid not in class_seen:
                     class_seen.add(bid); midh=0.5*(bb+bt)
                     if midh<2.0: low+=1
@@ -241,7 +265,7 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
                      "intervening_blocker_count":len(blockers),"low_cloud_blocker_count":low,"mid_cloud_blocker_count":mid,
                      "high_cloud_blocker_count":high,"projected_support_blocker_count":len(support_blockers),
                      "view_obstruction_fraction_proxy":obstruction,"view_geometry_state":state,
-                     "viewing_geometry_method":"ADJACENT_NODE_PROJECTED_VOLUME_SUPPORT",
+                     "viewing_geometry_method":"ANGULAR_FOOTPRINT_PROJECTED_VOLUME_WITH_CONTINUOUS_CF",
                      "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED","viewing_confidence":conf,
                      "blocker_layer_ids":";".join(sorted(blockers)),
                      "blocker_support_intervals_km":";".join(f"{k}:{supports[k]}" for k in sorted(supports)),
@@ -281,7 +305,7 @@ def summarize_viewing_path(viewing: pd.DataFrame) -> pd.DataFrame:
              "mean_view_obstruction_fraction_proxy":mean,"max_view_obstruction_fraction_proxy":mx,"viewing_state":state,
              "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED",
              "viewing_summary_scope":"PHOTOGRAPHIC_TARGETS_BASE_GE_2KM;FOREGROUND_LOW_CLOUDS_AS_BLOCKERS_ONLY",
-             "note":"FORMATION_INDEPENDENT;PROJECTED_VOLUME_TIER1;LOW_CLOUD_TARGETS_EXCLUDED_FROM_SUMMARY;NO_VIEWING_SPECTRAL_EXTINCTION_YET"}
+             "note":"FORMATION_INDEPENDENT;ANGULAR_FOOTPRINT_PROJECTED_VOLUME_TIER2;LOW_CLOUD_TARGETS_EXCLUDED_FROM_SUMMARY;NO_VIEWING_SPECTRAL_EXTINCTION_YET"}
         if keys:
             valskey=key if isinstance(key,tuple) else (key,); row.update(dict(zip(keys,valskey)))
         rows.append(row)
