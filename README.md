@@ -1,4 +1,7 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.4
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.6
+
+
+R5.7.6 operational focus: persistent decoded provider caches (CAMS/GFS/DWD ICON) and CASE-level API efficiency auditing. No scientific thresholds or physical equations changed.
 
 R5.7 continues from the verified R5.6.1 baseline. It keeps Formation, Viewing and Photography Decision physically separate while adding forecast-native 3-D hydrometeor optics and an independent Cloud→Observer six-band extinction branch.
 

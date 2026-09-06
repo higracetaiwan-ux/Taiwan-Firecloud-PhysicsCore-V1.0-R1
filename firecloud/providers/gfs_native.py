@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-import importlib.util, math, os, tempfile, hashlib, json
+import importlib.util, math, os, tempfile, hashlib, json, pickle
 import numpy as np
 import pandas as pd
 import requests
@@ -268,10 +268,57 @@ def decode_grib_to_route(grib_path: str|Path, points: list[dict], pressure_level
     return pd.DataFrame(recs.values())
 
 
+
+
+GFS_DECODED_CACHE_SCHEMA_VERSION = "R5.7.5_DECODED_ROUTE_V1"
+
+def _route_signature(points: list[dict]) -> str:
+    payload = "|".join(
+        f"{p.get('point_id','')}:{float(p.get('lat',0.0)):.6f}:{float(p.get('lon',0.0)):.6f}:{float(p.get('distance_km',0.0)):.3f}:{float(p.get('direction_offset_deg',0.0)):.3f}"
+        for p in points
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
+
+def _decoded_cache_path(grib_path: Path, points: list[dict]) -> Path:
+    d = grib_path.parent / "decoded_route"
+    d.mkdir(parents=True, exist_ok=True)
+    src = "|".join([GFS_DECODED_CACHE_SCHEMA_VERSION, grib_path.name, _route_signature(points)])
+    sig = hashlib.sha256(src.encode("utf-8")).hexdigest()[:20]
+    return d / f"gfs_decoded_{sig}.pkl"
+
+def _load_decoded_cache(grib_path: Path, points: list[dict]):
+    p = _decoded_cache_path(grib_path, points)
+    try:
+        if not p.exists() or p.stat().st_size <= 0:
+            return None
+        with p.open("rb") as fh:
+            df = pickle.load(fh)
+        return df if isinstance(df, pd.DataFrame) and not df.empty else None
+    except Exception:
+        return None
+
+def _save_decoded_cache(grib_path: Path, points: list[dict], df: pd.DataFrame) -> None:
+    try:
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return
+        p = _decoded_cache_path(grib_path, points)
+        tmp = p.with_name(f".{p.name}.tmp")
+        with tmp.open("wb") as fh:
+            pickle.dump(df, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp.replace(p)
+    except Exception:
+        pass
+
 def fetch_route_native(points: list[dict], valid_time: datetime, cache_dir: str|Path|None=None) -> tuple[pd.DataFrame,dict]:
     """End-to-end NOMADS download + ecCodes decode for one event time."""
     path,meta=download_native_subset(points,valid_time,cache_dir=cache_dir)
-    df=decode_grib_to_route(path,points)
+    df=_load_decoded_cache(path,points)
+    if df is not None:
+        df=df.copy(); meta["decoded_route_cache_status"]="HIT"
+    else:
+        df=decode_grib_to_route(path,points)
+        _save_decoded_cache(path,points,df)
+        meta["decoded_route_cache_status"]="MISS_WRITE"
     required_present=bool(meta.get("gfs_required_condensate_fields_present"))
     cl_cols=[c for c in df.columns if c.startswith("cloud_liquid_water_kgkg_")]
     ic_cols=[c for c in df.columns if c.startswith("cloud_ice_water_kgkg_")]

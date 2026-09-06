@@ -27,6 +27,7 @@ import math
 import os
 import tarfile
 import tempfile
+import pickle
 from typing import Iterable
 
 import numpy as np
@@ -585,22 +586,80 @@ def build_secondary_optics_from_profiles(profiles: pd.DataFrame, valid_time: dat
     return pd.DataFrame(rows)
 
 
+
+
+DWD_OPTICS_CACHE_SCHEMA_VERSION = "R5.7.5_SECONDARY_OPTICS_V1"
+
+def _secondary_route_state_signature(points: list[dict]) -> str:
+    payload = "|".join(
+        f"{p.get('point_id','')}:{float(p.get('lat',0.0)):.6f}:{float(p.get('lon',0.0)):.6f}:"
+        f"{_finite_float(p.get('surface_pressure_hpa')):.3f}:{_finite_float(p.get('surface_elevation_m')):.3f}"
+        for p in points
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
+
+def _persistent_optics_cache_path(run: datetime, lead: int, points: list[dict]) -> Path:
+    d = _cache_dir() / "decoded_secondary_optics"
+    d.mkdir(parents=True, exist_ok=True)
+    src = "|".join([DWD_OPTICS_CACHE_SCHEMA_VERSION, run.isoformat(), str(int(lead)), _secondary_route_state_signature(points), ",".join(map(str,_model_levels()))])
+    sig = hashlib.sha256(src.encode("utf-8")).hexdigest()[:20]
+    return d / f"icon_secondary_{run:%Y%m%d%H}_f{int(lead):03d}_{sig}.pkl"
+
+def _load_persistent_optics_cache(run: datetime, lead: int, points: list[dict]):
+    p = _persistent_optics_cache_path(run, lead, points)
+    try:
+        if not p.exists() or p.stat().st_size <= 0:
+            return None
+        with p.open("rb") as fh:
+            payload = pickle.load(fh)
+        if not isinstance(payload, dict):
+            return None
+        optics = payload.get("optics")
+        meta = payload.get("meta")
+        if not isinstance(optics, pd.DataFrame) or optics.empty or not isinstance(meta, dict):
+            return None
+        return optics, meta, p
+    except Exception:
+        return None
+
+def _save_persistent_optics_cache(run: datetime, lead: int, points: list[dict], optics: pd.DataFrame, meta: dict) -> None:
+    try:
+        if not isinstance(optics, pd.DataFrame) or optics.empty:
+            return
+        p = _persistent_optics_cache_path(run, lead, points)
+        tmp = p.with_name(f".{p.name}.tmp")
+        with tmp.open("wb") as fh:
+            pickle.dump({"optics":optics, "meta":dict(meta)}, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp.replace(p)
+    except Exception:
+        pass
+
 def fetch_route_secondary_target_optics(points: list[dict], valid_time: datetime) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
     meta={**provider_status(),"valid_time":valid_time,"status":"UNAVAILABLE"}
     try:
         run,lead=resolve_run_and_lead(valid_time)
-        route_sig=tuple((str(p.get("point_id")), round(float(p.get("lat",0.0)),5), round(float(p.get("lon",0.0)),5)) for p in points)
-        key=(run.strftime("%Y%m%d%H"),int(lead),route_sig,tuple(_model_levels()))
+        state_sig=_secondary_route_state_signature(points)
+        key=(run.strftime("%Y%m%d%H"),int(lead),state_sig,tuple(_model_levels()))
         if key in _RUNTIME_CACHE:
-            optics0,meta0,audit0=_RUNTIME_CACHE[key]
-            optics=optics0.copy(); audit=audit0.copy(); meta={**meta0,"valid_time":valid_time,"runtime_cache_status":"HIT"}
+            optics0,meta0,_audit0=_RUNTIME_CACHE[key]
+            optics=optics0.copy(); meta={**meta0,"valid_time":valid_time,"runtime_cache_status":"HIT"}
             if not optics.empty: optics["valid_time"]=valid_time
+            audit=pd.DataFrame([{"stage":"SECONDARY_OPTICS_CACHE","status":"RUNTIME_DECODED_OPTICS_CACHE_HIT","gfs_like_run":run.isoformat(),"lead_hour":int(lead),"record_count":int(len(optics))}])
+            return optics,meta,audit
+        _pcached=_load_persistent_optics_cache(run,lead,points)
+        if _pcached is not None:
+            optics0,meta0,cache_path=_pcached
+            optics=optics0.copy(); meta={**meta0,"valid_time":valid_time,"runtime_cache_status":"PERSISTENT_HIT","persistent_decoded_cache_file":cache_path.name}
+            if not optics.empty: optics["valid_time"]=valid_time
+            _RUNTIME_CACHE[key]=(optics0.copy(),dict(meta0),pd.DataFrame())
+            audit=pd.DataFrame([{"stage":"SECONDARY_OPTICS_CACHE","status":"PERSISTENT_DECODED_OPTICS_CACHE_HIT","gfs_like_run":run.isoformat(),"lead_hour":int(lead),"record_count":int(len(optics)),"cache_file":cache_path.name}])
             return optics,meta,audit
         prof,dm,audit=fetch_icon_route_profiles(points,valid_time)
         meta.update(dm)
         optics=build_secondary_optics_from_profiles(prof,valid_time)
-        meta["secondary_optical_record_count"]=int(len(optics)); meta["runtime_cache_status"]="MISS"
+        meta["secondary_optical_record_count"]=int(len(optics)); meta["runtime_cache_status"]="MISS_WRITE"
         _RUNTIME_CACHE[key]=(optics.copy(),dict(meta),audit.copy())
+        _save_persistent_optics_cache(run,lead,points,optics,meta)
         return optics,meta,audit
     except Exception as exc:
         meta["status"]="FAILED"; meta["error"]=f"{type(exc).__name__}: {exc}"

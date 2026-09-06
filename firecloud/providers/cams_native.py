@@ -238,6 +238,72 @@ def _default_cache_dir() -> Path:
     return Path.home() / ".cache" / "taiwan_firecloud" / "cams"
 
 
+
+
+CAMS_DECODED_CACHE_SCHEMA_VERSION = "R5.7.5_DECODED_ROUTE_V1"
+
+def _route_signature(points: list[dict]) -> str:
+    payload = "|".join(
+        f"{p.get('point_id','')}:{float(p.get('lat',0.0)):.6f}:{float(p.get('lon',0.0)):.6f}:{float(p.get('distance_km',0.0)):.3f}:{float(p.get('direction_offset_deg',0.0)):.3f}"
+        for p in points
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
+
+def _decoded_role_cache_path(role: str, points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> Path:
+    run, lead = resolve_cams_run_and_lead(valid_time)
+    cache = Path(cache_dir).expanduser() if cache_dir else _default_cache_dir()
+    d = cache / "decoded_route"
+    d.mkdir(parents=True, exist_ok=True)
+    source = "|".join([CAMS_DECODED_CACHE_SCHEMA_VERSION, str(role), run.isoformat(), str(int(lead)), _route_signature(points)])
+    sig = hashlib.sha256(source.encode("utf-8")).hexdigest()[:20]
+    return d / f"cams_decoded_{str(role).lower()}_{run:%Y%m%d%H}_f{int(lead):03d}_{sig}.pkl"
+
+def _load_decoded_role_cache(role: str, points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None):
+    p = _decoded_role_cache_path(role, points, valid_time, cache_dir)
+    try:
+        if not p.exists() or p.stat().st_size <= 0:
+            return None
+        with p.open("rb") as fh:
+            payload = pickle.load(fh)
+        if not isinstance(payload, dict):
+            return None
+        df = payload.get("df")
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return None
+        out = dict(payload)
+        out["status"] = "CACHE_HIT"
+        meta = dict(out.get("meta") or {})
+        audit = dict(meta.get("request_audit") or {})
+        audit.update({"status":"CACHE_HIT", "cache_layer":"DECODED_ROUTE", "decoded_cache_file":p.name})
+        meta["request_audit"] = audit
+        meta["decoded_route_cache_status"] = "HIT"
+        meta["decoded_route_cache_file"] = p.name
+        out["meta"] = meta
+        out["decoded_route_cache_status"] = "HIT"
+        return out
+    except Exception:
+        return None
+
+def _save_decoded_role_cache(role: str, points: list[dict], valid_time: datetime, result: dict, cache_dir: str | Path | None = None) -> None:
+    try:
+        if str((result or {}).get("status","")).upper() not in {"OK","CACHE_HIT"}:
+            return
+        df = (result or {}).get("df")
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return
+        p = _decoded_role_cache_path(role, points, valid_time, cache_dir)
+        payload = {k:v for k,v in dict(result).items() if k not in {"elapsed_seconds","ipc_mode","worker_mode"}}
+        meta = dict(payload.get("meta") or {})
+        meta["decoded_route_cache_status"] = "MISS_WRITE"
+        meta["decoded_route_cache_file"] = p.name
+        payload["meta"] = meta
+        tmp = p.with_name(f".{p.name}.{uuid.uuid4().hex}.tmp")
+        with tmp.open("wb") as fh:
+            pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp.replace(p)
+    except Exception:
+        pass
+
 def _request_cache_path(prefix: str, meta: dict, points: list[dict], cache_dir: str | Path | None = None) -> Path:
     cache = Path(cache_dir).expanduser() if cache_dir else _default_cache_dir()
     cache.mkdir(parents=True, exist_ok=True)
@@ -839,6 +905,16 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
     the whole worker process group; Missing remains Missing.
     """
     deadline_seconds=max(0.2,float(deadline_seconds))
+    _cache_started = time.monotonic()
+    _cached = _load_decoded_role_cache(role, points, valid_time, cache_dir)
+    if _cached is not None:
+        _cached["elapsed_seconds"] = time.monotonic() - _cache_started
+        _cached["ipc_mode"] = "PERSISTENT_DECODED_ROUTE_CACHE"
+        _cached["worker_mode"] = "WORKER_SKIPPED_DECODED_CACHE_HIT"
+        if heartbeat_callback:
+            try: heartbeat_callback(role, "CACHE_HIT", _cached["elapsed_seconds"])
+            except Exception: pass
+        return _cached
     try:
         heartbeat_seconds=max(0.5,float(os.getenv("FIRECLOUD_CAMS_HEARTBEAT_SECONDS","5")))
     except Exception:
@@ -1080,6 +1156,7 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
     res["elapsed_seconds"]=time.monotonic()-started
     res["ipc_mode"]="EXTERNAL_SUBPROCESS_FILE_BACKED_ATOMIC_PICKLE"
     res["worker_mode"]="PYTHON_MODULE_SUBPROCESS_NO_STREAMLIT_SPAWN"
+    _save_decoded_role_cache(role, points, valid_time, res, cache_dir)
     return res
 
 def _is_retryable_cams_failure(res: dict) -> bool:

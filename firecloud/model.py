@@ -8,6 +8,7 @@ import math
 import os
 import re
 import threading
+import time
 from time import perf_counter
 import numpy as np
 import pandas as pd
@@ -2116,6 +2117,48 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
          "icmr_nonnull_route_values":m.get("native_icmr_nonnull_values")}
         for m in _gfs_meta_unique for r in (m.get("gfs_native_field_completeness", []) or [])
     ])
+
+    # R5.7.5: compact provider-I/O efficiency audit.  This is operational
+    # diagnostics only; it does not participate in any physical gate.
+    _cams_audit_df = _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_request_audit", []) or [])]) if details else pd.DataFrame()
+    _api_eff_rows = []
+    if isinstance(openmeteo_request_audit, pd.DataFrame) and not openmeteo_request_audit.empty:
+        _api_eff_rows.append({
+            "provider":"OPEN_METEO_FORECAST", "logical_attempt_rows":int(len(openmeteo_request_audit)),
+            "network_requests":int(pd.to_numeric(openmeteo_request_audit.get("network_requested",False), errors="coerce").fillna(0).astype(bool).sum()) if "network_requested" in openmeteo_request_audit.columns else np.nan,
+            "raw_cache_hits":int(openmeteo_request_audit.get("cache_status",pd.Series(dtype=str)).astype(str).str.upper().eq("HIT").sum()),
+            "decoded_cache_hits":0, "failure_rows":int(openmeteo_request_audit.get("network_status",pd.Series(dtype=str)).astype(str).str.contains("FAIL|429",case=False,regex=True).sum()),
+            "reuse_scope":"PERSISTENT_JSON_BY_CANONICAL_REQUEST"
+        })
+    if _gfs_meta_unique:
+        _api_eff_rows.append({
+            "provider":"NOAA_GFS_NATIVE", "logical_attempt_rows":int(len(gfs_native_request_audit)),
+            "network_requests":int(gfs_native_request_audit.get("action",pd.Series(dtype=str)).astype(str).str.upper().eq("DOWNLOAD").sum()) if not gfs_native_request_audit.empty else 0,
+            "raw_cache_hits":int(gfs_native_request_audit.get("action",pd.Series(dtype=str)).astype(str).str.upper().str.contains("CACHE").sum()) if not gfs_native_request_audit.empty else 0,
+            "decoded_cache_hits":int(sum(str(m.get("decoded_route_cache_status","")).upper()=="HIT" for m in _gfs_meta_unique)),
+            "failure_rows":int(sum(str(m.get("native_status","")).upper().startswith("FAILED") for m in _gfs_meta_unique)),
+            "reuse_scope":"RUN_LEAD_RAW_GRIB_PLUS_PERSISTENT_DECODED_ROUTE"
+        })
+    if isinstance(_cams_audit_df,pd.DataFrame) and not _cams_audit_df.empty:
+        _api_eff_rows.append({
+            "provider":"CAMS_ADS", "logical_attempt_rows":int(len(_cams_audit_df)),
+            "network_requests":int((~_cams_audit_df.get("status",pd.Series(dtype=str)).astype(str).str.upper().eq("CACHE_HIT")).sum()),
+            "raw_cache_hits":int(_cams_audit_df.get("status",pd.Series(dtype=str)).astype(str).str.upper().eq("CACHE_HIT").sum()),
+            "decoded_cache_hits":int(_cams_audit_df.get("cache_layer",pd.Series(dtype=str)).astype(str).str.upper().eq("DECODED_ROUTE").sum()),
+            "failure_rows":int(_cams_audit_df.get("final_status",pd.Series(dtype=str)).astype(str).str.upper().isin(["FAILED","TIMEOUT_DEFERRED"]).sum()),
+            "reuse_scope":"RUN_LEAD_ROLE_RAW_GRIB_PLUS_PERSISTENT_DECODED_ROUTE"
+        })
+    if isinstance(dwd_icon_request_audit,pd.DataFrame) and not dwd_icon_request_audit.empty:
+        _dwd_status=dwd_icon_request_audit.get("status",pd.Series(dtype=str)).astype(str).str.upper()
+        _api_eff_rows.append({
+            "provider":"DWD_ICON_SECONDARY", "logical_attempt_rows":int(len(dwd_icon_request_audit)),
+            "network_requests":int(_dwd_status.eq("DOWNLOADED").sum()),
+            "raw_cache_hits":int(_dwd_status.str.contains("CACHE_HIT").sum()),
+            "decoded_cache_hits":int(_dwd_status.str.contains("DECODED_OPTICS_CACHE_HIT").sum()),
+            "failure_rows":int(_dwd_status.str.contains("FAILED|HTTP_4|HTTP_5").sum()),
+            "reuse_scope":"RUN_LEAD_ROUTE_SURFACE_ANCHOR_PERSISTENT_OPTICS"
+        })
+    api_efficiency_audit=pd.DataFrame(_api_eff_rows)
     return {
         "summary": summary,
         "details": details,
@@ -2147,7 +2190,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "gfs_native_request_audit": gfs_native_request_audit,
         "gfs_grib_message_inventory": gfs_grib_message_inventory,
         "gfs_native_field_completeness": gfs_native_field_completeness,
-        "cams_request_audit": _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_request_audit", []) or [])]) if details else pd.DataFrame(),
+        "cams_request_audit": _cams_audit_df,
         "cams_tile_audit": _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_tile_audit", []) or [])]) if details else pd.DataFrame(),
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
         "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),
@@ -2197,6 +2240,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
         "performance_diagnostics": pd.DataFrame(performance_rows),
+        "api_efficiency_audit": api_efficiency_audit,
         "aerosol_provider_error": aerosol_error,
         "openmeteo_request_audit": openmeteo_request_audit,
         "openmeteo_aerosol_request_audit": pd.DataFrame(aerosol_hourly.attrs.get("api_request_audit", [])) if not aerosol_hourly.empty else pd.DataFrame(),
