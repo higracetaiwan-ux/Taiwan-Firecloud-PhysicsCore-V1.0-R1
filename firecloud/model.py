@@ -749,7 +749,75 @@ def _ray_altitudes_vectorized_km(target_distance_km: float, target_altitude_km: 
     return out
 
 
-def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: float, cfg: ModelConfig) -> pd.DataFrame:
+
+def prepare_shared_ray_geometry_plan(voxels: pd.DataFrame, solar_altitude_deg: float, cfg: ModelConfig) -> dict:
+    """Prepare angle-specific Sun→cloud ray geometry for reuse across optical branches.
+
+    The plan contains geometry only: route distances, vertical lattice, upstream
+    segment lengths, ray heights and nearest-voxel indices.  It intentionally
+    contains no cloud occupancy, condensate, extinction or transmission values,
+    so proxy-cloud and native-microphysics optical solvers can share it without
+    coupling their evidence or changing their physical definitions.
+    """
+    if voxels is None or voxels.empty:
+        return {}
+    radius = float(cfg.earth_radius_km)
+    cos_sun = max(0.05, math.cos(math.radians(abs(float(solar_altitude_deg)))))
+    plan = {"solar_altitude_deg": float(solar_altitude_deg), "directions": {}}
+    for off, gdir0 in voxels.groupby("direction_offset_deg", sort=False):
+        gdir = gdir0.sort_values(["distance_km", "voxel_center_km"])
+        distances = np.array(sorted(pd.to_numeric(gdir["distance_km"], errors="coerce").dropna().unique()), dtype=float)
+        heights = np.array(sorted(pd.to_numeric(gdir["voxel_center_km"], errors="coerce").dropna().unique()), dtype=float)
+        if distances.size == 0 or heights.size == 0:
+            continue
+        di = {float(v): i for i, v in enumerate(distances)}
+        targets = {}
+        # Geometry is identical for every optical field on the same lattice.
+        for d_t in distances:
+            i0 = di[float(d_t)]
+            ds = distances[i0 + 1:]
+            if ds.size:
+                prev = np.concatenate(([float(d_t)], ds[:-1]))
+                dx = ds - prev
+                valid_dx = dx > 0.0
+                mids = ds - dx / 2.0
+            else:
+                dx = np.empty(0, dtype=float); valid_dx = np.empty(0, dtype=bool); mids = np.empty(0, dtype=float)
+            for z_t in heights:
+                if ds.size:
+                    ray_h = _ray_altitudes_vectorized_km(float(d_t), float(z_t), mids, float(solar_altitude_deg), radius)
+                    valid = valid_dx & np.isfinite(ray_h) & (ray_h >= 0.0)
+                    idx_hi = np.searchsorted(heights, ray_h, side="left")
+                    idx_hi = np.clip(idx_hi, 0, len(heights)-1)
+                    idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
+                    choose_hi = np.abs(heights[idx_hi]-ray_h) < np.abs(ray_h-heights[idx_lo])
+                    k = np.where(choose_hi, idx_hi, idx_lo)
+                    rows = np.arange(i0+1, len(distances))
+                    slant_km = np.where(valid, dx / cos_sun, 0.0)
+                else:
+                    ray_h = np.empty(0, dtype=float); valid = np.empty(0, dtype=bool)
+                    k = np.empty(0, dtype=int); rows = np.empty(0, dtype=int); slant_km = np.empty(0, dtype=float)
+                targets[(float(d_t), float(z_t))] = {
+                    "i0": int(i0), "ds": ds, "dx": dx, "valid": valid,
+                    "nearest_height_index": k, "upstream_row_index": rows,
+                    "slant_km": slant_km,
+                }
+        plan["directions"][float(off)] = {"distances": distances, "heights": heights, "di": di, "targets": targets}
+    return plan
+
+
+def _shared_ray_plan_direction(shared_ray_geometry_plan: dict | None, off: float, distances: np.ndarray, heights: np.ndarray):
+    if not shared_ray_geometry_plan:
+        return None
+    d = shared_ray_geometry_plan.get("directions", {}).get(float(off))
+    if not d:
+        return None
+    # Fail safe: never reuse a plan across a different lattice.
+    if not np.array_equal(d.get("distances"), distances) or not np.array_equal(d.get("heights"), heights):
+        return None
+    return d
+
+def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: float, cfg: ModelConfig, *, shared_ray_geometry_plan: dict | None = None) -> pd.DataFrame:
     """Vectorized 3-D ray tracing through upstream vertical cloud columns.
 
     V8.4.0.7 keeps the V8.1.3 optical definition unchanged but vectorizes each
@@ -770,6 +838,7 @@ def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: 
         heights = np.array(sorted(gdir["voxel_center_km"].unique()), dtype=float)
         di = {float(v): i for i, v in enumerate(distances)}
         zi = {float(v): i for i, v in enumerate(heights)}
+        _shared_dir = _shared_ray_plan_direction(shared_ray_geometry_plan, float(off), distances, heights)
 
         occ = np.full((len(distances), len(heights)), np.nan, dtype=float)
         for r in gdir.itertuples(index=False):
@@ -785,30 +854,34 @@ def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: 
             shadow_h = earth_shadow_min_altitude_km(d_t, solar_altitude_deg, radius)
             geom_frac = cloud_layer_illuminated_fraction(float(target.voxel_bottom_km), float(target.voxel_top_km), shadow_h)
 
-            ds = distances[i0 + 1:]
+            _pg = _shared_dir.get("targets", {}).get((d_t, z_t)) if _shared_dir is not None else None
+            if _pg is not None:
+                ds = _pg["ds"]; dx = _pg["dx"]; valid = _pg["valid"]
+                k = _pg["nearest_height_index"]; rows = _pg["upstream_row_index"]
+                slant = _pg["slant_km"]
+            else:
+                ds = distances[i0 + 1:]
+                if ds.size:
+                    prev = np.concatenate(([d_t], ds[:-1])); dx = ds - prev
+                    mids = ds - dx / 2.0
+                    ray_h = _ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
+                    valid = (dx > 0.0) & np.isfinite(ray_h) & (ray_h >= 0.0)
+                    idx_hi = np.searchsorted(heights, ray_h, side="left"); idx_hi = np.clip(idx_hi, 0, len(heights)-1)
+                    idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
+                    choose_hi = np.abs(heights[idx_hi]-ray_h) < np.abs(ray_h-heights[idx_lo])
+                    k = np.where(choose_hi, idx_hi, idx_lo); rows = np.arange(i0+1, len(distances))
+                    slant = np.where(valid, dx / cos_sun, 0.0)
+                else:
+                    dx=np.empty(0); valid=np.empty(0,dtype=bool); k=np.empty(0,dtype=int); rows=np.empty(0,dtype=int); slant=np.empty(0)
             upstream_unknown_len = 0.0
             if ds.size:
-                prev = np.concatenate(([d_t], ds[:-1]))
-                dx = ds - prev
-                valid_dx = dx > 0.0
-                mids = ds - dx / 2.0
-                ray_h = _ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
-                valid = valid_dx & np.isfinite(ray_h) & (ray_h >= 0.0)
-                slant = np.where(valid, dx / cos_sun, 0.0)
                 total_len = float(np.sum(slant))
-
-                idx_hi = np.searchsorted(heights, ray_h, side="left")
-                idx_hi = np.clip(idx_hi, 0, len(heights)-1)
-                idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
-                choose_hi = np.abs(heights[idx_hi]-ray_h) < np.abs(ray_h-heights[idx_lo])
-                k = np.where(choose_hi, idx_hi, idx_lo)
-                rows = np.arange(i0+1, len(distances))
                 o = occ[rows, k]
                 known = valid & np.isfinite(o)
-                known_len = float(np.sum(np.where(known, dx / cos_sun, 0.0)))
-                upstream_unknown_len = float(np.sum(np.where(valid & ~np.isfinite(o), dx / cos_sun, 0.0)))
+                known_len = float(np.sum(np.where(known, slant, 0.0)))
+                upstream_unknown_len = float(np.sum(np.where(valid & ~np.isfinite(o), slant, 0.0)))
                 blocker_hits = int(np.sum(known & (o >= PROFILE_CLOUD_OCCUPANCY_THRESHOLD)))
-                tau = float(CLOUD_EXTINCTION_PROXY_PER_KM * np.sum(np.where(known, o * (dx / cos_sun), 0.0)))
+                tau = float(CLOUD_EXTINCTION_PROXY_PER_KM * np.sum(np.where(known, o * slant, 0.0)))
             else:
                 tau = known_len = total_len = 0.0; blocker_hits = 0
 
@@ -856,7 +929,7 @@ def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: 
 
 
 
-def apply_native_microphysical_optical_blocking(native_voxels: pd.DataFrame, solar_altitude_deg: float, cfg: ModelConfig, *, optical_properties_ready: bool = False) -> pd.DataFrame:
+def apply_native_microphysical_optical_blocking(native_voxels: pd.DataFrame, solar_altitude_deg: float, cfg: ModelConfig, *, optical_properties_ready: bool = False, shared_ray_geometry_plan: dict | None = None) -> pd.DataFrame:
     """Trace Sun→target rays through native condensate-derived extinction.
 
     V8.4.0.7 vectorizes upstream segment geometry and supports a pre-enriched
@@ -877,6 +950,7 @@ def apply_native_microphysical_optical_blocking(native_voxels: pd.DataFrame, sol
         heights = np.array(sorted(gdir["voxel_center_km"].unique()), dtype=float)
         di = {float(v): i for i, v in enumerate(distances)}
         zi = {float(v): i for i, v in enumerate(heights)}
+        _shared_dir = _shared_ray_plan_direction(shared_ray_geometry_plan, float(off), distances, heights)
         beta = np.full((len(distances), len(heights)), np.nan, dtype=float)
         for r in gdir.itertuples(index=False):
             beta[di[float(r.distance_km)], zi[float(r.voxel_center_km)]] = getattr(r, "total_extinction_m1")
@@ -889,29 +963,33 @@ def apply_native_microphysical_optical_blocking(native_voxels: pd.DataFrame, sol
             shadow_h = earth_shadow_min_altitude_km(d_t, solar_altitude_deg, radius)
             geom_frac = cloud_layer_illuminated_fraction(float(target.voxel_bottom_km), float(target.voxel_top_km), shadow_h)
 
-            ds = distances[i0 + 1:]
+            _pg = _shared_dir.get("targets", {}).get((d_t, z_t)) if _shared_dir is not None else None
+            if _pg is not None:
+                ds = _pg["ds"]; dx = _pg["dx"]; valid = _pg["valid"]
+                k = _pg["nearest_height_index"]; rows = _pg["upstream_row_index"]
+                slant_km = _pg["slant_km"]
+            else:
+                ds = distances[i0 + 1:]
+                if ds.size:
+                    prev = np.concatenate(([d_t], ds[:-1])); dx = ds - prev
+                    mids = ds - dx / 2.0
+                    ray_h = _ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
+                    valid = (dx > 0.0) & np.isfinite(ray_h) & (ray_h >= 0.0)
+                    idx_hi = np.searchsorted(heights, ray_h, side="left"); idx_hi = np.clip(idx_hi, 0, len(heights)-1)
+                    idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
+                    choose_hi = np.abs(heights[idx_hi]-ray_h) < np.abs(ray_h-heights[idx_lo])
+                    k = np.where(choose_hi, idx_hi, idx_lo); rows = np.arange(i0+1, len(distances))
+                    slant_km = np.where(valid, dx / cos_sun, 0.0)
+                else:
+                    dx=np.empty(0); valid=np.empty(0,dtype=bool); k=np.empty(0,dtype=int); rows=np.empty(0,dtype=int); slant_km=np.empty(0)
             upstream_unknown_len = 0.0
             if ds.size:
-                prev = np.concatenate(([d_t], ds[:-1]))
-                dx = ds - prev
-                valid_dx = dx > 0.0
-                mids = ds - dx / 2.0
-                ray_h = _ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
-                valid = valid_dx & np.isfinite(ray_h) & (ray_h >= 0.0)
-                slant_km = np.where(valid, dx / cos_sun, 0.0)
                 total_len = float(np.sum(slant_km))
-
-                idx_hi = np.searchsorted(heights, ray_h, side="left")
-                idx_hi = np.clip(idx_hi, 0, len(heights)-1)
-                idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
-                choose_hi = np.abs(heights[idx_hi]-ray_h) < np.abs(ray_h-heights[idx_lo])
-                k = np.where(choose_hi, idx_hi, idx_lo)
-                rows = np.arange(i0+1, len(distances))
                 b = beta[rows, k]
                 known = valid & np.isfinite(b)
-                known_len = float(np.sum(np.where(known, dx / cos_sun, 0.0)))
-                upstream_unknown_len = float(np.sum(np.where(valid & ~np.isfinite(b), dx / cos_sun, 0.0)))
-                segment_tau = np.where(known, np.maximum(0.0, b) * (dx / cos_sun) * 1000.0, 0.0)
+                known_len = float(np.sum(np.where(known, slant_km, 0.0)))
+                upstream_unknown_len = float(np.sum(np.where(valid & ~np.isfinite(b), slant_km, 0.0)))
+                segment_tau = np.where(known, np.maximum(0.0, b) * slant_km * 1000.0, 0.0)
                 tau = float(np.sum(segment_tau))
                 blocker_hits = int(np.sum(segment_tau >= 0.05))
             else:
@@ -1595,7 +1673,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _angle_progress(candidate_index, 0.38, f"{label}：計算雲層 3D 光學阻擋…")
         _ts = perf_counter()
         _opt_proxy_t0 = perf_counter()
-        optical_voxels = apply_3d_optical_blocking(profile_voxels, angle, cfg)
+        _ray_plan_t0 = perf_counter()
+        shared_ray_geometry_plan = prepare_shared_ray_geometry_plan(profile_voxels, angle, cfg)
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "SHARED_RAY_GEOMETRY_PLAN", "elapsed_seconds": perf_counter()-_ray_plan_t0, "cache_status": "BUILT_ONCE_PER_ANGLE"})
+        optical_voxels = apply_3d_optical_blocking(profile_voxels, angle, cfg, shared_ray_geometry_plan=shared_ray_geometry_plan)
         optical_columns = summarize_vertical_blocking(optical_voxels)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "CLOUD_PROXY_RAY_BLOCKING", "elapsed_seconds": perf_counter()-_opt_proxy_t0, "cache_status": "COMPUTED"})
 
@@ -1610,7 +1691,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             _native_base_status = "MISS"
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "NATIVE_CLOUD_OPTICAL_BASE", "elapsed_seconds": perf_counter()-_native_base_t0, "cache_status": _native_base_status, "cache_key": str(_nv_key)})
         _native_ray_t0 = perf_counter()
-        native_optical_voxels = apply_native_microphysical_optical_blocking(_native_optical_base, angle, cfg, optical_properties_ready=True)
+        native_optical_voxels = apply_native_microphysical_optical_blocking(
+            _native_optical_base, angle, cfg, optical_properties_ready=True,
+            shared_ray_geometry_plan=shared_ray_geometry_plan,
+        )
         native_optical_columns = summarize_native_optical_blocking(native_optical_voxels)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "NATIVE_CLOUD_RAY_BLOCKING", "elapsed_seconds": perf_counter()-_native_ray_t0, "cache_status": "COMPUTED"})
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "CLOUD_3D_OPTICAL_BLOCKING", "elapsed_seconds": perf_counter()-_ts, "cache_status": "COMPUTED"})
