@@ -1488,7 +1488,19 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _angle_progress(candidate_index, 0.00, f"{label}：載入已內插路徑預報…")
         snap = route_snapshot_cache.get(pd.Timestamp(t.replace(tzinfo=None)), pd.DataFrame()).copy()
         if snap is not None and not snap.empty:
-            _vsnap=snap.copy(); _vsnap.insert(0,"time",t); _vsnap.insert(1,"solar_altitude_deg",float(angle)); viewing_route_snapshot_frames.append(_vsnap)
+            # R5.7.1: interpolate_route_at_time() already returns a `time`
+            # column.  Re-inserting it raises ValueError: cannot insert time,
+            # already exists.  Update existing metadata columns in-place and
+            # only insert when absent; then reorder for stable CASE output.
+            _vsnap = snap.copy()
+            _vsnap["time"] = t
+            if "solar_altitude_deg" in _vsnap.columns:
+                _vsnap["solar_altitude_deg"] = float(angle)
+            else:
+                _vsnap.insert(1 if "time" in _vsnap.columns else 0, "solar_altitude_deg", float(angle))
+            _front = [c for c in ("time", "solar_altitude_deg") if c in _vsnap.columns]
+            _vsnap = _vsnap[_front + [c for c in _vsnap.columns if c not in _front]]
+            viewing_route_snapshot_frames.append(_vsnap)
         _angle_progress(candidate_index, 0.04, f"{label}：合併 GFS 原生雲微物理…")
         native_meta = {"native_status": "UNAVAILABLE", **native_provider_status()}
         cache_key = None
