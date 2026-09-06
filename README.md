@@ -1,6 +1,6 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.5
+# Taiwan Firecloud PhysicsCore V1.0-R5.5.1
 
-R5.5 adds a live secondary forecast-native Target-Canvas optics chain: configured/entitled ECMWF IFS first, then public DWD ICON Global model-level QC/QI as fallback. It preserves the strict rule that Cloud Fraction, RH, geometry, satellite observations and surface rain may not fabricate forecast COT. See `RELEASE_NOTES_PhysicsCore_V1.0-R5.5.md`.
+R5.5.1 integrates **Secondary Native Optics (ECMWF IFS → DWD ICON fallback)** with **Canvas Optical Suitability / Thin–Suitable–Thick Target Cloud Optical Response**, while preserving Penumbra Geometry, Spectral RT, and Target Cloud Optical Response as separate evidence layers. See `RELEASE_NOTES_PhysicsCore_V1.0-R5.5.1.md`.
 
 # R5.4 — Spectral Red-Window Evolution
 

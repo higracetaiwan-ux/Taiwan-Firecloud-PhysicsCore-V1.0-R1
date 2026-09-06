@@ -57,6 +57,7 @@ from .formation_gates import build_formation_gate_table
 from .penumbra_red import build_earth_shadow_penumbra_matrix, build_canvas_penumbra_red_illumination
 from .illuminated_canvas_retreat import build_illuminated_canvas_retreat, build_reference_canvas_retreat_matrix
 from .red_window import build_canvas_spectral_evolution, build_canvas_peak_windows
+from .canvas_optical_suitability import build_canvas_optical_suitability, summarize_canvas_optical_suitability
 
 
 def _clamp01(x):
@@ -1223,6 +1224,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_precipitation_path_frames = []
     v1_target_canvas_optical_evidence_frames = []
     v1_target_canvas_optical_summary_frames = []
+    v1_canvas_optical_suitability_frames = []
+    v1_canvas_optical_suitability_summary_frames = []
     v1_secondary_target_optics_frames = []
     v1_formation_gate_frames = []
     ecmwf_ifs_request_audit_rows = []
@@ -1422,7 +1425,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _progress(0.395 + 0.005 * (_si + 1) / max(1, len(candidates)), f"路徑預報內插：{_si+1}/{len(candidates)}")
     performance_rows.append({"stage": "OPENMETEO_ROUTE_INTERPOLATION_TOTAL", "elapsed_seconds": perf_counter()-_snapshot_t0, "cache_status": "PRECOMPUTED"})
 
-    # PhysicsCore V1.0-R5.5: real secondary forecast-native optics chain.
+    # PhysicsCore V1.0-R5.5.1: real secondary forecast-native optics chain.
     # Priority: (1) entitled/local ECMWF IFS model-level CLWC/CIWC; (2) public
     # DWD ICON Global model-level QC/QI network source. Both remain fail-closed.
     _sec_t0 = perf_counter()
@@ -1678,6 +1681,20 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
                 _target_summary.insert(0, "time", t)
                 v1_target_canvas_optical_summary_frames.append(_target_summary)
 
+        # PhysicsCore V1.0-R5.5.1: target-cloud intrinsic optical suitability.
+        # This layer intentionally consumes neither F_sun nor spectral path RT.
+        _canvas_optical_suitability = build_canvas_optical_suitability(
+            _v1["scene"], _v1.get("canvas_objects", ()),
+            target_optical_evidence=_target_canvas_optics,
+            solar_altitude_deg=float(angle), valid_time=t,
+        )
+        if _canvas_optical_suitability is not None and not _canvas_optical_suitability.empty:
+            v1_canvas_optical_suitability_frames.append(_canvas_optical_suitability)
+            _cos_summary = summarize_canvas_optical_suitability(_canvas_optical_suitability)
+            if _cos_summary is not None and not _cos_summary.empty:
+                _cos_summary.insert(0, "time", t)
+                v1_canvas_optical_suitability_summary_frames.append(_cos_summary)
+
         _formation_gate = build_formation_gate_table(
             _v1.get("canvases", pd.DataFrame()), _v1.get("direct_solar", pd.DataFrame()),
             _r3.get("cloud_base_illumination", pd.DataFrame()), _r3.get("spectral_optical_paths", pd.DataFrame())
@@ -1855,6 +1872,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_precipitation_path_evidence = pd.concat(v1_precipitation_path_frames, ignore_index=True) if v1_precipitation_path_frames else pd.DataFrame()
     v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame()
     v1_target_canvas_optical_summary = pd.concat(v1_target_canvas_optical_summary_frames, ignore_index=True) if v1_target_canvas_optical_summary_frames else pd.DataFrame()
+    v1_canvas_optical_suitability = pd.concat(v1_canvas_optical_suitability_frames, ignore_index=True) if v1_canvas_optical_suitability_frames else pd.DataFrame()
+    v1_canvas_optical_suitability_summary = pd.concat(v1_canvas_optical_suitability_summary_frames, ignore_index=True) if v1_canvas_optical_suitability_summary_frames else pd.DataFrame()
     v1_secondary_target_optics = pd.concat(v1_secondary_target_optics_frames, ignore_index=True) if v1_secondary_target_optics_frames else pd.DataFrame()
     v1_formation_gates = pd.concat(v1_formation_gate_frames, ignore_index=True) if v1_formation_gate_frames else pd.DataFrame()
     v1_earth_shadow_penumbra_matrix = build_earth_shadow_penumbra_matrix([float(a) for a, _, _ in candidates])
@@ -2071,6 +2090,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_precipitation_path_evidence": v1_precipitation_path_evidence,
         "v1_target_canvas_optical_evidence": v1_target_canvas_optical_evidence,
         "v1_target_canvas_optical_summary": v1_target_canvas_optical_summary,
+        "v1_canvas_optical_suitability": v1_canvas_optical_suitability,
+        "v1_canvas_optical_suitability_summary": v1_canvas_optical_suitability_summary,
         "v1_secondary_target_optics": v1_secondary_target_optics,
         "v1_formation_gates": v1_formation_gates,
         "v1_earth_shadow_penumbra_matrix": v1_earth_shadow_penumbra_matrix,

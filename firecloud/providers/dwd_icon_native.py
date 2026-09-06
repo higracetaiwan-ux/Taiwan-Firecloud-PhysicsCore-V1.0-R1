@@ -1,4 +1,4 @@
-"""PhysicsCore V1.0-R5.5 DWD ICON Global native cloud-microphysics provider.
+"""PhysicsCore V1.0-R5.5.1 DWD ICON Global native cloud-microphysics provider.
 
 Purpose
 -------
