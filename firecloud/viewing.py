@@ -152,7 +152,13 @@ def _los_intersects_projected_volume(dt: float, hs: float, support0: float, supp
 
 def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFrame,
                                 *, earth_radius_km: float = EARTH_RADIUS_KM) -> pd.DataFrame:
-    """Return target-level Cloud→Observer projected obstruction diagnostics."""
+    """Return target-level Cloud→Observer projected obstruction diagnostics.
+
+    R5.7.3 performance note: route-transect filters, projected support intervals,
+    and continuous-CF neighbour searches are cached per time/angle/direction.
+    This preserves the R5.6.1/R5.7 physics while avoiding repeated full-transect
+    scans for every target and every angular-footprint sample.
+    """
     cols = [
         "time", "solar_altitude_deg", "canvas_id", "cloud_layer_id",
         "direction_offset_deg", "target_distance_km", "target_base_km", "target_top_km",
@@ -178,12 +184,54 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
             left_on.append(k); right_on.append(k)
     cvs = cvs.merge(lk, left_on=left_on, right_on=right_on, how="left", suffixes=("", "_layer"))
 
+    # Pre-index cloud transects once. String time matches legacy CASE semantics.
+    def _gkey(timev, angv, dirv):
+        a=_finite(angv); d=_finite(dirv)
+        return (str(timev), None if a is None else round(a,8), None if d is None else round(d,8))
+    group_cache={}
+    for key,g in layers.groupby([
+        layers.get("time", pd.Series("", index=layers.index)).astype(str),
+        pd.to_numeric(layers.get("solar_altitude_deg"), errors="coerce").round(8),
+        pd.to_numeric(layers.get("direction_offset_deg"), errors="coerce").round(8),
+    ], dropna=False, sort=False):
+        group_cache[(str(key[0]), None if pd.isna(key[1]) else float(key[1]), None if pd.isna(key[2]) else float(key[2]))]=g.copy()
+
+    support_cache={}
+    neighbor_cache={}
+    def _rid(row):
+        return str(row.get("layer_id","")) + "@" + str(row.name)
+    def _support(row, transect, key):
+        ck=(key,_rid(row))
+        if ck not in support_cache:
+            support_cache[ck]=_projected_support_interval(row,transect)
+        return support_cache[ck]
+    def _neighbors(row, transect, key):
+        ck=(key,_rid(row))
+        if ck in neighbor_cache: return neighbor_cache[ck]
+        d=_finite(row.get("distance_km")); vals=[]
+        if d is not None:
+            for _,rr in transect.iterrows():
+                od=_finite(rr.get("distance_km")); ocf=_finite(rr.get("cloud_fraction"))
+                if od is None or ocf is None or abs(od-d)<1e-9: continue
+                if _same_cloud_neighbor(row,rr): vals.append((abs(od-d),od,ocf))
+        neighbor_cache[ck]=vals
+        return vals
+    def _cf_at(row, transect, x_km, key):
+        d=_finite(row.get("distance_km")); cf=_finite(row.get("cloud_fraction"))
+        if d is None or cf is None: return None,"CF_MISSING"
+        cand=_neighbors(row,transect,key)
+        if not cand: return min(1.0,max(0.0,cf)),"NODE_CF"
+        side=[c for c in cand if (x_km-d)*(c[1]-d)>=-1e-12]
+        if not side: return min(1.0,max(0.0,cf)),"NODE_CF"
+        _,od,ocf=min(side,key=lambda q:q[0])
+        if abs(od-d)<1e-9: return min(1.0,max(0.0,cf)),"NODE_CF"
+        w=min(1.0,max(0.0,(x_km-d)/(od-d)))
+        return min(1.0,max(0.0,(1.0-w)*cf+w*ocf)),"ADJACENT_CONTINUOUS_CF_INTERPOLATION"
+
     rows=[]
     for _, target in cvs.iterrows():
-        canvas_id=target.get("canvas_id"); layer_id=target.get("cloud_layer_id")
-        dt=_finite(target.get("distance_km_layer", target.get("distance_km")))
-        zb=_finite(target.get("z_base_km")); zt=_finite(target.get("z_top_km"))
-        direction=_finite(target.get("direction_offset_deg"))
+        canvas_id=str(target.get("canvas_id","")); layer_id=str(target.get("cloud_layer_id",""))
+        dt=_finite(target.get("distance_km")); zb=_finite(target.get("z_base_km")); zt=_finite(target.get("z_top_km")); direction=_finite(target.get("direction_offset_deg"))
         if direction is None: direction=_direction_from_layer_id(layer_id)
         tval=target.get("time_layer", target.get("time")); aval=target.get("solar_altitude_deg_layer", target.get("solar_altitude_deg"))
         photo_eligible = bool(zb is not None and zb >= PHOTO_TARGET_MIN_BASE_KM)
@@ -201,36 +249,33 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
                          "note":"FORMATION_UNCHANGED;VIEWING_ONLY;LOCAL_OR_INCOMPLETE_TARGET"})
             continue
 
-        cand=layers.copy()
-        if "solar_altitude_deg" in cand.columns and pd.notna(aval):
-            cand=cand[pd.to_numeric(cand["solar_altitude_deg"],errors="coerce").sub(float(aval)).abs()<1e-8]
-        cand=cand[pd.to_numeric(cand.get("direction_offset_deg"),errors="coerce").sub(float(direction)).abs()<1e-8]
-        transect=cand.copy()
-        cand=cand[pd.to_numeric(cand.get("distance_km"),errors="coerce") < dt - 1e-9]
+        key=_gkey(tval,aval,direction)
+        transect=group_cache.get(key)
+        if transect is None:
+            # Conservative fallback for unusual missing-time schemas.
+            cand=layers.copy()
+            if "solar_altitude_deg" in cand.columns and pd.notna(aval): cand=cand[pd.to_numeric(cand["solar_altitude_deg"],errors="coerce").sub(float(aval)).abs()<1e-8]
+            cand=cand[pd.to_numeric(cand.get("direction_offset_deg"),errors="coerce").sub(float(direction)).abs()<1e-8]
+            transect=cand
+        cand=transect[pd.to_numeric(transect.get("distance_km"),errors="coerce") < dt - 1e-9]
         cand=cand[cand.get("layer_id",pd.Series(index=cand.index,dtype=str)).astype(str)!=str(layer_id)]
 
         sample_heights=np.linspace(zb,zt,7).tolist()
         sample_occ=[]; blockers=set(); supports={}; low=mid=high=0; class_seen=set(); support_blockers=set(); unknown_occ=False
         for hs in sample_heights:
             occ_terms=[]
-            for _, b in cand.iterrows():
+            for bi,b in cand.iterrows():
                 db=_finite(b.get("distance_km")); bb=_finite(b.get("z_base_km")); bt=_finite(b.get("z_top_km"))
                 if db is None or bb is None or bt is None or bt<=bb: continue
-                s0,s1,ssrc,sconf=_projected_support_interval(b,transect)
+                s0,s1,ssrc,sconf=_support(b,transect,key)
                 if not (math.isfinite(float(s0)) and math.isfinite(float(s1))): continue
                 if not _los_intersects_projected_volume(dt,hs,s0,s1,bb,bt,earth_radius_km): continue
-                bid=str(b.get("layer_id","")); blockers.add(bid); support_blockers.add(bid)
-                supports[bid]=f"{s0:.3f}-{s1:.3f}"
-                # Estimate occupancy at the actual LOS crossing from real CF at
-                # vertically-continuous forecast nodes; never bridge a clear/data gap.
+                bid=str(b.get("layer_id","")); blockers.add(bid); support_blockers.add(bid); supports[bid]=f"{s0:.3f}-{s1:.3f}"
                 xs=np.linspace(max(0.0,s0),min(dt,s1),17)
                 zz=np.array([_los_height_agl_km(dt,hs,float(x),earth_radius_km) for x in xs],dtype=float)
-                inside=np.isfinite(zz)&(zz>=bb)&(zz<=bt)
-                xcross=float(np.mean(xs[inside])) if inside.any() else float(db)
-                cf,cf_method=_support_cloud_fraction_at_distance(b,transect,xcross)
-                if cf is None:
-                    unknown_occ=True
-                    continue
+                inside=np.isfinite(zz)&(zz>=bb)&(zz<=bt); xcross=float(np.mean(xs[inside])) if inside.any() else float(db)
+                cf,cf_method=_cf_at(b,transect,xcross,key)
+                if cf is None: unknown_occ=True; continue
                 occ_terms.append(cf)
                 if bid not in class_seen:
                     class_seen.add(bid); midh=0.5*(bb+bt)
@@ -241,37 +286,28 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
                 clear_prob=1.0
                 for cf in occ_terms: clear_prob *= (1.0-cf)
                 sample_occ.append(1.0-clear_prob)
-            elif unknown_occ:
-                sample_occ.append(np.nan)
-            else:
-                sample_occ.append(0.0)
+            elif unknown_occ: sample_occ.append(np.nan)
+            else: sample_occ.append(0.0)
 
         finite_occ=[float(v) for v in sample_occ if _finite(v) is not None]
         obstruction=float(np.mean(finite_occ)) if finite_occ else np.nan
         blocked_samples=int(sum((_finite(v) or 0.0)>=0.10 for v in sample_occ if _finite(v) is not None))
-        if unknown_occ and not finite_occ:
-            state="VIEW_GEOMETRY_INTERSECTION_OCCUPANCY_UNKNOWN"; conf="LOW"
-        elif not math.isfinite(obstruction):
-            state="VIEW_GEOMETRY_UNKNOWN"; conf="LOW"
-        elif obstruction>=0.70:
-            state="VIEW_SEVERE_OBSTRUCTION"; conf="MEDIUM"
-        elif obstruction>=0.10:
-            state="VIEW_PARTIAL_OBSTRUCTION"; conf="MEDIUM"
-        elif blockers and obstruction>0.0:
-            state="VIEW_MINOR_OBSTRUCTION"; conf="MEDIUM"
-        else:
-            state="VIEW_GEOMETRICALLY_CLEAR"; conf="MEDIUM"
+        if unknown_occ and not finite_occ: state="VIEW_GEOMETRY_INTERSECTION_OCCUPANCY_UNKNOWN"; conf="LOW"
+        elif not math.isfinite(obstruction): state="VIEW_GEOMETRY_UNKNOWN"; conf="LOW"
+        elif obstruction>=0.70: state="VIEW_SEVERE_OBSTRUCTION"; conf="MEDIUM"
+        elif obstruction>=0.10: state="VIEW_PARTIAL_OBSTRUCTION"; conf="MEDIUM"
+        elif blockers and obstruction>0.0: state="VIEW_MINOR_OBSTRUCTION"; conf="MEDIUM"
+        else: state="VIEW_GEOMETRICALLY_CLEAR"; conf="MEDIUM"
         rows.append({**base_row,"view_sample_count":len(sample_heights),"blocked_view_sample_count":blocked_samples,
                      "intervening_blocker_count":len(blockers),"low_cloud_blocker_count":low,"mid_cloud_blocker_count":mid,
                      "high_cloud_blocker_count":high,"projected_support_blocker_count":len(support_blockers),
                      "view_obstruction_fraction_proxy":obstruction,"view_geometry_state":state,
-                     "viewing_geometry_method":"ANGULAR_FOOTPRINT_PROJECTED_VOLUME_WITH_CONTINUOUS_CF",
+                     "viewing_geometry_method":"ANGULAR_FOOTPRINT_PROJECTED_VOLUME_WITH_CONTINUOUS_CF_CACHED",
                      "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED","viewing_confidence":conf,
                      "blocker_layer_ids":";".join(sorted(blockers)),
                      "blocker_support_intervals_km":";".join(f"{k}:{supports[k]}" for k in sorted(supports)),
-                     "note":"FORMATION_UNCHANGED;CLOUD_TO_OBSERVER_PROJECTED_VOLUME;CF_OCCUPANCY_PROXY_NOT_COT;MISSING_OCCUPANCY_NOT_CLEAR;UNCALIBRATED_THRESHOLDS"})
+                     "note":"FORMATION_UNCHANGED;CLOUD_TO_OBSERVER_PROJECTED_VOLUME;CF_OCCUPANCY_PROXY_NOT_COT;MISSING_OCCUPANCY_NOT_CLEAR;UNCALIBRATED_THRESHOLDS;R573_CACHED_TRANSECT"})
     return pd.DataFrame(rows,columns=cols)
-
 
 def summarize_viewing_path(viewing: pd.DataFrame) -> pd.DataFrame:
     cols=["time","solar_altitude_deg","target_count","photographic_target_count","evaluated_target_count",

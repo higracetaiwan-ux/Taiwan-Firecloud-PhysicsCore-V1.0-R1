@@ -84,9 +84,9 @@ def _integrate_view_aerosol(target, aerosol_rows: pd.DataFrame, earth_radius_km:
     return taus,"VIEW_AEROSOL_3D_RESOLVED",path_km
 
 
-def _integrate_view_gas(target, gas_rows: pd.DataFrame, earth_radius_km: float):
+def _integrate_view_gas(target, gas_rows: pd.DataFrame, earth_radius_km: float, prepared_context=None):
     if gas_rows is None or gas_rows.empty: return None,"VIEW_GAS_PROFILE_MISSING",0.0
-    ctx=prepare_gas_rt_context(gas_rows)
+    ctx=prepared_context if prepared_context is not None else prepare_gas_rt_context(gas_rows)
     if not ctx.valid: return None,"VIEW_GAS_RT_CONTEXT_MISSING",0.0
     direction=float(target["direction_offset_deg"]); dt=float(target["target_distance_km"]); ht=0.5*(float(target["target_base_km"])+float(target["target_top_km"]))
     drec=ctx.prepared_profile.get(direction)
@@ -137,21 +137,25 @@ def _exact_cot_map(cloud_layers: pd.DataFrame, target_optics: pd.DataFrame):
     return out
 
 
-def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame, earth_radius_km: float):
+def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame, earth_radius_km: float, *, prefiltered_layers=None, cotmap=None, support_cache=None):
     # Rebuild only the actual blocker volumes for the center of the target angular footprint.
     direction=float(target["direction_offset_deg"]); dt=float(target["target_distance_km"]); ht=0.5*(float(target["target_base_km"])+float(target["target_top_km"]))
     time=target.get("time"); angle=float(target.get("solar_altitude_deg"))
-    cand=cloud_layers.copy()
-    if "solar_altitude_deg" in cand: cand=cand[(pd.to_numeric(cand["solar_altitude_deg"],errors="coerce")-angle).abs()<1e-8]
-    cand=cand[(pd.to_numeric(cand["direction_offset_deg"],errors="coerce")-direction).abs()<1e-8]
-    if "time" in cand and pd.notna(time): cand=cand[cand["time"].astype(str)==str(time)]
+    cand=prefiltered_layers.copy() if prefiltered_layers is not None else cloud_layers.copy()
+    if prefiltered_layers is None:
+        if "solar_altitude_deg" in cand: cand=cand[(pd.to_numeric(cand["solar_altitude_deg"],errors="coerce")-angle).abs()<1e-8]
+        cand=cand[(pd.to_numeric(cand["direction_offset_deg"],errors="coerce")-direction).abs()<1e-8]
+        if "time" in cand and pd.notna(time): cand=cand[cand["time"].astype(str)==str(time)]
     transect=cand.copy(); cand=cand[pd.to_numeric(cand["distance_km"],errors="coerce")<dt-1e-8]
-    cotmap=_exact_cot_map(cloud_layers,target_optics)
+    cotmap=_exact_cot_map(cloud_layers,target_optics) if cotmap is None else cotmap
+    support_cache={} if support_cache is None else support_cache
     expected_t=1.0; conditional_tau=0.0; blockers=0; unresolved=0; sources=[]
     for _,b in cand.iterrows():
         bb=_finite(b.get("z_base_km")); bt=_finite(b.get("z_top_km")); cf=_finite(b.get("cloud_fraction"))
         if bb is None or bt is None or bt<=bb: continue
-        s0,s1,_,_=_projected_support_interval(b,transect)
+        _sk=str(b.get("layer_id",""))+"@"+str(b.name)
+        if _sk not in support_cache: support_cache[_sk]=_projected_support_interval(b,transect)
+        s0,s1,_,_=support_cache[_sk]
         if not (math.isfinite(float(s0)) and math.isfinite(float(s1))) or s1<=s0: continue
         xs=np.linspace(max(0.0,s0),min(dt,s1),25)
         if len(xs)<2: continue
@@ -176,20 +180,51 @@ def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.Da
 def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame,
                                       aerosol_snapshots: pd.DataFrame, gas_profiles: pd.DataFrame,
                                       viewing_precipitation: pd.DataFrame | None=None, *, earth_radius_km: float=6371.0) -> pd.DataFrame:
+    """Build independent Cloud→Observer six-band extinction.
+
+    R5.7.3 caches route groups, gas RT contexts, exact-COT lookup, and cloud
+    support geometry. Numerical formulas and fail-closed semantics are unchanged.
+    """
     rows=[]
     if viewing_geometry is None or viewing_geometry.empty: return pd.DataFrame()
     pmap={}
     if viewing_precipitation is not None and not viewing_precipitation.empty:
         pmap={str(r.canvas_id):r for r in viewing_precipitation.itertuples(index=False)}
+
+    def _key(timev, angv, dirv):
+        a=_finite(angv); d=_finite(dirv)
+        return (str(timev), None if a is None else round(a,8), None if d is None else round(d,8))
+    def _group_route(df):
+        out={}
+        if df is None or df.empty: return out
+        work=df.copy()
+        tser=work.get("time",pd.Series("",index=work.index)).astype(str)
+        aser=pd.to_numeric(work.get("solar_altitude_deg"),errors="coerce").round(8)
+        dser=pd.to_numeric(work.get("direction_offset_deg"),errors="coerce").round(8)
+        for k,g in work.groupby([tser,aser,dser],dropna=False,sort=False):
+            key=(str(k[0]), None if pd.isna(k[1]) else float(k[1]), None if pd.isna(k[2]) else float(k[2]))
+            gg=g.copy(); gg["distance_km"]=pd.to_numeric(gg["distance_km"],errors="coerce"); out[key]=gg.sort_values("distance_km")
+        return out
+    aerosol_groups=_group_route(aerosol_snapshots)
+    gas_groups=_group_route(gas_profiles)
+    cloud_groups=_group_route(cloud_layers)
+    gas_contexts={}
+    for k,g in gas_groups.items():
+        gas_contexts[k]=prepare_gas_rt_context(g)
+    cotmap=_exact_cot_map(cloud_layers,target_optics)
+    cloud_support_caches={k:{} for k in cloud_groups}
+
     for _,t in viewing_geometry.iterrows():
         if not bool(t.get("photographic_target_eligible",False)): continue
         direction=_finite(t.get("direction_offset_deg")); dt=_finite(t.get("target_distance_km")); zb=_finite(t.get("target_base_km")); zt=_finite(t.get("target_top_km")); angle=_finite(t.get("solar_altitude_deg"))
         if None in (direction,dt,zb,zt,angle) or dt<=0: continue
-        ar=_route_rows_for_target(aerosol_snapshots,direction,t.get("time"),angle,dt)
-        gr=_route_rows_for_target(gas_profiles,direction,t.get("time"),angle,dt)
+        k=_key(t.get("time"),angle,direction)
+        ar=aerosol_groups.get(k,pd.DataFrame()); ar=ar[ar["distance_km"].notna() & (ar["distance_km"]<=dt+1e-8)] if not ar.empty else ar
+        gr=gas_groups.get(k,pd.DataFrame()); gr=gr[gr["distance_km"].notna() & (gr["distance_km"]<=dt+1e-8)] if not gr.empty else gr
         atau,astatus,apath=_integrate_view_aerosol(t,ar,earth_radius_km)
-        gtau,gstatus,gpath=_integrate_view_gas(t,gr,earth_radius_km)
-        ctau,cconditional,cstatus,blockers,csrc=_cloud_expected_tau(t,cloud_layers,target_optics,earth_radius_km)
+        gtau,gstatus,gpath=_integrate_view_gas(t,gr,earth_radius_km,prepared_context=gas_contexts.get(k))
+        cg=cloud_groups.get(k)
+        ctau,cconditional,cstatus,blockers,csrc=_cloud_expected_tau(t,cloud_layers,target_optics,earth_radius_km,prefiltered_layers=cg,cotmap=cotmap,support_cache=cloud_support_caches.setdefault(k,{}))
         pr=pmap.get(str(t.get("canvas_id")))
         rec={"time":t.get("time"),"solar_altitude_deg":angle,"canvas_id":t.get("canvas_id"),"cloud_layer_id":t.get("cloud_layer_id"),"direction_offset_deg":direction,"target_distance_km":dt,"target_base_km":zb,"target_top_km":zt,
              "view_gas_status":gstatus,"view_aerosol_status":astatus,"view_cloud_status":cstatus,"view_cloud_conditional_slant_tau":cconditional,"view_cloud_blocker_count":blockers,"view_cloud_optical_sources":csrc,"view_gas_path_km":gpath,"view_aerosol_path_km":apath,
@@ -205,16 +240,14 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
             if tc is None: miss.append("CLOUD")
             if tp is None: miss.append("PRECIPITATION")
             if miss:
-                rec[f"view_tau_total_{int(wl)}nm"]=None; rec[f"view_transmission_{int(wl)}nm"]=None
-                missing.extend(miss)
+                rec[f"view_tau_total_{int(wl)}nm"]=None; rec[f"view_transmission_{int(wl)}nm"]=None; missing.extend(miss)
             else:
                 total=max(0.0,float(tg+ta+tc+tp)); rec[f"view_tau_total_{int(wl)}nm"]=total; rec[f"view_transmission_{int(wl)}nm"]=math.exp(-total)
         rec["viewing_spectral_status"]="VIEW_FULL_SIX_BAND_RT" if not missing else "VIEW_PARTIAL_SIX_BAND_RT"
         rec["viewing_missing_components"]=";".join(sorted(set(missing)))
-        rec["note"]="CLOUD_TO_OBSERVER_ONLY;FORMATION_UNCHANGED;NO_SUN_PATH_REUSE;CLOUD_OCCUPANCY_AND_OPTICAL_DEPTH_KEPT_SEPARATE"
+        rec["note"]="CLOUD_TO_OBSERVER_ONLY;FORMATION_UNCHANGED;NO_SUN_PATH_REUSE;CLOUD_OCCUPANCY_AND_OPTICAL_DEPTH_KEPT_SEPARATE;R573_CACHED_ROUTE_CONTEXT"
         rows.append(rec)
     return pd.DataFrame(rows)
-
 
 def summarize_viewing_spectral_extinction(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty: return pd.DataFrame()
