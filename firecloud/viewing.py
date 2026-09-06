@@ -1,24 +1,29 @@
-"""PhysicsCore V1.0-R5.6 Cloud→Observer viewing geometry.
+"""PhysicsCore V1.0-R5.6.1 Cloud→Observer viewing geometry.
 
-This module is deliberately independent of Formation.  It answers only whether
-an existing target cloud is geometrically visible from the observer through
-nearer forecast cloud layers.  It does not change F_sun, Sun→CloudBase RT, or
-whether the target cloud was illuminated.
+R5.6.1 upgrades the R5.6 single-node line-of-sight test to a projected cloud-
+volume / angular-footprint diagnostic. Forecast cloud layers are sampled at
+route nodes, but clouds occupy volume between nodes. Treating each node as an
+infinitesimal point can miss a foreground cloud that the observer ray crosses
+between two samples (especially the 0–5 km near-observer segment).
 
-R5.6 is a Tier-1 geometry/occupancy branch.  It does NOT claim full spectral
-Cloud→Observer transmission.  ``view_obstruction_fraction_proxy`` is a cloud-
-occupancy proxy derived from intervening cloud fraction at line-of-sight
-intersections and is explicitly not optical depth.
+This module remains deliberately independent of Formation:
+* it never changes F_sun or Penumbra Geometry;
+* it never changes Sun→CloudBase spectral RT;
+* cloud fraction is only a viewing occupancy proxy, never COT;
+* missing geometry/occupancy is never converted to clear sky.
+
+R5.6.1 is still Viewing Tier-1. Full Cloud→Observer spectral extinction
+(aerosol/haze/fog/precipitation/cloud COT) remains a separate later tier.
 """
 from __future__ import annotations
 
 import math
-from typing import Iterable
-
 import numpy as np
 import pandas as pd
 
 EARTH_RADIUS_KM = 6371.0
+PHOTO_TARGET_MIN_BASE_KM = 2.0
+VERTICAL_CONTINUITY_MIN_OVERLAP = 0.50
 
 
 def _finite(v):
@@ -31,12 +36,7 @@ def _finite(v):
 
 def _los_height_agl_km(target_distance_km: float, target_height_agl_km: float,
                        blocker_distance_km: float, earth_radius_km: float = EARTH_RADIUS_KM) -> float:
-    """Approximate curved-Earth LOS height above local ground at blocker range.
-
-    The observer is treated as 0 km AGL.  For 0–100 km canvas viewing this
-    second-order curvature expression is adequate for Tier-1 obstruction
-    geometry and avoids conflating it with radiative transfer.
-    """
+    """Curved-Earth LOS height above local ground at blocker range."""
     dt = max(float(target_distance_km), 1e-6)
     db = min(max(float(blocker_distance_km), 0.0), dt)
     r = float(earth_radius_km)
@@ -56,186 +56,233 @@ def _direction_from_layer_id(layer_id: str):
         return None
 
 
+def _vertical_overlap_fraction(a0, a1, b0, b1) -> float:
+    vals = [_finite(x) for x in (a0, a1, b0, b1)]
+    if any(x is None for x in vals):
+        return 0.0
+    a0, a1, b0, b1 = vals
+    if a1 <= a0 or b1 <= b0:
+        return 0.0
+    overlap = max(0.0, min(a1, b1) - max(a0, b0))
+    return overlap / max(1e-9, min(a1-a0, b1-b0))
+
+
+def _same_cloud_neighbor(row: pd.Series, other: pd.Series) -> bool:
+    """Conservative geometric continuity test between adjacent route nodes."""
+    ov = _vertical_overlap_fraction(row.get("z_base_km"), row.get("z_top_km"),
+                                    other.get("z_base_km"), other.get("z_top_km"))
+    return ov >= VERTICAL_CONTINUITY_MIN_OVERLAP
+
+
+def _projected_support_interval(row: pd.Series, transect: pd.DataFrame) -> tuple[float, float, str, str]:
+    """Infer a finite horizontal support interval around a sampled cloud node.
+
+    Extension to a midpoint is allowed only when the nearest cloud layer at the
+    adjacent route distance vertically overlaps the current layer. This prevents
+    arbitrary bridging across clear gaps while fixing the R5.6 point-node miss.
+    """
+    d = _finite(row.get("distance_km"))
+    if d is None:
+        return np.nan, np.nan, "UNRESOLVED", "UNKNOWN"
+    distances = sorted(set(pd.to_numeric(transect.get("distance_km"), errors="coerce").dropna().astype(float)))
+    if not distances:
+        return d, d, "NODE_ONLY", "LOW"
+    prev_ds = [x for x in distances if x < d - 1e-9]
+    next_ds = [x for x in distances if x > d + 1e-9]
+    left = 0.0 if abs(d) < 1e-9 else d
+    right = d
+    links = []
+    if prev_ds:
+        pdist = max(prev_ds)
+        prev = transect[pd.to_numeric(transect["distance_km"], errors="coerce").sub(pdist).abs() < 1e-8]
+        if any(_same_cloud_neighbor(row, rr) for _, rr in prev.iterrows()):
+            left = 0.5 * (pdist + d); links.append("LEFT")
+    elif d <= 1e-9:
+        left = 0.0
+    if next_ds:
+        ndist = min(next_ds)
+        nxt = transect[pd.to_numeric(transect["distance_km"], errors="coerce").sub(ndist).abs() < 1e-8]
+        if any(_same_cloud_neighbor(row, rr) for _, rr in nxt.iterrows()):
+            right = 0.5 * (d + ndist); links.append("RIGHT")
+    if d <= 1e-9 and next_ds and "RIGHT" in links:
+        left = 0.0
+    if not links:
+        return d, d, "NODE_ONLY_NO_CONTINUITY", "LOW"
+    return max(0.0, left), max(left, right), "ADJACENT_VERTICAL_OVERLAP_MIDPOINT_SUPPORT", "MEDIUM"
+
+
+def _los_intersects_projected_volume(dt: float, hs: float, support0: float, support1: float,
+                                     bb: float, bt: float, earth_radius_km: float) -> bool:
+    """Test LOS against a projected cloud prism over its horizontal support."""
+    x0 = max(0.0, min(float(support0), dt))
+    x1 = max(0.0, min(float(support1), dt))
+    if x1 <= x0 + 1e-9:
+        # A pure node still gets the legacy point test when it is away from the observer.
+        if x0 <= 1e-9:
+            return False
+        h = _los_height_agl_km(dt, hs, x0, earth_radius_km)
+        return bb - 1e-9 <= h <= bt + 1e-9
+    # Curvature can make the relation slightly non-linear; dense deterministic
+    # samples avoid assuming monotonicity while remaining trivial at 0–100 km.
+    xs = np.linspace(x0, x1, 17)
+    hh = [_los_height_agl_km(dt, hs, float(x), earth_radius_km) for x in xs]
+    hmin, hmax = min(hh), max(hh)
+    return not (hmax < bb - 1e-9 or hmin > bt + 1e-9)
+
+
 def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFrame,
                                 *, earth_radius_km: float = EARTH_RADIUS_KM) -> pd.DataFrame:
-    """Return target-level Cloud→Observer obstruction diagnostics.
-
-    Three sight-lines are sampled for each target layer: cloud base, midpoint,
-    and cloud top.  A nearer layer is a geometric blocker when one of those
-    sight-lines crosses its vertical extent on the same direction transect.
-
-    No COT is manufactured.  Cloud fraction is used only as an occupancy proxy
-    after a geometric intersection has been established.
-    """
+    """Return target-level Cloud→Observer projected obstruction diagnostics."""
     cols = [
         "time", "solar_altitude_deg", "canvas_id", "cloud_layer_id",
-        "direction_offset_deg", "target_distance_km", "target_base_km",
-        "target_top_km", "view_sample_count", "blocked_view_sample_count",
-        "intervening_blocker_count", "low_cloud_blocker_count",
-        "mid_cloud_blocker_count", "high_cloud_blocker_count",
-        "view_obstruction_fraction_proxy", "view_geometry_state",
-        "viewing_path_spectral_status", "viewing_confidence", "blocker_layer_ids",
-        "note",
+        "direction_offset_deg", "target_distance_km", "target_base_km", "target_top_km",
+        "view_target_role", "photographic_target_eligible",
+        "view_sample_count", "blocked_view_sample_count", "intervening_blocker_count",
+        "low_cloud_blocker_count", "mid_cloud_blocker_count", "high_cloud_blocker_count",
+        "projected_support_blocker_count", "view_obstruction_fraction_proxy",
+        "view_geometry_state", "viewing_geometry_method", "viewing_path_spectral_status",
+        "viewing_confidence", "blocker_layer_ids", "blocker_support_intervals_km", "note",
     ]
     if cloud_layers is None or canvases is None or cloud_layers.empty or canvases.empty:
         return pd.DataFrame(columns=cols)
-
-    layers = cloud_layers.copy()
-    cvs = canvases.copy()
+    layers = cloud_layers.copy(); cvs = canvases.copy()
     if "layer_id" not in layers or "cloud_layer_id" not in cvs:
         return pd.DataFrame(columns=cols)
 
-    # Enrich canvas rows from authoritative cloud-layer geometry.
     lk = layers[[c for c in ["layer_id", "direction_offset_deg", "distance_km", "z_base_km", "z_top_km",
                               "cloud_fraction", "cloud_fraction_state", "geometry_confidence", "time",
                               "solar_altitude_deg"] if c in layers.columns]].copy()
-    left_on = ["cloud_layer_id"]
-    right_on = ["layer_id"]
+    left_on = ["cloud_layer_id"]; right_on = ["layer_id"]
     for k in ["time", "solar_altitude_deg"]:
         if k in cvs.columns and k in lk.columns:
             left_on.append(k); right_on.append(k)
     cvs = cvs.merge(lk, left_on=left_on, right_on=right_on, how="left", suffixes=("", "_layer"))
 
-    rows = []
-    group_keys = [k for k in ["time", "solar_altitude_deg"] if k in layers.columns]
+    rows=[]
     for _, target in cvs.iterrows():
-        canvas_id = target.get("canvas_id")
-        layer_id = target.get("cloud_layer_id")
-        dt = _finite(target.get("distance_km_layer", target.get("distance_km")))
-        zb = _finite(target.get("z_base_km"))
-        zt = _finite(target.get("z_top_km"))
-        direction = _finite(target.get("direction_offset_deg"))
-        if direction is None:
-            direction = _direction_from_layer_id(layer_id)
-        tval = target.get("time_layer", target.get("time"))
-        aval = target.get("solar_altitude_deg_layer", target.get("solar_altitude_deg"))
-
-        base_row = {
-            "time": tval, "solar_altitude_deg": aval, "canvas_id": canvas_id,
-            "cloud_layer_id": layer_id, "direction_offset_deg": direction,
-            "target_distance_km": dt, "target_base_km": zb, "target_top_km": zt,
-        }
+        canvas_id=target.get("canvas_id"); layer_id=target.get("cloud_layer_id")
+        dt=_finite(target.get("distance_km_layer", target.get("distance_km")))
+        zb=_finite(target.get("z_base_km")); zt=_finite(target.get("z_top_km"))
+        direction=_finite(target.get("direction_offset_deg"))
+        if direction is None: direction=_direction_from_layer_id(layer_id)
+        tval=target.get("time_layer", target.get("time")); aval=target.get("solar_altitude_deg_layer", target.get("solar_altitude_deg"))
+        photo_eligible = bool(zb is not None and zb >= PHOTO_TARGET_MIN_BASE_KM)
+        role = "FIRECLOUD_CANVAS_TARGET" if photo_eligible else "FOREGROUND_LOW_CLOUD_OBSTRUCTION_ONLY"
+        base_row={"time":tval,"solar_altitude_deg":aval,"canvas_id":canvas_id,"cloud_layer_id":layer_id,
+                  "direction_offset_deg":direction,"target_distance_km":dt,"target_base_km":zb,"target_top_km":zt,
+                  "view_target_role":role,"photographic_target_eligible":photo_eligible}
         if dt is None or zb is None or zt is None or direction is None or dt <= 0.0 or zt <= zb:
-            rows.append({**base_row, "view_sample_count": 0, "blocked_view_sample_count": 0,
-                         "intervening_blocker_count": 0, "low_cloud_blocker_count": 0,
-                         "mid_cloud_blocker_count": 0, "high_cloud_blocker_count": 0,
-                         "view_obstruction_fraction_proxy": np.nan,
-                         "view_geometry_state": "VIEW_GEOMETRY_NOT_EVALUATED_LOCAL_TARGET",
-                         "viewing_path_spectral_status": "VIEW_SPECTRAL_RT_NOT_YET_RESOLVED",
-                         "viewing_confidence": "LOW", "blocker_layer_ids": "",
-                         "note": "FORMATION_UNCHANGED;VIEWING_GEOMETRY_ONLY;LOCAL_OR_INCOMPLETE_TARGET"})
+            rows.append({**base_row,"view_sample_count":0,"blocked_view_sample_count":0,"intervening_blocker_count":0,
+                         "low_cloud_blocker_count":0,"mid_cloud_blocker_count":0,"high_cloud_blocker_count":0,
+                         "projected_support_blocker_count":0,"view_obstruction_fraction_proxy":np.nan,
+                         "view_geometry_state":"VIEW_GEOMETRY_NOT_EVALUATED_LOCAL_TARGET","viewing_geometry_method":"PROJECTED_VOLUME_SUPPORT",
+                         "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED","viewing_confidence":"LOW",
+                         "blocker_layer_ids":"","blocker_support_intervals_km":"",
+                         "note":"FORMATION_UNCHANGED;VIEWING_ONLY;LOCAL_OR_INCOMPLETE_TARGET"})
             continue
 
-        cand = layers.copy()
+        cand=layers.copy()
         if "solar_altitude_deg" in cand.columns and pd.notna(aval):
-            cand = cand[pd.to_numeric(cand["solar_altitude_deg"], errors="coerce").sub(float(aval)).abs() < 1e-8]
-        if "time" in cand.columns and pd.notna(tval):
-            # Angle is the stable key; time matching is intentionally not strict because serialized timestamps can differ in dtype.
-            pass
-        cand = cand[pd.to_numeric(cand.get("direction_offset_deg"), errors="coerce").sub(float(direction)).abs() < 1e-8]
-        cand = cand[pd.to_numeric(cand.get("distance_km"), errors="coerce") < dt - 1e-9]
-        # Same target layer must never self-block.
-        cand = cand[cand.get("layer_id", pd.Series(index=cand.index, dtype=str)).astype(str) != str(layer_id)]
+            cand=cand[pd.to_numeric(cand["solar_altitude_deg"],errors="coerce").sub(float(aval)).abs()<1e-8]
+        cand=cand[pd.to_numeric(cand.get("direction_offset_deg"),errors="coerce").sub(float(direction)).abs()<1e-8]
+        transect=cand.copy()
+        cand=cand[pd.to_numeric(cand.get("distance_km"),errors="coerce") < dt - 1e-9]
+        cand=cand[cand.get("layer_id",pd.Series(index=cand.index,dtype=str)).astype(str)!=str(layer_id)]
 
-        sample_heights = [zb, 0.5 * (zb + zt), zt]
-        sample_occ = []
-        blockers = set()
-        low = mid = high = 0
-        blocker_class_seen = set()
+        sample_heights=[zb,0.5*(zb+zt),zt]
+        sample_occ=[]; blockers=set(); supports={}; low=mid=high=0; class_seen=set(); support_blockers=set(); unknown_occ=False
         for hs in sample_heights:
-            occ_terms = []
+            occ_terms=[]
             for _, b in cand.iterrows():
-                db = _finite(b.get("distance_km")); bb = _finite(b.get("z_base_km")); bt = _finite(b.get("z_top_km"))
-                if db is None or bb is None or bt is None or db <= 0.0 or bt <= bb:
+                db=_finite(b.get("distance_km")); bb=_finite(b.get("z_base_km")); bt=_finite(b.get("z_top_km"))
+                if db is None or bb is None or bt is None or bt<=bb: continue
+                s0,s1,ssrc,sconf=_projected_support_interval(b,transect)
+                if not (math.isfinite(float(s0)) and math.isfinite(float(s1))): continue
+                if not _los_intersects_projected_volume(dt,hs,s0,s1,bb,bt,earth_radius_km): continue
+                bid=str(b.get("layer_id","")); blockers.add(bid); support_blockers.add(bid)
+                supports[bid]=f"{s0:.3f}-{s1:.3f}"
+                cf=_finite(b.get("cloud_fraction"))
+                if cf is None:
+                    unknown_occ=True
+                    # Geometry says a cloud volume intersects, but occupancy is unknown.
+                    # Do not manufacture 50% cloud as R5.6 did; preserve uncertainty.
                     continue
-                hlos = _los_height_agl_km(dt, hs, db, earth_radius_km)
-                if bb - 1e-9 <= hlos <= bt + 1e-9:
-                    bid = str(b.get("layer_id", ""))
-                    blockers.add(bid)
-                    cf = _finite(b.get("cloud_fraction"))
-                    if cf is None:
-                        # Geometry says cloud exists but occupancy is missing: keep obstruction unknown-ish rather than clear.
-                        cf = 0.5
-                    cf = min(max(cf, 0.0), 1.0)
-                    occ_terms.append(cf)
-                    key = (bid,)
-                    if key not in blocker_class_seen:
-                        blocker_class_seen.add(key)
-                        midh = 0.5 * (bb + bt)
-                        if midh < 2.0:
-                            low += 1
-                        elif midh < 6.0:
-                            mid += 1
-                        else:
-                            high += 1
+                cf=min(max(cf,0.0),1.0); occ_terms.append(cf)
+                if bid not in class_seen:
+                    class_seen.add(bid); midh=0.5*(bb+bt)
+                    if midh<2.0: low+=1
+                    elif midh<6.0: mid+=1
+                    else: high+=1
             if occ_terms:
-                clear_prob = 1.0
-                for cf in occ_terms:
-                    clear_prob *= (1.0 - cf)
-                sample_occ.append(1.0 - clear_prob)
+                clear_prob=1.0
+                for cf in occ_terms: clear_prob *= (1.0-cf)
+                sample_occ.append(1.0-clear_prob)
+            elif unknown_occ:
+                sample_occ.append(np.nan)
             else:
                 sample_occ.append(0.0)
 
-        obstruction = float(np.mean(sample_occ)) if sample_occ else np.nan
-        blocked_samples = int(sum(v >= 0.10 for v in sample_occ))
-        if not math.isfinite(obstruction):
-            state = "VIEW_GEOMETRY_UNKNOWN"
-            conf = "LOW"
-        elif obstruction >= 0.70:
-            state = "VIEW_SEVERE_OBSTRUCTION"
-            conf = "MEDIUM"
-        elif obstruction >= 0.10:
-            state = "VIEW_PARTIAL_OBSTRUCTION"
-            conf = "MEDIUM"
+        finite_occ=[float(v) for v in sample_occ if _finite(v) is not None]
+        obstruction=float(np.mean(finite_occ)) if finite_occ else np.nan
+        blocked_samples=int(sum((_finite(v) or 0.0)>=0.10 for v in sample_occ if _finite(v) is not None))
+        if unknown_occ and not finite_occ:
+            state="VIEW_GEOMETRY_INTERSECTION_OCCUPANCY_UNKNOWN"; conf="LOW"
+        elif not math.isfinite(obstruction):
+            state="VIEW_GEOMETRY_UNKNOWN"; conf="LOW"
+        elif obstruction>=0.70:
+            state="VIEW_SEVERE_OBSTRUCTION"; conf="MEDIUM"
+        elif obstruction>=0.10:
+            state="VIEW_PARTIAL_OBSTRUCTION"; conf="MEDIUM"
+        elif blockers and obstruction>0.0:
+            state="VIEW_MINOR_OBSTRUCTION"; conf="MEDIUM"
         else:
-            state = "VIEW_GEOMETRICALLY_CLEAR"
-            conf = "MEDIUM"
-
-        rows.append({**base_row, "view_sample_count": len(sample_heights),
-                     "blocked_view_sample_count": blocked_samples,
-                     "intervening_blocker_count": len(blockers),
-                     "low_cloud_blocker_count": low, "mid_cloud_blocker_count": mid,
-                     "high_cloud_blocker_count": high,
-                     "view_obstruction_fraction_proxy": obstruction,
-                     "view_geometry_state": state,
-                     "viewing_path_spectral_status": "VIEW_SPECTRAL_RT_NOT_YET_RESOLVED",
-                     "viewing_confidence": conf,
-                     "blocker_layer_ids": ";".join(sorted(blockers)),
-                     "note": "FORMATION_UNCHANGED;CLOUD_TO_OBSERVER_GEOMETRY_ONLY;CF_OCCUPANCY_PROXY_NOT_COT;UNCALIBRATED_THRESHOLDS"})
-
-    return pd.DataFrame(rows, columns=cols)
+            state="VIEW_GEOMETRICALLY_CLEAR"; conf="MEDIUM"
+        rows.append({**base_row,"view_sample_count":len(sample_heights),"blocked_view_sample_count":blocked_samples,
+                     "intervening_blocker_count":len(blockers),"low_cloud_blocker_count":low,"mid_cloud_blocker_count":mid,
+                     "high_cloud_blocker_count":high,"projected_support_blocker_count":len(support_blockers),
+                     "view_obstruction_fraction_proxy":obstruction,"view_geometry_state":state,
+                     "viewing_geometry_method":"ADJACENT_NODE_PROJECTED_VOLUME_SUPPORT",
+                     "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED","viewing_confidence":conf,
+                     "blocker_layer_ids":";".join(sorted(blockers)),
+                     "blocker_support_intervals_km":";".join(f"{k}:{supports[k]}" for k in sorted(supports)),
+                     "note":"FORMATION_UNCHANGED;CLOUD_TO_OBSERVER_PROJECTED_VOLUME;CF_OCCUPANCY_PROXY_NOT_COT;MISSING_OCCUPANCY_NOT_CLEAR;UNCALIBRATED_THRESHOLDS"})
+    return pd.DataFrame(rows,columns=cols)
 
 
 def summarize_viewing_path(viewing: pd.DataFrame) -> pd.DataFrame:
-    cols = ["time", "solar_altitude_deg", "target_count", "evaluated_target_count",
-            "clear_target_count", "partial_obstruction_target_count", "severe_obstruction_target_count",
-            "mean_view_obstruction_fraction_proxy", "max_view_obstruction_fraction_proxy",
-            "viewing_state", "viewing_path_spectral_status", "note"]
-    if viewing is None or viewing.empty:
-        return pd.DataFrame(columns=cols)
-    rows = []
-    keys = [k for k in ["time", "solar_altitude_deg"] if k in viewing.columns]
-    groups = viewing.groupby(keys, dropna=False) if keys else [((), viewing)]
-    for key, g in groups:
-        states = g.get("view_geometry_state", pd.Series(dtype=str)).astype(str)
-        vals = pd.to_numeric(g.get("view_obstruction_fraction_proxy"), errors="coerce")
-        evaluated = vals.notna()
-        mean = float(vals[evaluated].mean()) if evaluated.any() else np.nan
-        mx = float(vals[evaluated].max()) if evaluated.any() else np.nan
-        if not evaluated.any(): state = "VIEWING_UNKNOWN"
-        elif mean >= 0.70: state = "VIEWING_SEVERELY_OBSCURED"
-        elif mean >= 0.10: state = "VIEWING_PARTIALLY_OBSCURED"
-        else: state = "VIEWING_GEOMETRY_GOOD"
-        row = {"target_count": len(g), "evaluated_target_count": int(evaluated.sum()),
-               "clear_target_count": int((states == "VIEW_GEOMETRICALLY_CLEAR").sum()),
-               "partial_obstruction_target_count": int((states == "VIEW_PARTIAL_OBSTRUCTION").sum()),
-               "severe_obstruction_target_count": int((states == "VIEW_SEVERE_OBSTRUCTION").sum()),
-               "mean_view_obstruction_fraction_proxy": mean,
-               "max_view_obstruction_fraction_proxy": mx, "viewing_state": state,
-               "viewing_path_spectral_status": "VIEW_SPECTRAL_RT_NOT_YET_RESOLVED",
-               "note": "FORMATION_INDEPENDENT;GEOMETRY_OCCUPANCY_TIER1;NO_VIEWING_SPECTRAL_EXTINCTION_YET"}
+    cols=["time","solar_altitude_deg","target_count","photographic_target_count","evaluated_target_count",
+          "clear_target_count","minor_obstruction_target_count","partial_obstruction_target_count","severe_obstruction_target_count",
+          "mean_view_obstruction_fraction_proxy","max_view_obstruction_fraction_proxy","viewing_state",
+          "viewing_path_spectral_status","viewing_summary_scope","note"]
+    if viewing is None or viewing.empty: return pd.DataFrame(columns=cols)
+    rows=[]; keys=[k for k in ["time","solar_altitude_deg"] if k in viewing.columns]
+    groups=viewing.groupby(keys,dropna=False) if keys else [((),viewing)]
+    for key,g0 in groups:
+        eligible = g0.get("photographic_target_eligible",pd.Series(False,index=g0.index)).fillna(False).astype(bool)
+        g=g0[eligible].copy()
+        # Low foreground clouds remain blockers but must not themselves dominate the photography summary.
+        if g.empty:
+            g=g0.iloc[0:0].copy()
+        states=g.get("view_geometry_state",pd.Series(dtype=str)).astype(str)
+        vals=pd.to_numeric(g.get("view_obstruction_fraction_proxy"),errors="coerce") if not g.empty else pd.Series(dtype=float)
+        evaluated=vals.notna(); mean=float(vals[evaluated].mean()) if evaluated.any() else np.nan; mx=float(vals[evaluated].max()) if evaluated.any() else np.nan
+        unknown_intersection=states.isin(["VIEW_GEOMETRY_INTERSECTION_OCCUPANCY_UNKNOWN","VIEW_GEOMETRY_UNKNOWN"]).any()
+        if not evaluated.any(): state="VIEWING_UNKNOWN"
+        elif mean>=0.70: state="VIEWING_SEVERELY_OBSCURED"
+        elif mean>=0.10: state="VIEWING_PARTIALLY_OBSCURED"
+        elif unknown_intersection: state="VIEWING_PARTIAL_DATA"
+        elif mean>0.0: state="VIEWING_MINOR_OBSTRUCTION"
+        else: state="VIEWING_GEOMETRY_GOOD"
+        row={"target_count":len(g0),"photographic_target_count":len(g),"evaluated_target_count":int(evaluated.sum()),
+             "clear_target_count":int((states=="VIEW_GEOMETRICALLY_CLEAR").sum()),
+             "minor_obstruction_target_count":int((states=="VIEW_MINOR_OBSTRUCTION").sum()),
+             "partial_obstruction_target_count":int((states=="VIEW_PARTIAL_OBSTRUCTION").sum()),
+             "severe_obstruction_target_count":int((states=="VIEW_SEVERE_OBSTRUCTION").sum()),
+             "mean_view_obstruction_fraction_proxy":mean,"max_view_obstruction_fraction_proxy":mx,"viewing_state":state,
+             "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED",
+             "viewing_summary_scope":"PHOTOGRAPHIC_TARGETS_BASE_GE_2KM;FOREGROUND_LOW_CLOUDS_AS_BLOCKERS_ONLY",
+             "note":"FORMATION_INDEPENDENT;PROJECTED_VOLUME_TIER1;LOW_CLOUD_TARGETS_EXCLUDED_FROM_SUMMARY;NO_VIEWING_SPECTRAL_EXTINCTION_YET"}
         if keys:
-            valskey = key if isinstance(key, tuple) else (key,)
-            row.update(dict(zip(keys, valskey)))
+            valskey=key if isinstance(key,tuple) else (key,); row.update(dict(zip(keys,valskey)))
         rows.append(row)
-    return pd.DataFrame(rows, columns=cols)
+    return pd.DataFrame(rows,columns=cols)

@@ -1436,8 +1436,23 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         if _k in secondary_optics_cache:
             continue
         _selected = pd.DataFrame(); _selected_meta = {"status":"UNAVAILABLE"}; _selected_name = "NONE"
+        # R5.6.1: enrich secondary-provider route points with the already
+        # interpolated forecast surface anchor. ICON vertical geometry can then
+        # be reconstructed from native P/T without relying on unavailable FI
+        # model-level files. This does not alter cloud microphysics or COT.
+        _sec_points = [dict(p) for p in route_points]
+        _rs = route_snapshot_cache.get(_k, pd.DataFrame())
+        if _rs is not None and not _rs.empty and "point_id" in _rs.columns:
+            _rmap = {str(r.point_id): r for r in _rs.itertuples(index=False)}
+            for _p in _sec_points:
+                _rr = _rmap.get(str(_p.get("point_id")))
+                if _rr is not None:
+                    try: _p["surface_pressure_hpa"] = float(getattr(_rr, "surface_pressure"))
+                    except Exception: pass
+                    try: _p["surface_elevation_m"] = float(getattr(_rr, "model_surface_elevation_m"))
+                    except Exception: pass
         try:
-            _idf, _imeta = fetch_ifs_secondary_target_optics(route_points, _st)
+            _idf, _imeta = fetch_ifs_secondary_target_optics(_sec_points, _st)
         except Exception as _exc:
             _idf, _imeta = pd.DataFrame(), {**ecmwf_ifs_provider_status(), "status":"FAILED", "error":f"{type(_exc).__name__}: {_exc}"}
         ecmwf_ifs_request_audit_rows.append({"time":_st, **{k:v for k,v in (_imeta or {}).items() if not isinstance(v,(list,dict,tuple,set))}})
@@ -1445,7 +1460,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             _selected, _selected_meta, _selected_name = _idf, _imeta, "ECMWF_IFS"
         else:
             try:
-                _ddf, _dmeta, _daudit = fetch_icon_secondary_target_optics(route_points, _st)
+                _ddf, _dmeta, _daudit = fetch_icon_secondary_target_optics(_sec_points, _st)
             except Exception as _exc:
                 _ddf, _dmeta, _daudit = pd.DataFrame(), {**dwd_icon_provider_status(), "status":"FAILED", "error":f"{type(_exc).__name__}: {_exc}"}, pd.DataFrame()
             if _daudit is not None and not _daudit.empty:
@@ -1876,7 +1891,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_optical_bottlenecks = pd.concat(v1_optical_bottleneck_frames, ignore_index=True) if v1_optical_bottleneck_frames else pd.DataFrame()
     v1_canvas_radiance = pd.concat(v1_canvas_radiance_frames, ignore_index=True) if v1_canvas_radiance_frames else pd.DataFrame()
     v1_formation = pd.concat(v1_formation_frames, ignore_index=True) if v1_formation_frames else pd.DataFrame()
-    # PhysicsCore V1.0-R5.6: independent Cloud→Observer Viewing branch and outer Photography Decision.
+    # PhysicsCore V1.0-R5.6.1: projected-volume Cloud→Observer Viewing branch and outer Photography Decision.
     # Neither table is allowed to rewrite Formation, F_sun, or Sun→CloudBase spectral RT.
     v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
     v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry)

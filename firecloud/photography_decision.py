@@ -1,4 +1,4 @@
-"""PhysicsCore V1.0-R5.6 Photography Decision Layer.
+"""PhysicsCore V1.0-R5.6.1 Photography Decision Layer.
 
 This is an outer operational interpretation layer. It never rewrites Formation
 or Viewing physics. Its single purpose is to answer whether the firecloud
@@ -33,6 +33,14 @@ def build_photography_decision(formation: pd.DataFrame, viewing_summary: pd.Data
             outcome = "PARTIALLY_PHOTOGRAPHABLE_IF_FORMATION_OCCURS"
             opp = "LIMITED"
             reason = "CLOUD_TO_OBSERVER_VIEW_PARTIALLY_OBSCURED"
+        elif vs == "VIEWING_MINOR_OBSTRUCTION":
+            outcome = "PHOTOGRAPHABLE_WITH_MINOR_FOREGROUND_OBSTRUCTION_IF_FORMATION_OCCURS"
+            opp = "FAIR"
+            reason = "CLOUD_TO_OBSERVER_VIEW_MINOR_OBSTRUCTION"
+        elif vs == "VIEWING_PARTIAL_DATA":
+            outcome = "PHOTOGRAPHABILITY_UNCERTAIN_DUE_TO_VIEWING_DATA_GAP"
+            opp = "UNKNOWN"
+            reason = "VIEWING_GEOMETRY_INTERSECTION_OCCUPANCY_UNRESOLVED"
         elif vs == "VIEWING_GEOMETRY_GOOD":
             if fs in {"FORMATION_CONFIRMED", "CONFIRMED"}:
                 outcome = "PHOTOGRAPHABLE_FIRECLOUD"

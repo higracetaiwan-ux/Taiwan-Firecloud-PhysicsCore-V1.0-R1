@@ -185,35 +185,41 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
         out["spectral_rt_quality"],
     )
 
+    # R5.6.1: build six-band diagnostic columns in one batch. Repeated
+    # DataFrame.insert/setitem operations fragmented the frame and generated
+    # large pandas PerformanceWarnings in every angle. This changes storage
+    # mechanics only; equations and band values are unchanged.
+    band_cols = {}
+    geom=pd.to_numeric(out.get("geometric_illuminated_fraction",np.nan),errors="coerce")
+    cf=pd.to_numeric(out.get("cloud_fraction_used",out.get("cloud_fraction",np.nan)),errors="coerce")
+    gas_quality = out.get("gas_rt_quality", pd.Series("HITRAN_GAS_MISSING", index=out.index))
     for wl in wavelengths:
         tau_r = rayleigh_vertical_optical_depth(wl, pressure_hpa) * m
         t_r = math.exp(-tau_r)
-        out[f"rayleigh_tau_{wl}nm"] = tau_r
-        out[f"rayleigh_transmission_{wl}nm"] = t_r
         native_tau = pd.to_numeric(out[f"native_cams_aerosol_tau_{wl}nm"] if f"native_cams_aerosol_tau_{wl}nm" in out.columns else pd.Series(np.nan,index=out.index), errors="coerce")
         native_t = pd.to_numeric(out[f"native_cams_aerosol_transmission_{wl}nm"] if f"native_cams_aerosol_transmission_{wl}nm" in out.columns else pd.Series(np.nan,index=out.index), errors="coerce")
         route_tau = native_tau.where(native_tau.notna(), pd.to_numeric(out.get(f"route_aerosol_tau_{wl}nm", np.nan), errors="coerce"))
         route_t = native_t.where(native_t.notna(), pd.to_numeric(out.get(f"route_aerosol_transmission_{wl}nm", np.nan), errors="coerce"))
-        # Backward-compatible diagnostic path only when an exponent is explicitly
-        # supplied by a caller/test. Production V8.3.2 passes None and therefore
-        # never invents a fixed Ångström exponent.
         if angstrom_exponent is not None:
             aod550_series = pd.to_numeric(out.get("aod550", np.nan), errors="coerce")
             legacy_tau = aod550_series.map(lambda x: aerosol_optical_depth(wl, x, angstrom_exponent) if pd.notna(x) else np.nan) * m
             route_tau = route_tau.where(route_tau.notna(), legacy_tau)
             route_t = route_t.where(route_t.notna(), np.exp(-legacy_tau))
-        out[f"aerosol_tau_{wl}nm"] = route_tau
-        out[f"aerosol_transmission_{wl}nm"] = route_t
-        gas_tau = pd.to_numeric(out.get(f"gas_tau_{wl}nm", np.nan), errors="coerce")
-        out[f"gas_status_{wl}nm"] = out.get("gas_rt_quality", "HITRAN_GAS_MISSING")
-        out[f"cloud_transmission_{wl}nm"] = cloud_t
-        partial = cloud_t * t_r * out[f"aerosol_transmission_{wl}nm"]
-        out[f"partial_spectral_transmission_{wl}nm"] = partial
         gas_t = pd.to_numeric(out.get(f"gas_transmission_{wl}nm", np.nan), errors="coerce")
-        out[f"full_spectral_transmission_{wl}nm"] = partial * gas_t
-        geom=pd.to_numeric(out.get("geometric_illuminated_fraction",np.nan),errors="coerce")
-        cf=pd.to_numeric(out.get("cloud_fraction_used",out.get("cloud_fraction",np.nan)),errors="coerce")
-        out[f"canvas_partial_spectral_illumination_{wl}nm"] = geom * cf * partial
+        partial = cloud_t * t_r * route_t
+        band_cols[f"rayleigh_tau_{wl}nm"] = np.full(len(out), tau_r)
+        band_cols[f"rayleigh_transmission_{wl}nm"] = np.full(len(out), t_r)
+        band_cols[f"aerosol_tau_{wl}nm"] = route_tau.to_numpy() if hasattr(route_tau, "to_numpy") else route_tau
+        band_cols[f"aerosol_transmission_{wl}nm"] = route_t.to_numpy() if hasattr(route_t, "to_numpy") else route_t
+        band_cols[f"gas_status_{wl}nm"] = np.asarray(gas_quality)
+        band_cols[f"cloud_transmission_{wl}nm"] = np.full(len(out), cloud_t) if np.isscalar(cloud_t) else np.asarray(cloud_t)
+        band_cols[f"partial_spectral_transmission_{wl}nm"] = np.asarray(partial)
+        band_cols[f"full_spectral_transmission_{wl}nm"] = np.asarray(partial * gas_t)
+        band_cols[f"canvas_partial_spectral_illumination_{wl}nm"] = np.asarray(geom * cf * partial)
+    # Drop any pre-existing same-name columns so concat remains deterministic.
+    if band_cols:
+        out = out.drop(columns=[c for c in band_cols if c in out.columns], errors="ignore")
+        out = pd.concat([out, pd.DataFrame(band_cols, index=out.index)], axis=1)
     _emit(1.0, f"{wavelengths[0]}–{wavelengths[-1]} nm 光譜 RT 完成")
     return out
 

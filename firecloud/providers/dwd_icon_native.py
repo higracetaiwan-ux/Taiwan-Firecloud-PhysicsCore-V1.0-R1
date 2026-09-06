@@ -1,6 +1,6 @@
 """PhysicsCore V1.0-R5.5.2 DWD ICON Global native cloud-microphysics provider.
 
-R5.5.2 closes the ICON-global unstructured-grid decoder gap without fabricating
+R5.6.1 retains the ICON-global unstructured-grid decoder fix and closes the vertical-geometry gap without fabricating
 cloud optics. DWD ICON Global GRIB2 carries field values on the native triangular
 grid but does not carry per-cell latitude/longitude coordinates. DWD publishes
 precomputed nearest-neighbour CDO remap weights separately; this provider uses
@@ -13,7 +13,7 @@ Scientific boundaries
 * Forecast-native QC/QI only; no RH/CF/geometry/satellite -> COT conversion.
 * Missing/decode/grid-map failure != zero condensate.
 * Secondary optics are exact forecast-model evidence only when the required
-  native microphysics + T/P/FI layer geometry are all available.
+  native microphysics + T/P with a forecast-surface anchor are available.
 * The remap weights are a spatial locator, not an optical interpolation model.
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ import requests
 from ..cloud_optics import condensate_extinction_m1, DEFAULT_LIQUID_REFF_UM, DEFAULT_ICE_REFF_UM
 
 PROVIDER_NAME = "DWD_ICON_GLOBAL_NATIVE_CLOUD_MICROPHYSICS"
-PROVIDER_SCHEMA_VERSION = "R5.5.2_ICON_GLOBAL_NATIVE_CLOUD_V2"
+PROVIDER_SCHEMA_VERSION = "R5.6.1_ICON_GLOBAL_NATIVE_CLOUD_V3"
 BASE_URL = "https://opendata.dwd.de/weather/nwp/icon/grib"
 REMAP_BUNDLE_URL = "https://opendata.dwd.de/weather/lib/cdo/ICON_GLOBAL2WORLD_025_EASY.tar.bz2"
 REMAP_WEIGHTS_NAME = "weights_icogl2world_025.nc"
@@ -55,6 +55,30 @@ _RUNTIME_CACHE: dict[tuple, tuple[pd.DataFrame, dict, pd.DataFrame]] = {}
 _ROUTE_SOURCE_MAP_CACHE: dict[tuple, tuple[dict[str, dict], dict]] = {}
 _WEIGHT_MAP_CACHE: dict[tuple, np.ndarray] = {}
 
+
+
+def _finite_float(v):
+    try:
+        x=float(v)
+        return x if math.isfinite(x) else np.nan
+    except Exception:
+        return np.nan
+
+
+def _hypsometric_height_from_pressure_km(ps_hpa: float, zsurf_m: float, p_hpa: float, temp_k: float) -> float:
+    """Surface-anchored hypsometric height used only for ICON layer geometry.
+
+    This does not infer cloud optical properties. It maps a native model-level
+    pressure to approximate MSL height using native temperature and an external
+    forecast surface anchor. Missing/invalid inputs remain NaN.
+    """
+    vals=(_finite_float(ps_hpa),_finite_float(zsurf_m),_finite_float(p_hpa),_finite_float(temp_k))
+    if not all(math.isfinite(v) for v in vals):
+        return np.nan
+    ps,zs,p,t=vals
+    if ps<=0 or p<=0 or t<=0 or p>=ps*1.05:
+        return np.nan
+    return zs/1000.0 + (R_D*t/G0)*math.log(ps/p)/1000.0
 
 def decoder_available() -> bool:
     try:
@@ -458,9 +482,14 @@ def fetch_icon_route_profiles(points: list[dict], valid_time: datetime) -> tuple
         return pd.DataFrame(),meta,pd.DataFrame(audit)
     audit.append({"stage":"CONDENSATE_AGGREGATE","status":"POSITIVE_CONDENSATE","positive_level_count":len(positive),"decoded_field_count":decoded_count,"expected_field_count":expected_pairs})
 
-    needed_fi=sorted(set(x for lev in positive for x in (lev-1,lev,lev+1) if 1<=x<=120))
-    fields: dict[str,dict[int,pd.DataFrame]]={"T":{},"P":{},"FI":{}}
-    tasks=[(lev,"T") for lev in positive]+[(lev,"P") for lev in positive]+[(lev,"FI") for lev in needed_fi]
+    # R5.6.1 vertical closure: DWD OpenData does not publish FI at every
+    # ICON model level. Reconstruct approximate full-level/layer heights from
+    # native pressure + temperature, anchored by the forecast surface pressure
+    # and model-surface elevation already available for each route point.
+    # This is a geometry reconstruction only; it never manufactures condensate/COT.
+    needed_geom=sorted(set(x for lev in positive for x in (lev-1,lev,lev+1) if 1<=x<=120))
+    fields: dict[str,dict[int,pd.DataFrame]]={"T":{},"P":{}}
+    tasks=[(lev,"T") for lev in positive]+[(lev,"P") for lev in needed_geom]
     with ThreadPoolExecutor(max_workers=workers) as ex:
         fut={ex.submit(_fetch_field,run,lead,lev,var,points,timeout,source_map):(lev,var) for lev,var in tasks}
         for f in as_completed(fut):
@@ -473,33 +502,50 @@ def fetch_icon_route_profiles(points: list[dict], valid_time: datetime) -> tuple
     def asmap(d: pd.DataFrame | None) -> dict[str,float]:
         if d is None or d.empty: return {}
         return {str(r.point_id):float(r.value) for r in d.itertuples(index=False)}
+
+    pmap_by_lev={lev:asmap(df) for lev,df in fields["P"].items()}
+    tmap_by_lev={lev:asmap(df) for lev,df in fields["T"].items()}
+    point_meta={str(x["point_id"]):x for x in points}
+
     rows=[]
+    vertical_resolved=0; vertical_missing=0
     for lev in positive:
-        maps={
-            "qc":asmap(qc.get(lev)),"qi":asmap(qi.get(lev)),"t":asmap(fields["T"].get(lev)),
-            "p":asmap(fields["P"].get(lev)),"fi":asmap(fields["FI"].get(lev)),
-            "fim1":asmap(fields["FI"].get(lev-1)),"fip1":asmap(fields["FI"].get(lev+1)),
-        }
+        qcmap=asmap(qc.get(lev)); qimap=asmap(qi.get(lev)); tmap=tmap_by_lev.get(lev,{})
+        pmap=pmap_by_lev.get(lev,{}); pm1=pmap_by_lev.get(lev-1,{}); pp1=pmap_by_lev.get(lev+1,{})
         for pnt in points:
-            pid=str(pnt["point_id"])
-            ql=maps["qc"].get(pid,np.nan); ice=maps["qi"].get(pid,np.nan)
+            pid=str(pnt["point_id"]); ql=qcmap.get(pid,np.nan); ice=qimap.get(pid,np.nan)
             if not (math.isfinite(ql) or math.isfinite(ice)): continue
             ql=max(0.0,float(ql)) if math.isfinite(ql) else 0.0; ice=max(0.0,float(ice)) if math.isfinite(ice) else 0.0
             if ql+ice<=1e-10: continue
-            temp=maps["t"].get(pid,np.nan); pres=maps["p"].get(pid,np.nan); fi=maps["fi"].get(pid,np.nan)
-            fim1=maps["fim1"].get(pid,np.nan); fip1=maps["fip1"].get(pid,np.nan)
-            if not all(math.isfinite(float(v)) for v in (temp,pres,fi,fim1,fip1)) or temp<=0 or pres<=0:
-                continue
-            z=float(fi)/G0/1000.0; za=float(fim1)/G0/1000.0; zb=float(fip1)/G0/1000.0
-            z0=min(0.5*(za+z),0.5*(z+zb)); z1=max(0.5*(za+z),0.5*(z+zb))
-            if not z1>z0: continue
+            temp=tmap.get(pid,np.nan); pres_pa=pmap.get(pid,np.nan); p_up_pa=pm1.get(pid,np.nan); p_dn_pa=pp1.get(pid,np.nan)
+            ps_hpa=_finite_float(pnt.get("surface_pressure_hpa",np.nan)); zsurf_m=_finite_float(pnt.get("surface_elevation_m",np.nan))
+            vals=(temp,pres_pa,p_up_pa,p_dn_pa,ps_hpa,zsurf_m)
+            if not all(math.isfinite(float(v)) for v in vals) or temp<=0 or pres_pa<=0 or p_up_pa<=0 or p_dn_pa<=0 or ps_hpa<=0:
+                vertical_missing+=1; continue
+            pres_hpa=float(pres_pa)/100.0; p_up=float(p_up_pa)/100.0; p_dn=float(p_dn_pa)/100.0
+            # Interface pressure from adjacent full levels (log-pressure midpoint).
+            p_if_up=math.sqrt(max(1e-9,pres_hpa*p_up)); p_if_dn=math.sqrt(max(1e-9,pres_hpa*p_dn))
+            zc=_hypsometric_height_from_pressure_km(ps_hpa,zsurf_m,pres_hpa,float(temp))
+            zu=_hypsometric_height_from_pressure_km(ps_hpa,zsurf_m,p_if_up,float(temp)); zd=_hypsometric_height_from_pressure_km(ps_hpa,zsurf_m,p_if_dn,float(temp))
+            if not all(math.isfinite(v) for v in (zc,zu,zd)):
+                vertical_missing+=1; continue
+            z0=min(zu,zd); z1=max(zu,zd)
+            if not z1>z0:
+                vertical_missing+=1; continue
+            vertical_resolved+=1
             rows.append({
                 "point_id":pid,"distance_km":float(pnt["distance_km"]),"direction_offset_deg":float(pnt["direction_offset_deg"]),
                 "lat":float(pnt["lat"]),"lon":float(pnt["lon"]),"model_level":int(lev),
-                "pressure_hpa":float(pres)/100.0,"temperature_k":float(temp),
-                "altitude_msl_km":z,"layer_bottom_msl_km":z0,"layer_top_msl_km":z1,
+                "pressure_hpa":pres_hpa,"temperature_k":float(temp),
+                "altitude_msl_km":zc,"layer_bottom_msl_km":z0,"layer_top_msl_km":z1,
                 "qc_kgkg":ql,"qi_kgkg":ice,
+                "vertical_geometry_source":"HYPSOMETRIC_NATIVE_P_T_SURFACE_ANCHORED",
+                "surface_pressure_hpa":ps_hpa,"surface_elevation_m":zsurf_m,
             })
+    audit.append({"stage":"VERTICAL_GEOMETRY_AGGREGATE",
+                  "status":"HYPSOMETRIC_VERTICAL_GEOMETRY_READY" if vertical_resolved else "VERTICAL_GEOMETRY_UNRESOLVED",
+                  "resolved_positive_point_levels":vertical_resolved,"unresolved_positive_point_levels":vertical_missing,
+                  "method":"NATIVE_P_T_PLUS_FORECAST_SURFACE_PRESSURE_ELEVATION;NO_FI_REQUIRED"})
     prof=pd.DataFrame(rows)
     meta["profile_row_count"]=int(len(prof))
     if prof.empty:
@@ -530,7 +576,7 @@ def build_secondary_optics_from_profiles(profiles: pd.DataFrame, valid_time: dat
             "provider":"DWD","model":"ICON_GLOBAL","source_kind":"FORECAST_MODEL_NATIVE_OPTICS","valid_time":valid_time,
             "direction_offset_deg":float(r["direction_offset_deg"]),"distance_km":float(r["distance_km"]),
             "z_base_km":z0,"z_top_km":z1,"cot":cot,"effective_radius_um":reff,"phase":phase,
-            "optical_evidence":"FULL","provenance":"DWD_ICON_GLOBAL_NATIVE_QC_QI_FI_T_P_DERIVED_COT_ASSUMED_REFF",
+            "optical_evidence":"FULL","provenance":"DWD_ICON_GLOBAL_NATIVE_QC_QI_P_T_SURFACE_ANCHORED_DERIVED_COT_ASSUMED_REFF",
             "status":"OK","qc_kgkg":ql,"qi_kgkg":qi,"model_level":int(r["model_level"]),"pressure_hpa":ph,
             "assumed_liquid_reff_um":DEFAULT_LIQUID_REFF_UM,"assumed_ice_reff_um":DEFAULT_ICE_REFF_UM,
             "cloud_optical_model":"NATIVE_CONDENSATE_GEOMETRIC_OPTICS_ASSUMED_REFF",

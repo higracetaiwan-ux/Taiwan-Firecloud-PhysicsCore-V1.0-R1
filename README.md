@@ -1,34 +1,14 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.6
+# Taiwan Firecloud PhysicsCore V1.0-R5.6.1
 
-R5.6 adds an independent Cloud→Observer Viewing branch and an outer Photography Decision Layer on top of the R5.5.2 optical-closure baseline. Formation remains Sun→CloudBase physics; Viewing never rewrites whether the cloud was illuminated.
+R5.6.1 is the corrected Viewing / Photography release on top of the R5.5.2 optical-closure baseline.
 
-See `RELEASE_NOTES_PhysicsCore_V1.0-R5.6.md` and `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R5.6.md`.
+Core separation remains frozen:
 
----
+- **Formation:** Sun → CloudBase illumination physics.
+- **Viewing:** Cloud → Observer visibility/obstruction physics.
+- **Photography Decision:** outer operational interpretation of whether the event is actually photographable from the selected observer.
+- **Penumbra Geometry** and **Spectral RT** remain independent physical layers.
 
+R5.6.1 replaces the R5.6 point-node Viewing test with projected adjacent-node cloud-volume support, excludes foreground low clouds from the firecloud-target summary while retaining them as blockers, and closes the DWD ICON vertical-geometry gap using native P/T with a route-specific forecast surface anchor instead of unavailable per-level FI files.
 
-R5.5.2 closes two runtime optical-evidence gaps on top of R5.5.1 while preserving the frozen PhysicsCore separation:
-
-- **Penumbra Geometry** computes only finite-solar-disk / Earth-shadow geometry (`F_sun`).
-- **Sun→CloudBase Spectral RT** computes path extinction/transmission.
-- **Target Cloud Optical Response / Canvas Optical Suitability** remains an independent target-cloud layer.
-
-## R5.5.2 additions
-
-1. **DWD ICON Global unstructured-grid decoder closure**
-   - Uses DWD's official `ICON_GLOBAL2WORLD_025_EASY` CDO nearest-neighbour weight bundle.
-   - Maps each route point to the native ICON source-cell address before downloading QC/QI fields.
-   - Reads native GRIB `values` by source address; it no longer requests nonexistent per-cell `latitudes/longitudes` from ICON Global GRIB.
-   - Grid-mapping failure aborts the ICON branch before mass QC/QI downloads.
-   - Audit states distinguish grid-map failure, field decode failure, unresolved microphysics, zero condensate and positive condensate.
-
-2. **Sun→CloudBase upstream cloud optical closure**
-   - Forecast-native secondary COT (IFS / DWD ICON) may resolve upstream cloud-path opacity when the primary CloudScene has geometry but lacks primary COT.
-   - The bridge is path-only: it does not rewrite CloudScene geometry and does not promote Canvas Optical Suitability.
-   - Horizontal support still requires adjacent forecast-native optical evidence on both sides; route sampling distance is never treated as cloud width.
-   - Missing/partial evidence remains Missing; no RH/CF/geometry → COT conversion is introduced.
-
-3. **Dependencies**
-   - Adds `scipy>=1.10` to read DWD CDO NetCDF nearest-neighbour weight addresses.
-
-See `RELEASE_NOTES_PhysicsCore_V1.0-R5.5.2.md`.
+See `RELEASE_NOTES_PhysicsCore_V1.0-R5.6.1.md` and `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R5.6.1.md`.
