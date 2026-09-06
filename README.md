@@ -1,3 +1,7 @@
+# R5.3 — Illuminated Canvas Retreat
+
+Adds dual-track outward-retreat diagnostics: finite-solar-disk geometry (`F_sun`) remains independent of spectral RT, while physical red retreat is reported only when Sun→CloudBase RT is resolved. A geometry-only 4/5/6/8/10/12/15 km reference matrix makes the near-to-far retreat of medium/high cloud canvases explicit.
+
 ## R5.2.1 Full 0–100 km Penumbra Matrix
 R5.2.1 extends the Earth-shadow / finite-solar-disk penumbra matrix to the complete shared adaptive Canvas distance grid: 0–40 km every 5 km and 40–100 km every 10 km. The matrix is diagnostic; Formation still depends on F_sun × spectral Sun→CloudBase transmission.
 
