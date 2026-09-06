@@ -1,3 +1,7 @@
+# R5.4 — Spectral Red-Window Evolution
+
+R5.4 preserves Penumbra Geometry and Spectral RT as separate evidence tracks, and adds per-Canvas angle evolution plus independent Brightness / Redness / Effective Illuminated Area peak windows. It never converts F_sun alone into a firecloud claim. Distance roles are Primary Canvas 0–40 km, Secondary Canvas >40–100 km, and >100 km horizon residual diagnostic-only.
+
 # R5.3 — Illuminated Canvas Retreat
 
 Adds dual-track outward-retreat diagnostics: finite-solar-disk geometry (`F_sun`) remains independent of spectral RT, while physical red retreat is reported only when Sun→CloudBase RT is resolved. A geometry-only 4/5/6/8/10/12/15 km reference matrix makes the near-to-far retreat of medium/high cloud canvases explicit.

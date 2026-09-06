@@ -55,6 +55,7 @@ from .spectroscopy_readiness import build_six_band_spectroscopy_readiness
 from .formation_gates import build_formation_gate_table
 from .penumbra_red import build_earth_shadow_penumbra_matrix, build_canvas_penumbra_red_illumination
 from .illuminated_canvas_retreat import build_illuminated_canvas_retreat, build_reference_canvas_retreat_matrix
+from .red_window import build_canvas_spectral_evolution, build_canvas_peak_windows
 
 
 def _clamp01(x):
@@ -1838,6 +1839,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     )
     v1_illuminated_canvas_retreat = build_illuminated_canvas_retreat(v1_canvas_penumbra_red_illumination)
     v1_reference_canvas_retreat = build_reference_canvas_retreat_matrix([float(a) for a, _, _ in candidates])
+    v1_canvas_spectral_evolution = build_canvas_spectral_evolution(v1_canvas_radiance, v1_canvas_penumbra_red_illumination)
+    v1_canvas_peak_windows = build_canvas_peak_windows(v1_canvas_spectral_evolution)
     ecmwf_ifs_request_audit = pd.DataFrame(ecmwf_ifs_request_audit_rows)
     _lut_path = Path(__file__).resolve().parent.parent / "hitran_runtime" / "firecloud_600_750nm_band_coefficients.csv"
     v1_six_band_spectroscopy_readiness = build_six_band_spectroscopy_readiness(_lut_path)
@@ -2048,6 +2051,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_canvas_penumbra_red_illumination": v1_canvas_penumbra_red_illumination,
         "v1_illuminated_canvas_retreat": v1_illuminated_canvas_retreat,
         "v1_reference_canvas_retreat": v1_reference_canvas_retreat,
+        "v1_canvas_spectral_evolution": v1_canvas_spectral_evolution,
+        "v1_canvas_peak_windows": v1_canvas_peak_windows,
         "ecmwf_ifs_request_audit": ecmwf_ifs_request_audit,
         "v1_six_band_spectroscopy_readiness": v1_six_band_spectroscopy_readiness,
         "v1_core_summary": v1_core_summary,
