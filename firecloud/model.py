@@ -1425,7 +1425,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _progress(0.395 + 0.005 * (_si + 1) / max(1, len(candidates)), f"路徑預報內插：{_si+1}/{len(candidates)}")
     performance_rows.append({"stage": "OPENMETEO_ROUTE_INTERPOLATION_TOTAL", "elapsed_seconds": perf_counter()-_snapshot_t0, "cache_status": "PRECOMPUTED"})
 
-    # PhysicsCore V1.0-R5.5.1: real secondary forecast-native optics chain.
+    # PhysicsCore V1.0-R5.5.2: real secondary forecast-native optics chain.
     # Priority: (1) entitled/local ECMWF IFS model-level CLWC/CIWC; (2) public
     # DWD ICON Global model-level QC/QI network source. Both remain fail-closed.
     _sec_t0 = perf_counter()
@@ -1637,6 +1637,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _v1["precipitation_path_evidence"] = _precip_path_evidence
         if _precip_path_evidence is not None and not _precip_path_evidence.empty:
             _pp=_precip_path_evidence.copy(); _pp.insert(1,"solar_altitude_deg",float(angle)); v1_precipitation_path_frames.append(_pp)
+        # R5.5.2: secondary forecast-native cloud optics can resolve ONLY the
+        # Sun→CloudBase upstream cloud-path component. They do not alter
+        # Penumbra Geometry and do not promote target-cloud suitability here.
+        _secondary_forecast_optics, _secondary_meta = secondary_optics_cache.get(
+            pd.Timestamp(t.replace(tzinfo=None)), (pd.DataFrame(), {"status":"UNAVAILABLE"})
+        )
+        _secondary_validated = validate_secondary_forecast_optical_evidence(_secondary_forecast_optics)
         _r3 = build_r3_optical_tables(
             scene=_v1["scene"],
             canvases=_v1.get("canvas_objects", ()),
@@ -1647,6 +1654,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             earth_radius_km=cfg.earth_radius_km,
             valid_time=t,
             precipitation_path_evidence=_precip_path_evidence,
+            secondary_forecast_optics=_secondary_validated,
         )
         for _key, _dest in [
             ("ray_cloud_intersections", v1_ray_cloud_intersection_frames),
@@ -1665,14 +1673,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         # Formation.  Exact direct-native COT and bounded adjacent-native
         # hypotheses remain distinct; CF/RH/geometry never fabricate COT.
         _angle_progress(candidate_index, 0.968, f"{label}：解析 Target Canvas Optical Evidence…")
-        _secondary_forecast_optics, _secondary_meta = secondary_optics_cache.get(pd.Timestamp(t.replace(tzinfo=None)), (pd.DataFrame(), {"status":"UNAVAILABLE"}))
-        _secondary_validated = validate_secondary_forecast_optical_evidence(_secondary_forecast_optics)
         if _secondary_validated is not None and not _secondary_validated.empty:
             _sv=_secondary_validated.copy(); _sv.insert(0,"time",t); _sv.insert(1,"solar_altitude_deg",float(angle)); v1_secondary_target_optics_frames.append(_sv)
         _target_canvas_optics = build_target_canvas_optical_evidence(
             _v1["scene"], _v1.get("canvas_objects", ()),
             solar_altitude_deg=float(angle), valid_time=t,
-            secondary_forecast_optics=_secondary_forecast_optics,
+            secondary_forecast_optics=_secondary_validated,
         )
         if _target_canvas_optics is not None and not _target_canvas_optics.empty:
             v1_target_canvas_optical_evidence_frames.append(_target_canvas_optics)
