@@ -721,7 +721,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.5.2 ICON Unstructured Decoder + Upstream Cloud Optical Closure + Canvas Optical Suitability｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.6 Viewing + Photography Decision + R5.5.2 Optical Closure｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1204,7 +1204,7 @@ if run or st.session_state.analysis_result is not None:
     st.caption(
         "R4 使用 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° 九個核心角度。"
         "本階段在 R3 六波段 OpticalPathResult / CloudBaseIllumination 後新增 Canvas Optical Response 與 Formation。"
-        "Brightness、Redness、Effective Illuminated Area 保持分離；不產生單一 Formation Score。Viewing / Decision 尚未接入。"
+        "Brightness、Redness、Effective Illuminated Area 保持分離；不產生單一 Formation Score。R5.6 另以 Cloud→Observer Viewing 與 Photography Decision 判斷此觀測點實際是否可拍。"
     )
     _v1_summary = result.get("v1_core_summary", pd.DataFrame())
     if not _v1_summary.empty:
@@ -1212,6 +1212,19 @@ if run or st.session_state.analysis_result is not None:
         if "cloud_geometry_completeness" in _v1_show:
             _v1_show["cloud_geometry_completeness"] = (pd.to_numeric(_v1_show["cloud_geometry_completeness"], errors="coerce")*100).round(1)
         st.dataframe(localized_df(_v1_show), use_container_width=True, hide_index=True)
+
+    _view_summary = result.get("v1_viewing_summary", pd.DataFrame())
+    _photo_decision = result.get("v1_photography_decision", pd.DataFrame())
+    if not _photo_decision.empty:
+        st.subheader("攝影決策：這個觀測點實際拍不拍得到？")
+        st.caption("Photography Decision 是最外層 operational layer：Formation 決定雲是否被照亮；Viewing 決定觀測者是否看得到；Decision 只解讀可拍攝性，不回寫 Formation。R5.6 Viewing 目前為幾何＋cloud-fraction occupancy Tier-1，尚未冒充完整 Cloud→Observer spectral RT。")
+        st.dataframe(localized_df(_photo_decision), use_container_width=True, hide_index=True)
+    if not _view_summary.empty:
+        with st.expander("Cloud→Observer Viewing 診斷", expanded=True):
+            st.dataframe(localized_df(_view_summary), use_container_width=True, hide_index=True)
+            _view_detail = result.get("v1_viewing_path_geometry", pd.DataFrame())
+            if not _view_detail.empty:
+                st.dataframe(localized_df(_view_detail), use_container_width=True, hide_index=True)
     with st.expander("Legacy V8 診斷欄位（僅相容／除錯，不是 V1.0 PhysicsCore 輸出）", expanded=False):
         st.dataframe(localized_df(summary), use_container_width=True, hide_index=True)
 
@@ -1250,7 +1263,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R5.5.2：ICON Unstructured Decoder + Upstream Cloud Optical Closure + Canvas Optical Suitability")
+    st.subheader("PhysicsCore V1.0-R5.6：Formation × Viewing × Photography Decision")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1725,6 +1738,9 @@ if run or st.session_state.analysis_result is not None:
             ("v1_optical_bottlenecks.csv", result.get("v1_optical_bottlenecks", pd.DataFrame())),
             ("v1_canvas_radiance_550_750nm.csv", result.get("v1_canvas_radiance", pd.DataFrame())),
             ("v1_formation.csv", result.get("v1_formation", pd.DataFrame())),
+            ("v1_viewing_path_geometry.csv", result.get("v1_viewing_path_geometry", pd.DataFrame())),
+            ("v1_viewing_summary.csv", result.get("v1_viewing_summary", pd.DataFrame())),
+            ("v1_photography_decision.csv", result.get("v1_photography_decision", pd.DataFrame())),
             ("v1_spectral_colour_550_750nm.csv", result.get("v1_spectral_colour", pd.DataFrame())),
             ("v1_cloud_optical_validation.csv", result.get("v1_cloud_optical_validation", pd.DataFrame())),
             ("v1_formation_prerequisites.csv", result.get("v1_formation_prerequisites", pd.DataFrame())),
@@ -1825,7 +1841,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.5.2_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.6_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

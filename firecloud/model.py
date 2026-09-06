@@ -58,6 +58,8 @@ from .penumbra_red import build_earth_shadow_penumbra_matrix, build_canvas_penum
 from .illuminated_canvas_retreat import build_illuminated_canvas_retreat, build_reference_canvas_retreat_matrix
 from .red_window import build_canvas_spectral_evolution, build_canvas_peak_windows
 from .canvas_optical_suitability import build_canvas_optical_suitability, summarize_canvas_optical_suitability
+from .viewing import build_viewing_path_geometry, summarize_viewing_path
+from .photography_decision import build_photography_decision
 
 
 def _clamp01(x):
@@ -1874,6 +1876,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_optical_bottlenecks = pd.concat(v1_optical_bottleneck_frames, ignore_index=True) if v1_optical_bottleneck_frames else pd.DataFrame()
     v1_canvas_radiance = pd.concat(v1_canvas_radiance_frames, ignore_index=True) if v1_canvas_radiance_frames else pd.DataFrame()
     v1_formation = pd.concat(v1_formation_frames, ignore_index=True) if v1_formation_frames else pd.DataFrame()
+    # PhysicsCore V1.0-R5.6: independent Cloud→Observer Viewing branch and outer Photography Decision.
+    # Neither table is allowed to rewrite Formation, F_sun, or Sun→CloudBase spectral RT.
+    v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
+    v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry)
+    v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary)
     v1_spectral_colour = pd.concat(v1_spectral_colour_frames, ignore_index=True) if v1_spectral_colour_frames else pd.DataFrame()
     v1_precipitation_path_evidence = pd.concat(v1_precipitation_path_frames, ignore_index=True) if v1_precipitation_path_frames else pd.DataFrame()
     v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame()
@@ -1915,6 +1922,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _geom = float(pd.to_numeric(_dep0.get("completeness"), errors="coerce").iloc[0]) if not _dep0.empty and pd.notna(pd.to_numeric(_dep0.get("completeness"), errors="coerce").iloc[0]) else float("nan")
         _states = _ds.get("ray_status", pd.Series(dtype=str)).astype(str) if not _ds.empty else pd.Series(dtype=str)
         _fr = v1_formation[pd.to_numeric(v1_formation.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_formation.empty else pd.DataFrame()
+        _vw = v1_viewing_summary[pd.to_numeric(v1_viewing_summary.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_viewing_summary.empty else pd.DataFrame()
+        _pd = v1_photography_decision[pd.to_numeric(v1_photography_decision.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_photography_decision.empty else pd.DataFrame()
         _v1_summary_rows.append({
             "time": _time, "solar_altitude_deg": _a, "solar_azimuth_deg": float(_az),
             "cloud_layer_count": int(len(_cl)), "canvas_candidate_count": int(len(_ca)),
@@ -1932,7 +1941,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             "optical_path_status": (
                 "R3_UNCERTAIN_OPTICS" if not v1_cloud_base_illumination.empty else "NO_R3_ILLUMINATION_EVIDENCE"
             ),
-            "viewing_status": "NOT_YET_CONNECTED_R4",
+            "viewing_status": (str(_vw.iloc[0]["viewing_state"]) if not _vw.empty else "VIEWING_UNKNOWN"),
+            "view_obstruction_fraction_proxy": (float(_vw.iloc[0]["mean_view_obstruction_fraction_proxy"]) if not _vw.empty and pd.notna(_vw.iloc[0]["mean_view_obstruction_fraction_proxy"]) else float("nan")),
+            "photography_opportunity": (str(_pd.iloc[0]["photography_opportunity"]) if not _pd.empty else "UNKNOWN"),
+            "photography_outcome": (str(_pd.iloc[0]["photography_outcome"]) if not _pd.empty else "PHOTOGRAPHY_OUTCOME_UNKNOWN"),
         })
     v1_core_summary = pd.DataFrame(_v1_summary_rows)
 
@@ -2090,6 +2102,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_optical_bottlenecks": v1_optical_bottlenecks,
         "v1_canvas_radiance": v1_canvas_radiance,
         "v1_formation": v1_formation,
+        "v1_viewing_path_geometry": v1_viewing_path_geometry,
+        "v1_viewing_summary": v1_viewing_summary,
+        "v1_photography_decision": v1_photography_decision,
         "v1_spectral_colour": v1_spectral_colour,
         "v1_cloud_optical_validation": v1_cloud_optical_validation,
         "v1_formation_prerequisites": v1_formation_prerequisites,

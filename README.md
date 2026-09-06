@@ -1,4 +1,11 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.5.2
+# Taiwan Firecloud PhysicsCore V1.0-R5.6
+
+R5.6 adds an independent Cloud→Observer Viewing branch and an outer Photography Decision Layer on top of the R5.5.2 optical-closure baseline. Formation remains Sun→CloudBase physics; Viewing never rewrites whether the cloud was illuminated.
+
+See `RELEASE_NOTES_PhysicsCore_V1.0-R5.6.md` and `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R5.6.md`.
+
+---
+
 
 R5.5.2 closes two runtime optical-evidence gaps on top of R5.5.1 while preserving the frozen PhysicsCore separation:
 
