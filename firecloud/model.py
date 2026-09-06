@@ -1488,7 +1488,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _angle_progress(candidate_index, 0.00, f"{label}：載入已內插路徑預報…")
         snap = route_snapshot_cache.get(pd.Timestamp(t.replace(tzinfo=None)), pd.DataFrame()).copy()
         if snap is not None and not snap.empty:
-            # R5.7.1: interpolate_route_at_time() already returns a `time`
+            # R5.7.2: interpolate_route_at_time() already returns a `time`
             # column.  Re-inserting it raises ValueError: cannot insert time,
             # already exists.  Update existing metadata columns in-place and
             # only insert when absent; then reorder for stable CASE output.
@@ -1920,6 +1920,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             _vp=build_viewing_precipitation_evidence(_vg,_rs,earth_radius_km=cfg.earth_radius_km)
             if not _vp.empty: _view_precip_frames.append(_vp)
     v1_viewing_precipitation_evidence = pd.concat(_view_precip_frames,ignore_index=True) if _view_precip_frames else pd.DataFrame()
+    # Aggregate target-cloud optical evidence before the Viewing spectral branch
+    # consumes it. This variable must exist on every pipeline path, including
+    # fully-missing target-optics cases.
+    v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame()
     v1_viewing_spectral_extinction = build_viewing_spectral_extinction(
         v1_viewing_path_geometry, v1_cloud_layers, v1_target_canvas_optical_evidence,
         aerosol_spectral_route_snapshots, gas_profile_route_snapshots,
@@ -1929,7 +1933,6 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary, v1_viewing_spectral_summary)
     v1_spectral_colour = pd.concat(v1_spectral_colour_frames, ignore_index=True) if v1_spectral_colour_frames else pd.DataFrame()
     v1_precipitation_path_evidence = pd.concat(v1_precipitation_path_frames, ignore_index=True) if v1_precipitation_path_frames else pd.DataFrame()
-    v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame()
     v1_target_canvas_optical_summary = pd.concat(v1_target_canvas_optical_summary_frames, ignore_index=True) if v1_target_canvas_optical_summary_frames else pd.DataFrame()
     v1_canvas_optical_suitability = pd.concat(v1_canvas_optical_suitability_frames, ignore_index=True) if v1_canvas_optical_suitability_frames else pd.DataFrame()
     v1_canvas_optical_suitability_summary = pd.concat(v1_canvas_optical_suitability_summary_frames, ignore_index=True) if v1_canvas_optical_suitability_summary_frames else pd.DataFrame()
