@@ -708,7 +708,11 @@ def _write_cams_worker_checkpoint(role: str, status: str, *, elapsed_seconds: fl
             "result_path": str(result_path) if result_path else "",
             "stdout_path": str(stdout_path) if stdout_path else "",
             "stderr_path": str(stderr_path) if stderr_path else "",
-            "stderr_tail": _checkpoint_tail(stderr_path),
+            # A RUNNING heartbeat must stay non-blocking.  Reading a log tail
+            # from the mounted filesystem here can itself stall the watchdog
+            # and freeze the UI at the previous heartbeat (for example 5s).
+            # Only terminal/error checkpoints inspect stderr.
+            "stderr_tail": "" if str(status).upper() in {"RUNNING", "STARTED", "CAMS_WORKER_STARTING", "O3_WORKER_STARTING"} else _checkpoint_tail(stderr_path),
         }
         # Keep a latest aggregate checkpoint for the existing UI, and also a
         # role-specific durable checkpoint.  The latter is required when two
@@ -871,6 +875,17 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
         }
         request_path.write_text(json.dumps(request_payload, ensure_ascii=False), encoding="utf-8")
         cmd=[sys.executable, "-m", "firecloud.providers.cams_worker", str(request_path), str(result_path)]
+        # Second, OS-level deadline.  The Python parent remains the primary
+        # watchdog, but on Linux deployments GNU timeout guarantees that an ADS
+        # child cannot survive past the role deadline even if the supervisor
+        # thread is delayed by filesystem/runtime stalls.
+        try:
+            import shutil as _shutil
+            _timeout_bin = _shutil.which("timeout")
+        except Exception:
+            _timeout_bin = None
+        if _timeout_bin:
+            cmd=[_timeout_bin, "--signal=TERM", "--kill-after=2s", f"{deadline_seconds:.3f}s", *cmd]
         env=os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED","1")
         proc=None
@@ -973,7 +988,20 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
 
                 # Process exited.
                 if res is None:
-                    if result_path.exists() and result_path.stat().st_size > 0:
+                    # GNU timeout exits 124 when its wall-clock deadline fires.
+                    # Preserve the provider's fail-closed TIMEOUT_DEFERRED
+                    # semantics instead of mislabelling this as a generic
+                    # worker failure.
+                    if observed_returncode == 124:
+                        elapsed = time.monotonic() - started
+                        timeout_error = "O3_ADS_TIMEOUT" if role == "O3_PRESSURE_LEVEL" else f"CAMS_ADS_WALLCLOCK_DEADLINE_EXCEEDED_{deadline_seconds:.0f}S"
+                        res={"role":role,"status":"TIMEOUT_DEFERRED","df":pd.DataFrame(),"meta":{},"inventory":[],"error":timeout_error}
+                        _write_cams_worker_checkpoint(role, "O3_ADS_TIMEOUT" if role == "O3_PRESSURE_LEVEL" else "CAMS_ADS_TIMEOUT",
+                                                      elapsed_seconds=elapsed, pid=proc.pid,
+                                                      exit_code=observed_returncode, error=res["error"],
+                                                      request_path=request_path, result_path=result_path,
+                                                      stdout_path=stdout_path, stderr_path=stderr_path)
+                    elif result_path.exists() and result_path.stat().st_size > 0:
                         try:
                             res=_read_cams_worker_result(result_path)
                         except Exception as exc:

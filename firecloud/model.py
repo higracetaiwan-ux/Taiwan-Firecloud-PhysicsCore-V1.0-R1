@@ -1311,6 +1311,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     _cams_parallel_workers = min(_cams_parallel_workers, 2, max(1, len(_cams_items)))
     _cams_progress_lock = threading.Lock()
     _cams_progress_states = {}
+    # UI elapsed is driven by the main scheduler's monotonic clock, not by CAMS
+    # child heartbeats.  If a provider callback stops at 5s the display still
+    # advances and the operator can see the real wall-clock wait.
+    _cams_progress_started = {}
 
     def _fetch_cams_time_bundle(_item):
         _key, _t = _item
@@ -1327,11 +1331,14 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
                 "SPECTRAL_COLUMN_AOD": "光譜AOD",
                 "SPECTRAL_COLUMN_AOD_RETRY": "光譜AOD重試",
             }.get(_role, _role)
-            if str(_status).upper() == "RUNNING":
-                _role_state[_short] = f"RUNNING {float(_elapsed):.0f}s / 90s"
-            else:
-                _role_state[_short] = f"{_status} {float(_elapsed):.1f}s"
+            _status_u = str(_status).upper()
             with _cams_progress_lock:
+                if _status_u == "RUNNING":
+                    _cams_progress_started.setdefault((_key, _short), time.monotonic() - max(0.0, float(_elapsed)))
+                    _role_state[_short] = "RUNNING"
+                else:
+                    _cams_progress_started.pop((_key, _short), None)
+                    _role_state[_short] = f"{_status} {float(_elapsed):.1f}s"
                 _cams_progress_states[_key] = dict(_role_state)
 
         try:
@@ -1350,8 +1357,18 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         with _cams_progress_lock:
             _states = {k: dict(v) for k, v in _cams_progress_states.items()}
         _parts = []
+        _now_mono = time.monotonic()
         for _idx, (_key, _t) in enumerate(_cams_items, start=1):
-            _summary = "｜".join(f"{k}:{v}" for k, v in _states.get(_key, {}).items())
+            _display = []
+            for _name, _value in _states.get(_key, {}).items():
+                if _value == "RUNNING":
+                    with _cams_progress_lock:
+                        _started = _cams_progress_started.get((_key, _name))
+                    _elapsed_ui = max(0.0, _now_mono - _started) if _started is not None else 0.0
+                    _display.append(f"{_name}:RUNNING {_elapsed_ui:.0f}s / 90s")
+                else:
+                    _display.append(f"{_name}:{_value}")
+            _summary = "｜".join(_display)
             _parts.append(f"時次 {_idx}/{len(_cams_items)}" + (f"｜{_summary}" if _summary else "｜等待"))
         _progress(0.34 + 0.04 * float(_completed) / max(1, len(_cams_items)), "CAMS 並行預取（唯一時次；每時次內三鏈串行）｜" + "；".join(_parts))
 
