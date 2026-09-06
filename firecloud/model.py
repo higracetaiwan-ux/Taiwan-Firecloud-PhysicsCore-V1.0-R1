@@ -42,7 +42,8 @@ from .cloud_optics import add_native_optical_properties
 from .spectral_rt import build_spectral_rt, summarize_spectral_rt
 from .gas_rt import build_gas_profile, hitran_backend_status, prepare_gas_rt_context
 from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot, resolve_run_and_lead, DEFAULT_PRESSURE_LEVELS_HPA, native_provider_status
-from .providers.ecmwf_ifs_native import fetch_route_secondary_target_optics, provider_status as ecmwf_ifs_provider_status
+from .providers.ecmwf_ifs_native import fetch_route_secondary_target_optics as fetch_ifs_secondary_target_optics, provider_status as ecmwf_ifs_provider_status
+from .providers.dwd_icon_native import fetch_route_secondary_target_optics as fetch_icon_secondary_target_optics, provider_status as dwd_icon_provider_status
 from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
 from .formation import build_r4_formation_tables
@@ -1225,9 +1226,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_secondary_target_optics_frames = []
     v1_formation_gate_frames = []
     ecmwf_ifs_request_audit_rows = []
+    dwd_icon_request_audit_rows = []
+    secondary_provider_audit_rows = []
     native_cache = {}
     cams_native_cache = {}
-    ecmwf_ifs_secondary_cache = {}
+    secondary_optics_cache = {}
     native_volume_cache = {}
     native_optical_base_cache = {}
     gas_profile_cache = {}
@@ -1419,21 +1422,42 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _progress(0.395 + 0.005 * (_si + 1) / max(1, len(candidates)), f"路徑預報內插：{_si+1}/{len(candidates)}")
     performance_rows.append({"stage": "OPENMETEO_ROUTE_INTERPOLATION_TOTAL", "elapsed_seconds": perf_counter()-_snapshot_t0, "cache_status": "PRECOMPUTED"})
 
-    # PhysicsCore V1.0-R5.2: prefetch configured ECMWF IFS native cloud
-    # microphysics once per unique valid time. No configured/entitled GRIB means
-    # explicit Missing; no satellite or geometry fallback is substituted.
-    _ifs_t0 = perf_counter()
+    # PhysicsCore V1.0-R5.5: real secondary forecast-native optics chain.
+    # Priority: (1) entitled/local ECMWF IFS model-level CLWC/CIWC; (2) public
+    # DWD ICON Global model-level QC/QI network source. Both remain fail-closed.
+    _sec_t0 = perf_counter()
     for _sa, _st, _saz in candidates:
         _k = pd.Timestamp(_st.replace(tzinfo=None))
-        if _k in ecmwf_ifs_secondary_cache:
+        if _k in secondary_optics_cache:
             continue
+        _selected = pd.DataFrame(); _selected_meta = {"status":"UNAVAILABLE"}; _selected_name = "NONE"
         try:
-            _idf, _imeta = fetch_route_secondary_target_optics(route_points, _st)
+            _idf, _imeta = fetch_ifs_secondary_target_optics(route_points, _st)
         except Exception as _exc:
             _idf, _imeta = pd.DataFrame(), {**ecmwf_ifs_provider_status(), "status":"FAILED", "error":f"{type(_exc).__name__}: {_exc}"}
-        ecmwf_ifs_secondary_cache[_k] = (_idf, _imeta)
         ecmwf_ifs_request_audit_rows.append({"time":_st, **{k:v for k,v in (_imeta or {}).items() if not isinstance(v,(list,dict,tuple,set))}})
-    performance_rows.append({"stage":"ECMWF_IFS_SECONDARY_OPTICS_PREFETCH","elapsed_seconds":perf_counter()-_ifs_t0,"cache_status":"CONFIGURED_GRIB_OR_EXPLICIT_MISSING"})
+        if _idf is not None and not _idf.empty:
+            _selected, _selected_meta, _selected_name = _idf, _imeta, "ECMWF_IFS"
+        else:
+            try:
+                _ddf, _dmeta, _daudit = fetch_icon_secondary_target_optics(route_points, _st)
+            except Exception as _exc:
+                _ddf, _dmeta, _daudit = pd.DataFrame(), {**dwd_icon_provider_status(), "status":"FAILED", "error":f"{type(_exc).__name__}: {_exc}"}, pd.DataFrame()
+            if _daudit is not None and not _daudit.empty:
+                _daa = _daudit.copy(); _daa.insert(0, "time", _st); dwd_icon_request_audit_rows.extend(_daa.to_dict("records"))
+            if _ddf is not None and not _ddf.empty:
+                _selected, _selected_meta, _selected_name = _ddf, _dmeta, "DWD_ICON_GLOBAL"
+            else:
+                _selected_meta = _dmeta
+        secondary_optics_cache[_k] = (_selected, _selected_meta)
+        secondary_provider_audit_rows.append({
+            "time":_st, "selected_provider":_selected_name,
+            "selected_status":str((_selected_meta or {}).get("status","UNAVAILABLE")),
+            "secondary_optical_record_count":int(len(_selected)) if _selected is not None else 0,
+            "ifs_status":str((_imeta or {}).get("status","UNAVAILABLE")),
+            "policy":"IFS_LOCAL_FIRST_THEN_DWD_ICON_GLOBAL_OPEN_DATA;NO_SATELLITE;NO_CF_RH_GEOMETRY_TO_COT",
+        })
+    performance_rows.append({"stage":"SECONDARY_FORECAST_NATIVE_OPTICS_PREFETCH","elapsed_seconds":perf_counter()-_sec_t0,"cache_status":"IFS_THEN_DWD_ICON_FAIL_CLOSED"})
 
     _angles_t0 = perf_counter()
     for candidate_index, (angle, t, az) in enumerate(candidates):
@@ -1638,7 +1662,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         # Formation.  Exact direct-native COT and bounded adjacent-native
         # hypotheses remain distinct; CF/RH/geometry never fabricate COT.
         _angle_progress(candidate_index, 0.968, f"{label}：解析 Target Canvas Optical Evidence…")
-        _secondary_forecast_optics, _secondary_meta = ecmwf_ifs_secondary_cache.get(pd.Timestamp(t.replace(tzinfo=None)), (pd.DataFrame(), {"status":"UNAVAILABLE"}))
+        _secondary_forecast_optics, _secondary_meta = secondary_optics_cache.get(pd.Timestamp(t.replace(tzinfo=None)), (pd.DataFrame(), {"status":"UNAVAILABLE"}))
         _secondary_validated = validate_secondary_forecast_optical_evidence(_secondary_forecast_optics)
         if _secondary_validated is not None and not _secondary_validated.empty:
             _sv=_secondary_validated.copy(); _sv.insert(0,"time",t); _sv.insert(1,"solar_altitude_deg",float(angle)); v1_secondary_target_optics_frames.append(_sv)
@@ -1842,6 +1866,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_canvas_spectral_evolution = build_canvas_spectral_evolution(v1_canvas_radiance, v1_canvas_penumbra_red_illumination)
     v1_canvas_peak_windows = build_canvas_peak_windows(v1_canvas_spectral_evolution)
     ecmwf_ifs_request_audit = pd.DataFrame(ecmwf_ifs_request_audit_rows)
+    dwd_icon_request_audit = pd.DataFrame(dwd_icon_request_audit_rows)
+    secondary_provider_audit = pd.DataFrame(secondary_provider_audit_rows)
     _lut_path = Path(__file__).resolve().parent.parent / "hitran_runtime" / "firecloud_600_750nm_band_coefficients.csv"
     v1_six_band_spectroscopy_readiness = build_six_band_spectroscopy_readiness(_lut_path)
     v1_cloud_optical_validation = build_cloud_optical_validation_table(
@@ -2054,6 +2080,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_canvas_spectral_evolution": v1_canvas_spectral_evolution,
         "v1_canvas_peak_windows": v1_canvas_peak_windows,
         "ecmwf_ifs_request_audit": ecmwf_ifs_request_audit,
+        "dwd_icon_request_audit": dwd_icon_request_audit,
+        "secondary_provider_audit": secondary_provider_audit,
         "v1_six_band_spectroscopy_readiness": v1_six_band_spectroscopy_readiness,
         "v1_core_summary": v1_core_summary,
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,

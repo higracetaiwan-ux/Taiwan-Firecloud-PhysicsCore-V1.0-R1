@@ -1,3 +1,7 @@
+# Taiwan Firecloud PhysicsCore V1.0-R5.5
+
+R5.5 adds a live secondary forecast-native Target-Canvas optics chain: configured/entitled ECMWF IFS first, then public DWD ICON Global model-level QC/QI as fallback. It preserves the strict rule that Cloud Fraction, RH, geometry, satellite observations and surface rain may not fabricate forecast COT. See `RELEASE_NOTES_PhysicsCore_V1.0-R5.5.md`.
+
 # R5.4 — Spectral Red-Window Evolution
 
 R5.4 preserves Penumbra Geometry and Spectral RT as separate evidence tracks, and adds per-Canvas angle evolution plus independent Brightness / Redness / Effective Illuminated Area peak windows. It never converts F_sun alone into a firecloud claim. Distance roles are Primary Canvas 0–40 km, Secondary Canvas >40–100 km, and >100 km horizon residual diagnostic-only.
