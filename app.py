@@ -66,19 +66,25 @@ def _bridge_streamlit_ads_secrets() -> None:
 _bridge_streamlit_ads_secrets()
 
 def _bridge_streamlit_tier2_scattering_secrets() -> None:
-    """Expose calibrated Tier-2 scattering LUT paths to the analysis worker."""
+    """Expose R5.7.22 full-directional Tier-2 LUT paths to the analysis worker."""
     try:
         secrets = st.secrets
-        lut_path = secrets.get("FIRECLOUD_TIER2_SCATTERING_LUT_PATH")
-        manifest_path = secrets.get("FIRECLOUD_TIER2_SCATTERING_LUT_MANIFEST_PATH")
-        if "tier2_scattering" in secrets:
-            section = secrets["tier2_scattering"]
+        lut_path = secrets.get("FIRECLOUD_TIER2_DIRECTIONAL_SCATTERING_LUT_PATH")
+        manifest_path = secrets.get("FIRECLOUD_TIER2_DIRECTIONAL_SCATTERING_LUT_MANIFEST_PATH")
+        if "tier2_directional_scattering" in secrets:
+            section = secrets["tier2_directional_scattering"]
             lut_path = lut_path or section.get("lut_path") or section.get("csv_path")
             manifest_path = manifest_path or section.get("manifest_path")
-        if lut_path and not os.getenv("FIRECLOUD_TIER2_SCATTERING_LUT_PATH"):
-            os.environ["FIRECLOUD_TIER2_SCATTERING_LUT_PATH"] = str(lut_path).strip()
-        if manifest_path and not os.getenv("FIRECLOUD_TIER2_SCATTERING_LUT_MANIFEST_PATH"):
-            os.environ["FIRECLOUD_TIER2_SCATTERING_LUT_MANIFEST_PATH"] = str(manifest_path).strip()
+        # Backward-compatible secret section discovery only.  A legacy R5.7.19/20
+        # scattering-angle LUT will still be rejected by the R5.7.22 runtime gate.
+        if "tier2_scattering" in secrets:
+            section = secrets["tier2_scattering"]
+            lut_path = lut_path or section.get("directional_lut_path")
+            manifest_path = manifest_path or section.get("directional_manifest_path")
+        if lut_path and not os.getenv("FIRECLOUD_TIER2_DIRECTIONAL_SCATTERING_LUT_PATH"):
+            os.environ["FIRECLOUD_TIER2_DIRECTIONAL_SCATTERING_LUT_PATH"] = str(lut_path).strip()
+        if manifest_path and not os.getenv("FIRECLOUD_TIER2_DIRECTIONAL_SCATTERING_LUT_MANIFEST_PATH"):
+            os.environ["FIRECLOUD_TIER2_DIRECTIONAL_SCATTERING_LUT_MANIFEST_PATH"] = str(manifest_path).strip()
     except Exception:
         pass
 
@@ -1265,7 +1271,7 @@ if run or st.session_state.analysis_result is not None:
 
     st.subheader("PhysicsCore V1.0 核心形成時間軸（0°～−6°，0.5°）")
     st.caption(
-        "R5.7.21.1 使用 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° / −4.5° / −5° / −5.5° / −6° 共 13 個核心角度。"
+        "R5.7.22 使用 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° / −4.5° / −5° / −5.5° / −6° 共 13 個核心角度；Tier-2 散射幾何改為 θ₀ + θᵥ + Δφ，scattering angle 僅作診斷。"
         "本階段在 R3 六波段 OpticalPathResult / CloudBaseIllumination 後新增 Canvas Optical Response 與 Formation。"
         "Brightness、Redness、Effective Illuminated Area 保持分離；不產生單一 Formation Score。R5.7 另以 Cloud→Observer Viewing、六波段 Viewing Extinction 與 Photography Decision 判斷此觀測點實際是否可拍。"
     )
@@ -1330,7 +1336,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R5.7.21.1：Formation × Viewing × Photography Decision")
+    st.subheader("PhysicsCore V1.0-R5.7.22：Formation × Viewing × Photography Decision")
     _event_time_contract = result.get("event_time_contract", pd.DataFrame())
     if not _event_time_contract.empty:
         with st.expander("事件時區 × UTC 物理時間契約", expanded=False):
@@ -1968,7 +1974,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.21.1_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.22_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

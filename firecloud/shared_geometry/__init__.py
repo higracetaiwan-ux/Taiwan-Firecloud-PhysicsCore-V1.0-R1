@@ -17,4 +17,7 @@ from .vertical import VerticalIndexPlan, center_layer_bounds_km
 
 from .intersections import (LatticeSignature, VoxelIntersectionTopology, VoxelIntersectionPlan, build_voxel_intersection_topology, materialize_voxel_intersection_plan, build_voxel_intersection_plan, plan_direction_if_compatible, voxel_lattice_key)
 
-from .scattering import scattering_angle_deg
+from .scattering import (
+    scattering_angle_deg, directional_scattering_geometry, DirectionalScatteringGeometry,
+    DIRECTIONAL_SCATTERING_GEOMETRY_CONTRACT,
+)

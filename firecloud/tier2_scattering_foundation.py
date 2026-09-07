@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM, CanvasCandidate
-from .shared_geometry import scattering_angle_deg
+from .shared_geometry import directional_scattering_geometry
 
 SCATTERING_LUT_REQUIRED_COLUMNS = [
     "phase", "wavelength_nm", "cot", "effective_radius_um",
@@ -25,6 +25,9 @@ TIER2_SCATTERING_FOUNDATION_COLUMNS = [
     "time","solar_altitude_deg","solar_azimuth_deg","canvas_id","cloud_layer_id",
     "operational_domain","distance_km","cloud_base_altitude_km",
     "tier2_input_contract_state","tier2_response_eligibility",
+    "solar_zenith_deg","view_zenith_deg","relative_azimuth_deg",
+    "solar_altitude_target_deg","solar_azimuth_target_deg","view_elevation_deg","view_azimuth_target_deg",
+    "mu0","mu_view","azimuth_degeneracy_state","directional_geometry_state",
     "scattering_angle_deg","scattering_geometry_state",
     "scattering_lut_state","scattering_solver_state","solver_foundation_state",
     "deterministic_tier2_allowed","bounded_tier2_allowed",
@@ -105,20 +108,24 @@ def build_tier2_scattering_foundation(
         }
     else:
         lut_check=validate_scattering_lut(calibrated_lut) if calibrated_lut is not None else {"valid":False,"state":"CALIBRATED_LUT_NOT_INSTALLED","reason":"NO_CALIBRATED_LUT_INSTALLED"}
+    directional_runtime = bool(lut_validation is not None and str(lut_validation.get("runtime_contract", "")).startswith("R5.7.22_"))
     rows=[]
     for cid,c in cmap.items():
         rr=rmap.get(cid)
         input_state=str(rr.get("tier2_input_contract_state","BLOCKED_INPUT_CONTRACT_MISSING")) if rr is not None else "BLOCKED_INPUT_CONTRACT_MISSING"
         response_elig=str(rr.get("tier2_response_eligibility","NOT_ELIGIBLE")) if rr is not None else "NOT_ELIGIBLE"
         try:
-            angle=scattering_angle_deg(
+            dg=directional_scattering_geometry(
                 observer_lat_deg=observer_lat_deg,observer_lon_deg=observer_lon_deg,observer_alt_km=observer_alt_km,
                 target_lat_deg=c.latitude,target_lon_deg=c.longitude,target_alt_km=c.cloud_base_altitude_km,
                 solar_altitude_deg=solar_altitude_deg,solar_azimuth_deg=solar_azimuth_deg,
             )
-            geom_state="SCATTERING_GEOMETRY_READY" if _finite(angle) else "SCATTERING_GEOMETRY_MISSING"
+            angle=dg.scattering_angle_deg
+            directional_ready=all(_finite(v) for v in (dg.solar_zenith_deg,dg.view_zenith_deg,dg.relative_azimuth_deg,dg.scattering_angle_deg))
+            geom_state="SCATTERING_GEOMETRY_READY" if directional_ready else "SCATTERING_GEOMETRY_MISSING"
+            directional_state="FULL_DIRECTIONAL_GEOMETRY_READY" if directional_ready else "FULL_DIRECTIONAL_GEOMETRY_MISSING"
         except Exception:
-            angle=np.nan; geom_state="SCATTERING_GEOMETRY_MISSING"
+            dg=None; angle=np.nan; geom_state="SCATTERING_GEOMETRY_MISSING"; directional_state="FULL_DIRECTIONAL_GEOMETRY_MISSING"
         inputs_ready=input_state == "INPUTS_READY_AWAITING_LUT_SOLVER"
         if not inputs_ready:
             foundation="BLOCKED_INPUT_CONTRACT"; reason=input_state
@@ -127,7 +134,8 @@ def build_tier2_scattering_foundation(
         elif not lut_check.get("valid",False):
             foundation="INPUTS_AND_GEOMETRY_READY_AWAITING_CALIBRATED_LUT"; reason=str(lut_check.get("reason"))
         else:
-            foundation="FOUNDATION_READY_CALIBRATED_LUT_AVAILABLE"; reason="SOLVER_INTERPOLATION_NOT_ENABLED_IN_R5.7.18"
+            foundation="FOUNDATION_READY_CALIBRATED_LUT_AVAILABLE"
+            reason="FULL_DIRECTIONAL_DOMAIN_GATE_NEXT" if directional_runtime else "SOLVER_INTERPOLATION_NOT_ENABLED_IN_R5.7.18"
         truth=str(rr.get("target_optical_truth_state","")) if rr is not None else ""
         deterministic=bool(foundation=="FOUNDATION_READY_CALIBRATED_LUT_AVAILABLE" and truth.startswith("EXACT_"))
         bounded=bool(foundation=="FOUNDATION_READY_CALIBRATED_LUT_AVAILABLE" and truth=="BOUNDED_NATIVE_BRACKET")
@@ -136,11 +144,21 @@ def build_tier2_scattering_foundation(
             "canvas_id":c.canvas_id,"cloud_layer_id":c.cloud_layer_id,"operational_domain":c.operational_domain.value,
             "distance_km":float(c.distance_km),"cloud_base_altitude_km":float(c.cloud_base_altitude_km),
             "tier2_input_contract_state":input_state,"tier2_response_eligibility":response_elig,
+            "solar_zenith_deg":float(dg.solar_zenith_deg) if dg is not None else None,
+            "view_zenith_deg":float(dg.view_zenith_deg) if dg is not None else None,
+            "relative_azimuth_deg":float(dg.relative_azimuth_deg) if dg is not None else None,
+            "solar_altitude_target_deg":float(dg.solar_altitude_target_deg) if dg is not None else None,
+            "solar_azimuth_target_deg":float(dg.solar_azimuth_target_deg) if dg is not None else None,
+            "view_elevation_deg":float(dg.view_elevation_deg) if dg is not None else None,
+            "view_azimuth_target_deg":float(dg.view_azimuth_target_deg) if dg is not None else None,
+            "mu0":float(dg.mu0) if dg is not None else None,"mu_view":float(dg.mu_view) if dg is not None else None,
+            "azimuth_degeneracy_state":str(dg.azimuth_degeneracy_state) if dg is not None else "GEOMETRY_UNAVAILABLE",
+            "directional_geometry_state":directional_state,
             "scattering_angle_deg":float(angle) if _finite(angle) else None,"scattering_geometry_state":geom_state,
             "scattering_lut_state":str(lut_check.get("state")),
-            "scattering_solver_state":"FOUNDATION_SCHEMA_VALIDATOR_ONLY_NO_PRODUCTION_INTERPOLATION",
+            "scattering_solver_state":("FULL_DIRECTIONAL_DOMAIN_SOLVER_GATE_R5.7.22" if directional_runtime else "FOUNDATION_SCHEMA_VALIDATOR_ONLY_NO_PRODUCTION_INTERPOLATION"),
             "solver_foundation_state":foundation,"deterministic_tier2_allowed":deterministic,"bounded_tier2_allowed":bounded,
-            "blocking_reason":reason,"foundation_contract_version":"R5.7.18_TIER2_SCATTERING_FOUNDATION_V1",
+            "blocking_reason":reason,"foundation_contract_version":"R5.7.22_TIER2_DIRECTIONAL_SCATTERING_FOUNDATION_V2",
         })
     return pd.DataFrame(rows,columns=TIER2_SCATTERING_FOUNDATION_COLUMNS)
 
@@ -167,6 +185,6 @@ def summarize_tier2_scattering_foundation(df: pd.DataFrame) -> pd.DataFrame:
             "awaiting_calibrated_lut_count":awaiting,
             "deterministic_tier2_allowed_count":int(g["deterministic_tier2_allowed"].fillna(False).astype(bool).sum()),
             "bounded_tier2_allowed_count":int(g["bounded_tier2_allowed"].fillna(False).astype(bool).sum()),
-            "closure_state":closure,"foundation_contract_version":"R5.7.18_TIER2_SCATTERING_FOUNDATION_V1",
+            "closure_state":closure,"foundation_contract_version":"R5.7.22_TIER2_DIRECTIONAL_SCATTERING_FOUNDATION_V2",
         })
     return pd.DataFrame(rows,columns=TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS)

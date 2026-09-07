@@ -1,0 +1,13 @@
+{
+  "contract": "R5.7.22_TIER2_DIRECTIONAL_SCATTERING_LUT_RUNTIME_V2",
+  "required": [
+    "lut_version", "calibration_state", "calibration_id", "calibration_source",
+    "calibration_date", "required_wavelengths_nm", "supported_phases", "csv_sha256",
+    "calibration_contract", "qc_state", "solver_family", "solver_version",
+    "cloud_optics_source", "phase_function_source", "multiple_scattering_enabled",
+    "response_definition", "response_units", "geometry_convention",
+    "directional_hemisphere_support", "interpolation_axes", "validation_reference"
+  ],
+  "interpolation_axes": ["cot", "effective_radius_um", "solar_zenith_deg", "view_zenith_deg", "relative_azimuth_deg"],
+  "required_wavelengths_nm": [550, 575, 600, 650, 700, 750]
+}

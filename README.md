@@ -1,12 +1,19 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.21.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.22
 
 ## 目前版本重點
 
-本版將核心火燒雲 Formation 分析太陽高度正式擴充為 **0°～−6°、每 0.5° 一個取樣點，共 13 個角度**。
+R5.7.22 正式把 Tier-2 雲散射方向幾何由原本只依賴 `scattering_angle`，升級為完整的 target-local directional contract：
 
-核心角度：
+- `θ₀ = solar_zenith_deg`
+- `θᵥ = view_zenith_deg`
+- `Δφ = relative_azimuth_deg`
+- `scattering_angle_deg` 僅保留為衍生診斷，不再是 production interpolation axis
+
+核心火燒雲太陽高度維持：
 
 `0, −0.5, −1, −1.5, −2, −2.5, −3, −3.5, −4, −4.5, −5, −5.5, −6°`
+
+共 13 個角度。
 
 ## 核心架構
 
@@ -18,17 +25,45 @@ PhysicsCore 持續維持三個獨立問題：
 
 Formation 核心輸出仍分離為 Brightness、Redness、Effective Illuminated Area，不合併成單一 Formation Score。
 
-## 六波段
+## Tier-2 Full Directional Scattering
 
-完整保留：
+R5.7.22 production LUT 的核心插值維度為：
+
+`COT × r_eff × θ₀ × θᵥ × Δφ`
+
+六波段各自完整保留：
 
 `550 / 575 / 600 / 650 / 700 / 750 nm`
 
-其中 575 nm 持續保留 O₃ Chappuis 吸收的重要角色。
+### 方向幾何定義
 
-## Tier-2
+- `θ₀`：Cloud → Sun 相對雲底當地天頂的夾角，範圍 0–180°。
+- `θᵥ`：Cloud → Observer 相對雲底當地天頂的夾角，範圍 0–180°。
+- `Δφ`：Cloud→Sun 與 Cloud→Observer 在雲底當地水平面的最小方位差，範圍 0–180°。
+- `scattering_angle_deg`：Sun→Cloud incoming photon 與 Cloud→Observer outgoing photon 的夾角，只作診斷。
 
-程式已具備 calibrated scattering LUT ingestion、domain validation 與 4-D solver infrastructure，但 production response 仍需要真實、通過 QC 的 calibrated LUT 才能啟用；沒有 LUT 時不會生成假的 Tier-2 radiance。
+太陽方向會先由觀測點 local ENU 轉為 ECEF，再投影到每個 target cloud 的 local ENU；不再把觀測點太陽角度直接當成每個雲底的 local angles。
+
+### cloud thickness 的角色
+
+`cloud_thickness_km` 仍保留於 target / CASE 幾何與雲體證據，但 R5.7.22 不再把它當成純雲散射 LUT 的 production interpolation axis。
+
+## Production LUT 安全閘門
+
+R5.7.22 不接受舊版 scattering-angle-only LUT 直接升級成 production LUT。
+
+Production LUT 必須提供：
+
+- full directional `θ₀ / θᵥ / Δφ` 網格
+- 六波段完整覆蓋
+- multiple-scattering 校準來源
+- full-hemisphere 0–180° 支援聲明
+- RT solver provenance
+- QC PASS
+- validation reference
+- CSV SHA256
+
+舊 R5.7.19/R5.7.20 LUT 只保留歷史 regression 用途，不能啟動 R5.7.22 production solver。
 
 ## 跨區域時間
 
@@ -49,6 +84,8 @@ Formation 核心輸出仍分離為 Brightness、Redness、Effective Illuminated 
 
 `requirements.txt`
 
-版本變更請見：
+本版文件：
 
-`RELEASE_NOTES_PhysicsCore_V1.0-R5.7.21.1.md`
+- `RELEASE_NOTES_PhysicsCore_V1.0-R5.7.22.md`
+- `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R5.7.22.md`
+- `TIER2_DIRECTIONAL_SCATTERING_GEOMETRY_SPEC_R5.7.22.md`

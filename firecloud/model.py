@@ -83,15 +83,22 @@ from .tier2_scattering_foundation import (
     build_tier2_scattering_foundation, summarize_tier2_scattering_foundation,
     TIER2_SCATTERING_FOUNDATION_COLUMNS, TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS,
 )
-from .tier2_scattering_runtime import load_installed_scattering_lut
+from .tier2_directional_scattering_runtime import load_installed_directional_scattering_lut as load_installed_scattering_lut
 from .v1_runtime import CANVAS_CANDIDATE_TABLE_COLUMNS
-from .tier2_scattering_solver import (
-    build_tier2_scattering_response, summarize_tier2_scattering_response, mark_domain_interpolation_execution, prepare_scattering_lut,
-    TIER2_SCATTERING_RESPONSE_COLUMNS, TIER2_SCATTERING_RESPONSE_SUMMARY_COLUMNS,
+from .tier2_directional_scattering_solver import (
+    build_tier2_directional_scattering_response as build_tier2_scattering_response,
+    summarize_tier2_directional_scattering_response as summarize_tier2_scattering_response,
+    mark_directional_domain_interpolation_execution as mark_domain_interpolation_execution,
+    prepare_directional_scattering_lut as prepare_scattering_lut,
+    TIER2_DIRECTIONAL_SCATTERING_RESPONSE_COLUMNS as TIER2_SCATTERING_RESPONSE_COLUMNS,
+    TIER2_DIRECTIONAL_SCATTERING_RESPONSE_SUMMARY_COLUMNS as TIER2_SCATTERING_RESPONSE_SUMMARY_COLUMNS,
 )
-from .tier2_scattering_domain import (
-    evaluate_tier2_scattering_domain, summarize_tier2_scattering_domain, scattering_lut_audit_frame,
-    TIER2_SCATTERING_DOMAIN_COLUMNS, TIER2_SCATTERING_DOMAIN_SUMMARY_COLUMNS,
+from .tier2_directional_scattering_domain import (
+    evaluate_tier2_directional_scattering_domain as evaluate_tier2_scattering_domain,
+    summarize_tier2_directional_scattering_domain as summarize_tier2_scattering_domain,
+    directional_scattering_lut_audit_frame as scattering_lut_audit_frame,
+    TIER2_DIRECTIONAL_SCATTERING_DOMAIN_COLUMNS as TIER2_SCATTERING_DOMAIN_COLUMNS,
+    TIER2_DIRECTIONAL_SCATTERING_DOMAIN_SUMMARY_COLUMNS as TIER2_SCATTERING_DOMAIN_SUMMARY_COLUMNS,
 )
 
 
@@ -1264,15 +1271,15 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     core_set = {float(x) for x in cfg.firecloud_core_angles_deg}
     late_set = {float(x) for x in cfg.late_glow_angles_deg}
 
-    # R5.7.19: resolve and validate the calibrated Tier-2 scattering LUT once per
-    # event. A missing/invalid LUT is evidence, not an exception and not permission
-    # to synthesize scattering response. Domain auditing later consumes this exact
-    # immutable snapshot for every solar angle.
+    # R5.7.22: resolve and validate the full-directional Tier-2 scattering LUT once per
+    # event. Production interpolation uses COT × r_eff × theta0 × thetav × Delta-phi;
+    # scattering angle remains diagnostic only. A missing/invalid LUT is evidence,
+    # never permission to synthesize scattering response.
     _tier2_scattering_lut, _tier2_scattering_lut_audit = load_installed_scattering_lut()
     _tier2_scattering_prepared = prepare_scattering_lut(_tier2_scattering_lut) if _tier2_scattering_lut is not None and not _tier2_scattering_lut.empty else None
     v1_tier2_scattering_lut_audit = scattering_lut_audit_frame(_tier2_scattering_lut_audit)
     performance_rows.append({
-        "stage":"TIER2_SCATTERING_LUT_RUNTIME_LOAD", "elapsed_seconds":0.0,
+        "stage":"TIER2_DIRECTIONAL_SCATTERING_LUT_RUNTIME_LOAD", "elapsed_seconds":0.0,
         "cache_status":str(_tier2_scattering_lut_audit.get("state","UNKNOWN")),
         "detail":str(_tier2_scattering_lut_audit.get("source","")),
     })
