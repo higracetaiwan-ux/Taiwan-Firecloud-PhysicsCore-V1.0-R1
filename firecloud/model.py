@@ -78,6 +78,10 @@ from .tier2_scattering_readiness import (
     build_tier2_scattering_readiness, summarize_tier2_scattering_readiness,
     TIER2_SCATTERING_READINESS_COLUMNS, TIER2_SCATTERING_READINESS_SUMMARY_COLUMNS,
 )
+from .tier2_scattering_foundation import (
+    build_tier2_scattering_foundation, summarize_tier2_scattering_foundation,
+    TIER2_SCATTERING_FOUNDATION_COLUMNS, TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS,
+)
 
 
 def _clamp01(x):
@@ -1214,6 +1218,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_target_canvas_optical_summary_frames = []
     v1_tier2_scattering_readiness_frames = []
     v1_tier2_scattering_readiness_summary_frames = []
+    v1_tier2_scattering_foundation_frames = []
+    v1_tier2_scattering_foundation_summary_frames = []
     v1_canvas_optical_suitability_frames = []
     v1_canvas_optical_suitability_summary_frames = []
     v1_secondary_target_optics_frames = []
@@ -1803,6 +1809,19 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             if _tier2_sum is not None and not _tier2_sum.empty:
                 _tier2_sum.insert(0, "time", t)
                 v1_tier2_scattering_readiness_summary_frames.append(_tier2_sum)
+        _tier2_foundation = build_tier2_scattering_foundation(
+            readiness=_tier2_ready,
+            canvases=_v1.get("canvas_objects", ()),
+            observer_lat_deg=float(lat), observer_lon_deg=float(lon), observer_alt_km=0.0,
+            solar_altitude_deg=float(angle), solar_azimuth_deg=float(az), valid_time=t,
+            calibrated_lut=None,
+        )
+        if _tier2_foundation is not None and not _tier2_foundation.empty:
+            v1_tier2_scattering_foundation_frames.append(_tier2_foundation)
+            _tier2_foundation_sum = summarize_tier2_scattering_foundation(_tier2_foundation)
+            if _tier2_foundation_sum is not None and not _tier2_foundation_sum.empty:
+                _tier2_foundation_sum.insert(0, "time", t)
+                v1_tier2_scattering_foundation_summary_frames.append(_tier2_foundation_sum)
         _angle_progress(candidate_index, 0.98, f"{label}：完成")
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "PER_ANGLE_PHYSICS_TOTAL", "elapsed_seconds": perf_counter()-_angle_t0, "cache_status": "COMPUTED"})
         angle_f = float(angle)
@@ -1978,6 +1997,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_target_canvas_optical_summary = pd.concat(v1_target_canvas_optical_summary_frames, ignore_index=True) if v1_target_canvas_optical_summary_frames else pd.DataFrame(columns=["time", *TARGET_CANVAS_OPTICAL_SUMMARY_COLUMNS])
     v1_tier2_scattering_readiness = pd.concat(v1_tier2_scattering_readiness_frames, ignore_index=True) if v1_tier2_scattering_readiness_frames else pd.DataFrame(columns=TIER2_SCATTERING_READINESS_COLUMNS)
     v1_tier2_scattering_readiness_summary = pd.concat(v1_tier2_scattering_readiness_summary_frames, ignore_index=True) if v1_tier2_scattering_readiness_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_READINESS_SUMMARY_COLUMNS])
+    v1_tier2_scattering_foundation = pd.concat(v1_tier2_scattering_foundation_frames, ignore_index=True) if v1_tier2_scattering_foundation_frames else pd.DataFrame(columns=TIER2_SCATTERING_FOUNDATION_COLUMNS)
+    v1_tier2_scattering_foundation_summary = pd.concat(v1_tier2_scattering_foundation_summary_frames, ignore_index=True) if v1_tier2_scattering_foundation_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS])
     v1_canvas_optical_suitability = pd.concat(v1_canvas_optical_suitability_frames, ignore_index=True) if v1_canvas_optical_suitability_frames else pd.DataFrame()
     v1_canvas_optical_suitability_summary = pd.concat(v1_canvas_optical_suitability_summary_frames, ignore_index=True) if v1_canvas_optical_suitability_summary_frames else pd.DataFrame()
     v1_secondary_target_optics = pd.concat(v1_secondary_target_optics_frames, ignore_index=True) if v1_secondary_target_optics_frames else pd.DataFrame()
@@ -2273,6 +2294,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_target_canvas_optical_summary": v1_target_canvas_optical_summary,
         "v1_tier2_scattering_readiness": v1_tier2_scattering_readiness,
         "v1_tier2_scattering_readiness_summary": v1_tier2_scattering_readiness_summary,
+        "v1_tier2_scattering_foundation": v1_tier2_scattering_foundation,
+        "v1_tier2_scattering_foundation_summary": v1_tier2_scattering_foundation_summary,
         "v1_canvas_optical_suitability": v1_canvas_optical_suitability,
         "v1_canvas_optical_suitability_summary": v1_canvas_optical_suitability_summary,
         "v1_secondary_target_optics": v1_secondary_target_optics,

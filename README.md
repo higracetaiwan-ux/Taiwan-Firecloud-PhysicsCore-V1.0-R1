@@ -1,4 +1,8 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.17
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.18
+
+## R5.7.18 Tier-2 Scattering LUT / Solver Foundation
+
+R5.7.18 continues directly from R5.7.17. It adds the physically required Sun→Cloud→Observer scattering-angle geometry and a strict six-band calibrated-LUT contract. No calibrated LUT is bundled and production Tier-2 interpolation/radiance remains disabled; therefore R5.7.18 cannot fabricate a Tier-2 response merely because target inputs are complete.
 
 ## R5.7.17 Tier-2 Scattering Readiness Contract
 

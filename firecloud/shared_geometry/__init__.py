@@ -16,3 +16,5 @@ from .geodesy import (WGS84_A_M, WGS84_B_M, WGS84_F, WGS84_E2, geodetic_to_ecef,
 from .vertical import VerticalIndexPlan, center_layer_bounds_km
 
 from .intersections import (LatticeSignature, VoxelIntersectionTopology, VoxelIntersectionPlan, build_voxel_intersection_topology, materialize_voxel_intersection_plan, build_voxel_intersection_plan, plan_direction_if_compatible, voxel_lattice_key)
+
+from .scattering import scattering_angle_deg

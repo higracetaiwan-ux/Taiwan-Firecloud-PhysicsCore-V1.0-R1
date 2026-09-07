@@ -1,0 +1,7 @@
+{
+  "contract": "R5.7.18_TIER2_SCATTERING_FOUNDATION_V1",
+  "required_wavelengths_nm": [550, 575, 600, 650, 700, 750],
+  "required_columns": ["phase", "wavelength_nm", "cot", "effective_radius_um", "cloud_thickness_km", "scattering_angle_deg", "response_factor", "calibration_state", "lut_version"],
+  "production_interpolation_enabled": false,
+  "notes": "Schema foundation only. Scientific calibration and solver interpolation are not enabled in R5.7.18."
+}
