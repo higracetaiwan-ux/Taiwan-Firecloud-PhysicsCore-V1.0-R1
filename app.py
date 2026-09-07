@@ -721,7 +721,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.11 Shared Geometry Core V1.3｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.12 Shared Geometry Core V1.4｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1250,7 +1250,16 @@ if run or st.session_state.analysis_result is not None:
         diagnostic_angle = float(_summary_raw.iloc[0]["solar_altitude_deg"])
 
     if selected is None:
-        st.error("目前沒有任何候選時刻具備足夠有效的物理資料可供正式出勤選擇。以下仍完整顯示所有診斷、資料完整率、3D/RT 圖層與 CASE 下載，供追查缺失原因。")
+        _formation_ui = result.get("v1_formation", pd.DataFrame())
+        _all_no_canvas = (
+            not _formation_ui.empty
+            and "formation_state" in _formation_ui.columns
+            and _formation_ui["formation_state"].astype(str).eq("NO_CANVAS_EVIDENCE").all()
+        )
+        if _all_no_canvas:
+            st.info("本次核心時間窗的物理輸入可用，但 0–100 km Canvas 沒有可建立的有效雲畫布，因此沒有正式出勤候選。這是 NO_CANVAS_EVIDENCE，不是資料缺失；以下仍完整保留診斷、3D/RT 圖層與 CASE 下載。")
+        else:
+            st.error("目前沒有任何候選時刻具備足夠有效的物理資料可供正式出勤選擇。以下仍完整顯示所有診斷、資料完整率、3D/RT 圖層與 CASE 下載，供追查缺失原因。")
         chosen = _summary_raw[_summary_raw["solar_altitude_deg"] == diagnostic_angle].iloc[0]
         c1, c2, c3, c4 = st.columns(4)
         # Legacy regression note: older UI called this field「正式選定核心角度」;
@@ -1267,7 +1276,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R5.7.11：Formation × Viewing × Photography Decision")
+    st.subheader("PhysicsCore V1.0-R5.7.12：Formation × Viewing × Photography Decision")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1328,7 +1337,7 @@ if run or st.session_state.analysis_result is not None:
         st.subheader("Legacy V8 完整率診斷（R2 僅相容／除錯）")
         st.caption("Missing ≠ Zero ≠ Blocked。各物理層獨立判定；Full Spectral RT 只有所有必要輸入成立時才會 READY。")
         aa = audit[audit["solar_altitude_deg"] == diagnostic_angle].copy()
-        layer_zh={"FORECAST_CLOUD":"基礎預報／雲場","NATIVE_AEROSOL":"Native Aerosol","O3_PROFILE":"Real O₃ Profile","GAS_PROFILE":"Gas Profile","HITRAN_SPECTROSCOPY":"HITRAN Spectroscopy","FULL_SPECTRAL_RT":"Full Spectral RT"}
+        layer_zh={"FORECAST_CLOUD":"基礎預報／雲場","NATIVE_CLOUD_CONDENSATE":"Native CLWMR/ICMR","NATIVE_AEROSOL":"Native Aerosol","O3_PROFILE":"Real O₃ Profile","GAS_PROFILE":"Gas Profile","HITRAN_SPECTROSCOPY":"HITRAN Spectroscopy","FULL_SPECTRAL_RT":"Full Spectral RT"}
         aa["診斷層"] = aa["layer"].map(layer_zh).fillna(aa["layer"])
         aa["完整率 (%)"] = (pd.to_numeric(aa["completeness"],errors="coerce")*100).round(1)
         aa=aa.rename(columns={"status":"狀態","provider":"資料來源","missing_reason":"缺失／原因"})
@@ -1336,8 +1345,12 @@ if run or st.session_state.analysis_result is not None:
         fr=aa[aa["診斷層"]=="Full Spectral RT"]
         if not fr.empty:
             fs=str(fr.iloc[0]["狀態"]); fc=float(fr.iloc[0]["完整率 (%)"]); reason=str(fr.iloc[0]["缺失／原因"] or "")
-            if fs=="READY": st.success(f"Full Spectral RT：READY｜完整率 {fc:.1f}%")
-            else: st.warning(f"Full Spectral RT：{fs}｜完整率 {fc:.1f}%" + (f"｜{reason}" if reason else ""))
+            if fs=="READY":
+                st.success(f"Full Spectral RT：READY｜完整率 {fc:.1f}%")
+            elif fs=="NOT_APPLICABLE":
+                st.info("Full Spectral RT：NOT APPLICABLE｜本次沒有有效 Canvas target，因此 Formation Full Spectral RT 無需計算。這不是 RT 輸入 Missing。")
+            else:
+                st.warning(f"Full Spectral RT：{fs}｜完整率 {fc:.1f}%" + (f"｜{reason}" if reason else ""))
 
     if not perf.empty:
         with st.expander("效能診斷（各太陽高度角／3D 階段）", expanded=False):
@@ -1595,7 +1608,13 @@ if run or st.session_state.analysis_result is not None:
             show_cols=[c for c in ["distance_km","voxel_center_km",f"rayleigh_transmission_{wl}nm",f"aerosol_transmission_{wl}nm",f"cloud_transmission_{wl}nm",f"gas_transmission_{wl}nm",f"o3_transmission_{wl}nm",f"gas_tau_o3_{wl}nm",f"gas_tau_o2_{wl}nm",f"gas_tau_h2o_{wl}nm",f"partial_spectral_transmission_{wl}nm",f"full_spectral_transmission_{wl}nm",f"gas_status_{wl}nm","spectral_rt_missing_cause","spectral_rt_boundary_clipped","spectral_rt_quality"] if c in sg.columns]
             st.dataframe(localized_df(sg[show_cols]), use_container_width=True, hide_index=True)
     else:
-        st.warning("本次沒有可用的 Native CLWMR/ICMR 光譜 RT 輸入；不以 RH 或雲量代理冒充完整光譜傳輸。")
+        _formation_ui = result.get("v1_formation", pd.DataFrame())
+        _no_canvas = (not _formation_ui.empty and "formation_state" in _formation_ui.columns and _formation_ui["formation_state"].astype(str).eq("NO_CANVAS_EVIDENCE").all())
+        _native_ui = result.get("native_cloud_voxel_matrix", pd.DataFrame())
+        if _no_canvas and not _native_ui.empty:
+            st.info("本次 Native CLWMR/ICMR 已取得；0–100 km Canvas 的原生凝結物為物理零值，因此沒有 Canvas target 可進行 Formation 光譜 RT。PHYSICALLY_ZERO ≠ MISSING。")
+        else:
+            st.warning("本次沒有形成可用的 Native cloud spectral RT 路徑。若 Native CLWMR/ICMR 缺失，將維持 Missing；不以 RH 或雲量代理冒充完整光譜傳輸。")
 
     st.subheader("動態 REZ 幾何邊界")
     st.caption(
@@ -1849,7 +1868,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.11_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.12_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

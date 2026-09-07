@@ -19,6 +19,7 @@ import pandas as pd
 
 from ..config import EARTH_RADIUS_KM
 from .ray import ray_altitudes_vectorized_km, ray_altitude_matrix_km
+from .vertical import VerticalIndexPlan
 
 
 @dataclass(frozen=True)
@@ -194,6 +195,7 @@ def materialize_voxel_intersection_plan(
         distances = topo_dir["distances"]
         heights = topo_dir["heights"]
         targets: dict[tuple[float, float], dict[str, Any]] = {}
+        vertical_index = VerticalIndexPlan.from_heights(heights)
 
         # One ray matrix per target distance instead of one ray call per
         # (distance,height) target. The topology object guarantees all heights
@@ -209,11 +211,7 @@ def materialize_voxel_intersection_plan(
                     float(d_t), heights, first["mids"], angle, radius
                 )
                 valid_matrix = first["valid_dx"][None,:] & np.isfinite(ray_matrix) & (ray_matrix >= 0.0)
-                idx_hi = np.searchsorted(heights, ray_matrix, side="left")
-                idx_hi = np.clip(idx_hi, 0, len(heights)-1)
-                idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
-                choose_hi = np.abs(heights[idx_hi]-ray_matrix) < np.abs(ray_matrix-heights[idx_lo])
-                nearest_matrix = np.where(choose_hi, idx_hi, idx_lo)
+                nearest_matrix = vertical_index.nearest_indices(ray_matrix)
                 slant_matrix = np.where(valid_matrix, dx[None,:]/cos_sun, 0.0)
             else:
                 ray_matrix=np.empty((len(heights),0),dtype=float)

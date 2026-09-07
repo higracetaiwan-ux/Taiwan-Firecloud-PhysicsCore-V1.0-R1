@@ -1,7 +1,7 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.11
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.12
 
 
-R5.7.11 operational focus: Firecloud Shared Geometry Core V1.3. Voxel/layer geometry now separates angle-independent lattice topology from angle-dependent ray materialization, reuses identical topology across solar-angle candidates, and batch-evaluates all target heights at each target distance with a shared ray-height matrix. CASE diagnostics retain target/segment workload counters and add topology cache/materialization timing. Scientific thresholds, optical evidence semantics, Formation/Viewing separation, and six-band RT are unchanged.
+R5.7.12 operational focus: Firecloud Shared Geometry Core V1.4. Vertical-cell lookup, nearest-height tie behavior, bracketing and layer-overlap indexing are now centralized in one geometry-only Vertical Index Core and reused by voxel intersections and native-cloud vertical interpolation. Scientific thresholds, Formation/Viewing separation, and six-band RT formulas are unchanged. R5.7.12 additionally fixes data-state semantics so Missing input, physically-zero native condensate, and no-target RT applicability are never conflated.
 
 R5.7 continues from the verified R5.6.1 baseline. It keeps Formation, Viewing and Photography Decision physically separate while adding forecast-native 3-D hydrometeor optics and an independent Cloud→Observer six-band extinction branch.
 
