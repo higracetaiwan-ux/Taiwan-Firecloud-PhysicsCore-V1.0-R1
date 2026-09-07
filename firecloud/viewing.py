@@ -295,7 +295,7 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
                      "view_obstruction_fraction_proxy":obstruction,"view_geometry_state":state,
                      "viewing_geometry_method":"ANGULAR_FOOTPRINT_PROJECTED_VOLUME_WITH_CONTINUOUS_CF_CACHED",
                      "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED","viewing_confidence":conf,
-                     "blocker_layer_ids":";".join(sorted(blockers)),
+                     "blocker_layer_ids":";".join(str(x) for x in sorted(blockers, key=str)),
                      "blocker_support_intervals_km":";".join(f"{k}:{supports[k]}" for k in sorted(supports)),
                      "note":"FORMATION_UNCHANGED;CLOUD_TO_OBSERVER_PROJECTED_VOLUME;CF_OCCUPANCY_PROXY_NOT_COT;MISSING_OCCUPANCY_NOT_CLEAR;UNCALIBRATED_THRESHOLDS;R573_CACHED_TRANSECT"})
     return pd.DataFrame(rows,columns=cols)

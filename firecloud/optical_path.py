@@ -144,7 +144,7 @@ def _path_optical_layer_view(
         if tau_parts and coverage + 1e-12 >= float(min_secondary_vertical_coverage_fraction):
             rec.update({
                 "path_vertical_cot":float(sum(tau_parts)),
-                "path_optical_source":"SECONDARY_FORECAST_NATIVE_OPTICS:"+",".join(sorted(set(sources))),
+                "path_optical_source":"SECONDARY_FORECAST_NATIVE_OPTICS:"+",".join(sorted(str(x) for x in set(sources))),
                 "path_optical_status":"RESOLVED_SECONDARY_NATIVE_FORECAST_COT",
             })
         elif tau_parts:
@@ -593,7 +593,7 @@ def build_r3_optical_tables(
                 "relative_base_illumination": rel,
                 "evidence_state": ev.value,
                 "bound_level": int(bl.value),
-                "missing_components": ";".join(missing_parts),
+                "missing_components": ";".join(str(x) for x in missing_parts),
                 "critical_path_status": (
                     "POTENTIAL_BLOCKER_OPTICS_UNKNOWN" if unknown_cloud_intersections
                     else ("UNCERTAIN_OPTICS" if ev != EvidenceState.FULL else "FULL_RT")
@@ -617,7 +617,7 @@ def build_r3_optical_tables(
                     "bound_level": int(bl.value),
                     "criticality": "HIGH",
                     "affected_outputs": "CloudBaseIllumination,Formation",
-                    "reason": ";".join(missing_parts) or "OPTICAL_EVIDENCE_PARTIAL",
+                    "reason": ";".join(str(x) for x in missing_parts) or "OPTICAL_EVIDENCE_PARTIAL",
                 })
 
         if fsun is None:

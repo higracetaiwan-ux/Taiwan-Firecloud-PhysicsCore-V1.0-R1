@@ -1,4 +1,8 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.18.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.18.2
+
+## R5.7.18.2 Runtime Type-Safe Audit Hotfix
+
+R5.7.18.2 is a narrow runtime reliability hotfix on top of R5.7.18.1. It does not change Formation, Viewing, Tier-1/Tier-2 physics, Shared Geometry, or integrity thresholds. It hardens provider request-audit metadata serialization so mixed numeric/string ADS metadata cannot crash the detached analysis worker. It also surfaces the preserved inner worker traceback through the Streamlit monitor when a future worker failure occurs.
 
 ## R5.7.18.1 Spectral Evidence Payload Integrity
 

@@ -242,6 +242,20 @@ def _default_cache_dir() -> Path:
 
 CAMS_DECODED_CACHE_SCHEMA_VERSION = "R5.7.5_DECODED_ROUTE_V1"
 
+
+def _safe_join_request_values(value, sep: str = "|") -> str:
+    """Serialize ADS request metadata without assuming list elements are strings.
+
+    CDS/ADS request builders normally emit strings, but cached/normalized request
+    payloads may contain ints/floats. Audit serialization must never be able to
+    crash the analysis worker merely because metadata types differ.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        return sep.join(str(x) for x in value)
+    return str(value)
+
 def _route_signature(points: list[dict]) -> str:
     payload = "|".join(
         f"{p.get('point_id','')}:{float(p.get('lat',0.0)):.6f}:{float(p.get('lon',0.0)):.6f}:{float(p.get('distance_km',0.0)):.3f}:{float(p.get('direction_offset_deg',0.0)):.3f}"
@@ -335,8 +349,8 @@ def _retrieve_request(points: list[dict], valid_time: datetime, role: str, reque
         "time": request.get("time"),
         "leadtime_hour": request.get("leadtime_hour"),
         "type": request.get("type"),
-        "variable": "|".join(request.get("variable", []) if isinstance(request.get("variable"), list) else [str(request.get("variable", ""))]),
-        "pressure_level": "|".join(request.get("pressure_level", []) if isinstance(request.get("pressure_level"), list) else ([str(request.get("pressure_level"))] if request.get("pressure_level") is not None else [])),
+        "variable": _safe_join_request_values(request.get("variable")),
+        "pressure_level": _safe_join_request_values(request.get("pressure_level")),
         "area_nwse": str(request.get("area")),
         "status": "CACHE_HIT" if out.exists() and out.stat().st_size >= 1000 else "REQUESTING",
         "error": "",
@@ -669,7 +683,7 @@ def fetch_route_native_aerosol_bundle(points: list[dict], valid_time: datetime, 
     try:
         request, smeta = build_ads_spectral_aod_request(points, valid_time)
         out = _request_cache_path("spectral_column_aod", smeta, points, cache_dir)
-        audit={"request_role":"SPECTRAL_COLUMN_AOD","dataset":DATASET,"date":request.get("date"),"time":request.get("time"),"leadtime_hour":request.get("leadtime_hour"),"type":request.get("type"),"variable":"|".join(request.get("variable",[])),"pressure_level":"","area_nwse":str(request.get("area")),"status":"CACHE_HIT" if out.exists() and out.stat().st_size>=1000 else "REQUESTING","error":""}
+        audit={"request_role":"SPECTRAL_COLUMN_AOD","dataset":DATASET,"date":request.get("date"),"time":request.get("time"),"leadtime_hour":request.get("leadtime_hour"),"type":request.get("type"),"variable":_safe_join_request_values(request.get("variable")),"pressure_level":"","area_nwse":str(request.get("area")),"status":"CACHE_HIT" if out.exists() and out.stat().st_size>=1000 else "REQUESTING","error":""}
         if not out.exists() or out.stat().st_size<1000:
             _make_cdsapi_client().retrieve(DATASET,request,str(out)); audit["status"]="OK"
         if not out.exists() or out.stat().st_size<1000:
@@ -858,7 +872,7 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
             out = _request_cache_path("spectral_column_aod", smeta, points, cache_dir)
             audit={"request_role":role,"dataset":DATASET,"date":request.get("date"),"time":request.get("time"),
                    "leadtime_hour":request.get("leadtime_hour"),"type":request.get("type"),
-                   "variable":"|".join(request.get("variable",[])),"pressure_level":"",
+                   "variable":_safe_join_request_values(request.get("variable")),"pressure_level":"",
                    "area_nwse":str(request.get("area")),
                    "status":"CACHE_HIT" if out.exists() and out.stat().st_size>=1000 else "REQUESTING","error":""}
             if not out.exists() or out.stat().st_size < 1000:

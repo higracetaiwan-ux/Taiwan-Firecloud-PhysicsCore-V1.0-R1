@@ -170,8 +170,8 @@ def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.Da
         if seg<=0 or thick<=0: continue
         slant_tau=max(0.0,cot)*seg/thick; conditional_tau+=slant_tau; cf=min(1.0,max(0.0,cf)); expected_t *= (1.0-cf)+cf*math.exp(-slant_tau); sources.append(src)
     if blockers==0: return 0.0,0.0,"VIEW_CLOUD_PATH_CLEAR",0,""
-    if unresolved: return None,conditional_tau,"VIEW_CLOUD_OPTICS_PARTIAL",blockers,";".join(sorted(set(sources)))
-    eff_tau=-math.log(max(1e-300,expected_t)); return eff_tau,conditional_tau,"VIEW_CLOUD_OPTICS_RESOLVED_OCCUPANCY_EXPECTATION",blockers,";".join(sorted(set(sources)))
+    if unresolved: return None,conditional_tau,"VIEW_CLOUD_OPTICS_PARTIAL",blockers,";".join(sorted(str(x) for x in set(sources)))
+    eff_tau=-math.log(max(1e-300,expected_t)); return eff_tau,conditional_tau,"VIEW_CLOUD_OPTICS_RESOLVED_OCCUPANCY_EXPECTATION",blockers,";".join(sorted(str(x) for x in set(sources)))
 
 
 def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame,
@@ -241,7 +241,7 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
             else:
                 total=max(0.0,float(tg+ta+tc+tp)); rec[f"view_tau_total_{int(wl)}nm"]=total; rec[f"view_transmission_{int(wl)}nm"]=math.exp(-total)
         rec["viewing_spectral_status"]="VIEW_FULL_SIX_BAND_RT" if not missing else "VIEW_PARTIAL_SIX_BAND_RT"
-        rec["viewing_missing_components"]=";".join(sorted(set(missing)))
+        rec["viewing_missing_components"]=";".join(sorted(str(x) for x in set(missing)))
         rec["note"]="CLOUD_TO_OBSERVER_ONLY;FORMATION_UNCHANGED;NO_SUN_PATH_REUSE;CLOUD_OCCUPANCY_AND_OPTICAL_DEPTH_KEPT_SEPARATE;R573_CACHED_ROUTE_CONTEXT"
         rows.append(rec)
     return pd.DataFrame(rows)
