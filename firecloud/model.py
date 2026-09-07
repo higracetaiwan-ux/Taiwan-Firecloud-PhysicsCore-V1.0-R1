@@ -17,6 +17,7 @@ from .shared_geometry.intersections import (
     plan_direction_if_compatible,
 )
 from .shared_geometry.ray import ray_altitudes_vectorized_km
+from .shared_geometry.vertical import VerticalIndexPlan
 # Backward-compatible alias; implementation lives in Shared Geometry Core.
 _ray_altitudes_vectorized_km = ray_altitudes_vectorized_km
 import pandas as pd
@@ -28,7 +29,7 @@ from .config import (
     CLOUD_EXTINCTION_PROXY_PER_KM, RAY_HORIZONTAL_STEP_KM,
     horizontal_sampling_segment, adaptive_horizontal_distance_samples,
 )
-from .geometry import (
+from .shared_geometry import (
     destination_point,
     earth_shadow_min_altitude_km,
     cloud_layer_illuminated_fraction,
@@ -672,20 +673,14 @@ def build_pressure_profile_cloud_volume(
         alts = np.array([x["altitude_agl_km"] for x in pts], dtype=float)
         cc = np.array([x["cloud_cover_fraction"] for x in pts], dtype=float)
         rh = np.array([x["relative_humidity_pct"] for x in pts], dtype=float)
+        vplan = VerticalIndexPlan.from_centers(alts)
         # Only interpolate cloud cover when both bracketing data are known.
         for z in VOXEL_ALTITUDE_CENTERS_KM:
             z=float(z); supported = bool(alts.min() <= z <= alts.max())
             occ = rh_i = np.nan
             quality = "OUTSIDE_PRESSURE_PROFILE_SUPPORT"
             if supported:
-                j = int(np.searchsorted(alts, z))
-                if j == 0: lo=hi=0
-                elif j >= len(alts): lo=hi=len(alts)-1
-                else: lo,hi=j-1,j
-                if lo == hi:
-                    w=0.0
-                else:
-                    w=(z-alts[lo])/(alts[hi]-alts[lo])
+                lo,hi,w = vplan.bracket_indices(z)
                 if not pd.isna(cc[lo]) and not pd.isna(cc[hi]):
                     occ=float(cc[lo]*(1-w)+cc[hi]*w)
                     quality="PRESSURE_LEVEL_INTERPOLATED"
@@ -753,6 +748,8 @@ def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: 
     """
     if profile_voxels.empty:
         return pd.DataFrame()
+    if shared_ray_geometry_plan is None:
+        shared_ray_geometry_plan = prepare_shared_ray_geometry_plan(profile_voxels, solar_altitude_deg, cfg)
 
     out = []
     cos_sun = max(0.05, math.cos(math.radians(abs(float(solar_altitude_deg)))))
@@ -781,24 +778,11 @@ def apply_3d_optical_blocking(profile_voxels: pd.DataFrame, solar_altitude_deg: 
             geom_frac = cloud_layer_illuminated_fraction(float(target.voxel_bottom_km), float(target.voxel_top_km), shadow_h)
 
             _pg = _shared_dir.get("targets", {}).get((d_t, z_t)) if _shared_dir is not None else None
-            if _pg is not None:
-                ds = _pg["ds"]; dx = _pg["dx"]; valid = _pg["valid"]
-                k = _pg["nearest_height_index"]; rows = _pg["upstream_row_index"]
-                slant = _pg["slant_km"]
-            else:
-                ds = distances[i0 + 1:]
-                if ds.size:
-                    prev = np.concatenate(([d_t], ds[:-1])); dx = ds - prev
-                    mids = ds - dx / 2.0
-                    ray_h = ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
-                    valid = (dx > 0.0) & np.isfinite(ray_h) & (ray_h >= 0.0)
-                    idx_hi = np.searchsorted(heights, ray_h, side="left"); idx_hi = np.clip(idx_hi, 0, len(heights)-1)
-                    idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
-                    choose_hi = np.abs(heights[idx_hi]-ray_h) < np.abs(ray_h-heights[idx_lo])
-                    k = np.where(choose_hi, idx_hi, idx_lo); rows = np.arange(i0+1, len(distances))
-                    slant = np.where(valid, dx / cos_sun, 0.0)
-                else:
-                    dx=np.empty(0); valid=np.empty(0,dtype=bool); k=np.empty(0,dtype=int); rows=np.empty(0,dtype=int); slant=np.empty(0)
+            if _pg is None:
+                raise RuntimeError("SHARED_GEOMETRY_LATTICE_MISMATCH_PROFILE_CLOUD")
+            ds = _pg["ds"]; dx = _pg["dx"]; valid = _pg["valid"]
+            k = _pg["nearest_height_index"]; rows = _pg["upstream_row_index"]
+            slant = _pg["slant_km"]
             upstream_unknown_len = 0.0
             if ds.size:
                 total_len = float(np.sum(slant))
@@ -864,6 +848,8 @@ def apply_native_microphysical_optical_blocking(native_voxels: pd.DataFrame, sol
     """
     if native_voxels.empty:
         return pd.DataFrame()
+    if shared_ray_geometry_plan is None:
+        shared_ray_geometry_plan = prepare_shared_ray_geometry_plan(native_voxels, solar_altitude_deg, cfg)
 
     enriched = native_voxels.copy() if optical_properties_ready else add_native_optical_properties(native_voxels)
     out = []
@@ -890,24 +876,11 @@ def apply_native_microphysical_optical_blocking(native_voxels: pd.DataFrame, sol
             geom_frac = cloud_layer_illuminated_fraction(float(target.voxel_bottom_km), float(target.voxel_top_km), shadow_h)
 
             _pg = _shared_dir.get("targets", {}).get((d_t, z_t)) if _shared_dir is not None else None
-            if _pg is not None:
-                ds = _pg["ds"]; dx = _pg["dx"]; valid = _pg["valid"]
-                k = _pg["nearest_height_index"]; rows = _pg["upstream_row_index"]
-                slant_km = _pg["slant_km"]
-            else:
-                ds = distances[i0 + 1:]
-                if ds.size:
-                    prev = np.concatenate(([d_t], ds[:-1])); dx = ds - prev
-                    mids = ds - dx / 2.0
-                    ray_h = ray_altitudes_vectorized_km(d_t, z_t, mids, solar_altitude_deg, radius)
-                    valid = (dx > 0.0) & np.isfinite(ray_h) & (ray_h >= 0.0)
-                    idx_hi = np.searchsorted(heights, ray_h, side="left"); idx_hi = np.clip(idx_hi, 0, len(heights)-1)
-                    idx_lo = np.clip(idx_hi-1, 0, len(heights)-1)
-                    choose_hi = np.abs(heights[idx_hi]-ray_h) < np.abs(ray_h-heights[idx_lo])
-                    k = np.where(choose_hi, idx_hi, idx_lo); rows = np.arange(i0+1, len(distances))
-                    slant_km = np.where(valid, dx / cos_sun, 0.0)
-                else:
-                    dx=np.empty(0); valid=np.empty(0,dtype=bool); k=np.empty(0,dtype=int); rows=np.empty(0,dtype=int); slant_km=np.empty(0)
+            if _pg is None:
+                raise RuntimeError("SHARED_GEOMETRY_LATTICE_MISMATCH_NATIVE_CLOUD")
+            ds = _pg["ds"]; dx = _pg["dx"]; valid = _pg["valid"]
+            k = _pg["nearest_height_index"]; rows = _pg["upstream_row_index"]
+            slant_km = _pg["slant_km"]
             upstream_unknown_len = 0.0
             if ds.size:
                 total_len = float(np.sum(slant_km))
@@ -2042,32 +2015,24 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         })
     v1_core_summary = pd.DataFrame(_v1_summary_rows)
 
-    physics_data_completeness = _build_physics_data_completeness(
-        details, candidates, summary,
-        canvas_candidates=v1_canvas_candidates,
-        formation=v1_formation,
-    )
+    physics_data_completeness = _build_physics_data_completeness(details, candidates, summary)
 
     # V8.4.9.1: the headline summary completeness must reflect the actual
     # mandatory PhysicsCore data chain, not only the legacy path/REZ forecast
     # coverage. Missing CAMS aerosol/O3/gas/full spectral RT can therefore no
     # longer coexist with summary data_completeness == 1.0.
-    mandatory_layers = ["FORECAST_CLOUD", "NATIVE_CLOUD_CONDENSATE", "NATIVE_AEROSOL", "O3_PROFILE",
+    mandatory_layers = ["FORECAST_CLOUD", "NATIVE_AEROSOL", "O3_PROFILE",
                         "GAS_PROFILE", "HITRAN_SPECTROSCOPY", "GAS_VERTICAL_DOMAIN",
                         "SPECTRAL_AEROSOL_PATH", "FULL_SPECTRAL_RT"]
     operational_rows=[]
     if not physics_data_completeness.empty:
         for angle,g in physics_data_completeness.groupby("solar_altitude_deg", dropna=False):
-            mg=g[g["layer"].isin(mandatory_layers)].copy()
-            # NOT_APPLICABLE is intentionally removed from the operational
-            # completeness denominator. AVAILABLE_PHYSICALLY_ZERO remains a
-            # complete input state with completeness=1.
-            applicable=mg[~mg["status"].astype(str).eq("NOT_APPLICABLE")].copy()
-            vals=pd.to_numeric(applicable["completeness"],errors="coerce").dropna()
-            overall=float(vals.min()) if len(vals) else 1.0
-            failed=applicable[applicable["status"].astype(str).isin(["FAILED","MISSING","MISSING_INPUT","NOT_CONFIGURED"])]
-            partial=applicable[applicable["status"].astype(str).eq("PARTIAL")]
-            if not failed.empty: status="MISSING_INPUT"; reason=";".join(failed["layer"].astype(str).tolist())+"_UNAVAILABLE"
+            mg=g[g["layer"].isin(mandatory_layers)]
+            vals=pd.to_numeric(mg["completeness"],errors="coerce").dropna()
+            overall=float(vals.min()) if len(vals) else 0.0
+            failed=mg[mg["status"].astype(str).isin(["FAILED","MISSING","NOT_CONFIGURED"])]
+            partial=mg[mg["status"].astype(str).eq("PARTIAL")]
+            if not failed.empty: status="MISSING"; reason=";".join(failed["layer"].astype(str).tolist())+"_UNAVAILABLE"
             elif not partial.empty or overall < 0.999: status="PARTIAL"; reason="MANDATORY_PHYSICS_INPUTS_PARTIAL"
             else: status="READY"; reason=""
             tval=g["time"].iloc[0] if "time" in g and len(g) else pd.NaT
@@ -2091,16 +2056,15 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _dep = physics_data_completeness[physics_data_completeness["layer"].ne("OVERALL_OPERATIONAL_INPUTS")].copy()
         if not _dep.empty:
             _dep["dependency"] = _dep["layer"].astype(str)
-            _status_map = {"READY":"FULL", "AVAILABLE_PHYSICALLY_ZERO":"FULL_ZERO", "NOT_APPLICABLE":"NOT_APPLICABLE", "PARTIAL":"PARTIAL_OPTICS", "MISSING":"MISSING", "MISSING_INPUT":"MISSING", "FAILED":"MISSING", "NOT_CONFIGURED":"MISSING"}
+            _status_map = {"READY":"FULL", "PARTIAL":"PARTIAL_OPTICS", "MISSING":"MISSING", "FAILED":"MISSING", "NOT_CONFIGURED":"MISSING"}
             _dep["evidence_state"] = _dep["status"].astype(str).map(_status_map).fillna("MISSING")
             _dep["criticality"] = _dep["dependency"].map({
-                "FORECAST_CLOUD":"HIGH", "NATIVE_CLOUD_CONDENSATE":"HIGH", "NATIVE_AEROSOL":"MEDIUM", "O3_PROFILE":"MEDIUM",
+                "FORECAST_CLOUD":"HIGH", "NATIVE_AEROSOL":"MEDIUM", "O3_PROFILE":"MEDIUM",
                 "GAS_PROFILE":"HIGH", "HITRAN_SPECTROSCOPY":"HIGH", "GAS_VERTICAL_DOMAIN":"HIGH",
                 "SPECTRAL_AEROSOL_PATH":"MEDIUM", "FULL_SPECTRAL_RT":"HIGH",
             }).fillna("MEDIUM")
             _dep["affected_outputs"] = _dep["dependency"].map({
                 "FORECAST_CLOUD":"CloudScene,CanvasCandidate,OpticalPath",
-                "NATIVE_CLOUD_CONDENSATE":"CloudScene,CanvasCandidate,CloudOptics,Formation",
                 "NATIVE_AEROSOL":"SpectralOpticalPath,Formation",
                 "O3_PROFILE":"SpectralOpticalPath,Formation",
                 "GAS_PROFILE":"SpectralOpticalPath,Formation",
@@ -2112,24 +2076,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             _dep = _dep[[c for c in ["time","solar_altitude_deg","dependency","status","evidence_state","completeness","criticality","affected_outputs","provider","missing_reason"] if c in _dep.columns]]
             v1_dependency_status = pd.concat([v1_dependency_status, _dep], ignore_index=True, sort=False)
 
-    # A fully observed/forecast-clear Canvas is a physical negative result, not
-    # a data-incomplete result.  Preserve complete input readiness while making
-    # the operational outcome explicit and excluding NO_CANVAS angles from any
-    # legacy score-based selection.
-    _no_canvas_angles=set()
-    if not v1_formation.empty and {"solar_altitude_deg","formation_state"}.issubset(v1_formation.columns):
-        _ncf=v1_formation[v1_formation["formation_state"].astype(str).eq("NO_CANVAS_EVIDENCE")]
-        _no_canvas_angles=set(pd.to_numeric(_ncf["solar_altitude_deg"],errors="coerce").dropna().astype(float).tolist())
-        for _a in _no_canvas_angles:
-            _m=np.isclose(pd.to_numeric(summary["solar_altitude_deg"],errors="coerce"),float(_a))
-            summary.loc[_m,"operational_decision"]="NO CANVAS EVIDENCE"
-
     # Re-rank only after the real mandatory-layer completeness gate has been
     # propagated into summary. Physically scored but data-incomplete candidates
     # remain visible, yet they cannot silently win an operational selection.
-    _angle_series=pd.to_numeric(summary["solar_altitude_deg"],errors="coerce")
-    _has_canvas_mask=~_angle_series.isin(_no_canvas_angles)
-    valid = summary[summary["core_score_eligible"] & _has_canvas_mask & (pd.to_numeric(summary["data_completeness"],errors="coerce") >= cfg.min_data_completeness)].dropna(subset=["physics_score"])
+    valid = summary[summary["core_score_eligible"] & (pd.to_numeric(summary["data_completeness"],errors="coerce") >= cfg.min_data_completeness)].dropna(subset=["physics_score"])
     selected_angle = None
     if not valid.empty:
         ranked = valid.sort_values(["physics_score", "visual_magnitude", "data_completeness"], ascending=False)
@@ -2360,64 +2310,14 @@ def _build_spectral_coverage_diagnostics(spectral: pd.DataFrame) -> pd.DataFrame
                      "dominant_spectral_missing_cause":spectral_causes.value_counts().index[0] if len(spectral_causes) and not spectral_causes.value_counts().empty else ""})
     return pd.DataFrame(rows)
 
-def _build_physics_data_completeness(
-    details: dict, candidates, base_summary: pd.DataFrame, *,
-    canvas_candidates: pd.DataFrame | None = None,
-    formation: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """Layered readiness audit with explicit Missing / Zero / N/A semantics.
-
-    R5.7.12 freezes three distinct states:
-      * MISSING_INPUT: required native evidence was not delivered.
-      * AVAILABLE_PHYSICALLY_ZERO: native evidence is complete and physically zero.
-      * NOT_APPLICABLE: a downstream target-dependent calculation has no target.
-
-    A physically clear/zero Canvas must never be converted into Missing.
-    """
+def _build_physics_data_completeness(details: dict, candidates, base_summary: pd.DataFrame) -> pd.DataFrame:
+    """V8.4.0.4 layered readiness audit. Missing is never converted to zero/clear."""
     rows=[]
     base_by_angle={float(r["solar_altitude_deg"]):r for _,r in base_summary.iterrows()}
     for angle,t,_az in candidates:
         d=details[angle]; base=base_by_angle.get(float(angle), {})
         forecast_c=float(base.get("data_completeness", np.nan)) if hasattr(base,"get") else np.nan
         forecast_status="READY" if pd.notna(forecast_c) and forecast_c>=0.999 else ("PARTIAL" if pd.notna(forecast_c) and forecast_c>0 else "MISSING")
-
-        # R5.7.12: Canvas target applicability is an evidence-state question,
-        # not a spectral-RT failure.  Resolve it per angle from V1 candidates /
-        # Formation so an empty target set becomes N/A downstream rather than
-        # MISSING_INPUT.
-        _has_canvas_target = False
-        if canvas_candidates is not None and not canvas_candidates.empty and "solar_altitude_deg" in canvas_candidates.columns:
-            _ca_angle = pd.to_numeric(canvas_candidates["solar_altitude_deg"], errors="coerce")
-            _has_canvas_target = bool(np.isclose(_ca_angle, float(angle), atol=1e-8, equal_nan=False).any())
-        _formation_state = ""
-        if formation is not None and not formation.empty and "solar_altitude_deg" in formation.columns:
-            _fa = formation[np.isclose(pd.to_numeric(formation["solar_altitude_deg"], errors="coerce"), float(angle), atol=1e-8, equal_nan=False)]
-            if not _fa.empty:
-                _formation_state = str(_fa.iloc[0].get("formation_state", ""))
-        _no_canvas_target = (not _has_canvas_target) and (_formation_state == "NO_CANVAS_EVIDENCE" or canvas_candidates is not None)
-
-        # Native cloud microphysics readiness is audited independently from
-        # whether condensate is physically present.  Complete zero condensate
-        # is positive evidence for a clear/no-canvas state, not missing data.
-        _nv = d.get("native_voxels", pd.DataFrame())
-        native_cloud_status="MISSING_INPUT"; native_cloud_c=0.0; native_cloud_reason="NATIVE_CLWMR_ICMR_INPUT_MISSING"
-        if _nv is not None and not _nv.empty:
-            _canvas_nv = _nv.copy()
-            if "distance_km" in _canvas_nv.columns:
-                _canvas_nv = _canvas_nv[pd.to_numeric(_canvas_nv["distance_km"], errors="coerce") <= 100.0 + 1e-9]
-            _liq = pd.to_numeric(_canvas_nv.get("cloud_liquid_water_kgkg", pd.Series(np.nan, index=_canvas_nv.index)), errors="coerce")
-            _ice = pd.to_numeric(_canvas_nv.get("cloud_ice_water_kgkg", pd.Series(np.nan, index=_canvas_nv.index)), errors="coerce")
-            _support = _canvas_nv.get("native_microphysics_supported", pd.Series(False, index=_canvas_nv.index)).fillna(False).astype(bool)
-            _finite = _liq.notna() & _ice.notna() & _support
-            native_cloud_c=float(_finite.mean()) if len(_finite) else 0.0
-            if native_cloud_c >= 0.999:
-                _cond = (_liq.fillna(0.0) + _ice.fillna(0.0)).loc[_finite]
-                if len(_cond) and bool((_cond > 0.0).any()):
-                    native_cloud_status="READY"; native_cloud_reason=""
-                else:
-                    native_cloud_status="AVAILABLE_PHYSICALLY_ZERO"; native_cloud_reason="NATIVE_CLWMR_ICMR_COMPLETE_ZERO_IN_0_100KM_CANVAS"
-            elif native_cloud_c > 0.0:
-                native_cloud_status="PARTIAL"; native_cloud_reason="NATIVE_CLWMR_ICMR_PARTIAL_IN_0_100KM_CANVAS"
 
         cams=d.get("cams_native_aerosol_snapshot", pd.DataFrame()); cm=d.get("cams_native_aerosol_metadata", {}) or {}
         provider=native_aerosol_provider_status()
@@ -2488,16 +2388,8 @@ def _build_physics_data_completeness(
         diagnostic_full_c=0.0
         spectral_aerosol_c=0.0; spectral_aerosol_status="MISSING"; spectral_aerosol_reason="SPECTRAL_AEROSOL_RT_INPUT_MISSING"
         if spectral is None or spectral.empty:
-            if _no_canvas_target:
-                # No target means target-dependent RT is not applicable.  Do
-                # not punish input completeness or claim native cloud data is
-                # absent when the native condensate field is complete and zero.
-                spectral_aerosol_c=np.nan; spectral_aerosol_status="NOT_APPLICABLE"; spectral_aerosol_reason="NOT_APPLICABLE_NO_CANVAS_TARGET"
-                full_c=np.nan; full_status="NOT_APPLICABLE"; full_reason="NOT_APPLICABLE_NO_CANVAS_TARGET"
-                diagnostic_full_c=np.nan; diagnostic_status="NOT_APPLICABLE"; diagnostic_reason="NOT_APPLICABLE_NO_CANVAS_TARGET"
-            else:
-                full_c=0.0; full_status="MISSING_INPUT"; full_reason="SPECTRAL_RT_INPUT_MISSING"
-                diagnostic_full_c=0.0; diagnostic_status="MISSING_INPUT"; diagnostic_reason="SPECTRAL_RT_INPUT_MISSING"
+            full_c=0.0; full_status="MISSING"; full_reason="SPECTRAL_RT_INPUT_MISSING"
+            diagnostic_full_c=0.0; diagnostic_status="MISSING"; diagnostic_reason="SPECTRAL_RT_INPUT_MISSING"
         else:
             # Operational FULL_SPECTRAL_RT is scoped to the physically relevant
             # direct-sunlit Canvas (0–100 km). Finite transmission numbers alone
@@ -2584,7 +2476,6 @@ def _build_physics_data_completeness(
 
         for layer,status,comp,reason,prov in [
             ("FORECAST_CLOUD",forecast_status,forecast_c,"" if forecast_status=="READY" else "BASE_FORECAST_INCOMPLETE","Open-Meteo/GFS"),
-            ("NATIVE_CLOUD_CONDENSATE",native_cloud_status,native_cloud_c,native_cloud_reason,"NOAA GFS native CLWMR/ICMR"),
             ("NATIVE_AEROSOL",aerosol_status,aerosol_c,aerosol_reason,str(provider.get("provider","CAMS"))),
             ("O3_PROFILE",o3_status,o3_c,o3_reason,str(o3provider.get("provider","CAMS O3"))),
             ("GAS_PROFILE",gas_status,gas_c,gas_reason,"Open-Meteo pressure levels + CAMS O3"),

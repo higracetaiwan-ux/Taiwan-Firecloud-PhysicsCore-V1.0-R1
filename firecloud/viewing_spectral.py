@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
-from .viewing import _los_height_agl_km, _projected_support_interval
-from .shared_geometry.ray import sample_observer_los_segment, sampled_segment_path_km
+from .viewing import _projected_support_interval
+from .shared_geometry.ray import observer_los_height_agl_km, sample_observer_los_segment, sampled_segment_path_km
 from .gas_rt import prepare_gas_rt_context, _interp_fast_profile_state, _sigma_fast, BOLTZMANN
 
 
@@ -65,7 +65,7 @@ def _integrate_view_aerosol(target, aerosol_rows: pd.DataFrame, earth_radius_km:
         if d0>=dt: break
         d1=min(d1,dt)
         if d1<=d0: continue
-        required+=1; dm=0.5*(d0+d1); z0=_los_height_agl_km(dt,ht,d0,earth_radius_km); z1=_los_height_agl_km(dt,ht,d1,earth_radius_km); zm=_los_height_agl_km(dt,ht,dm,earth_radius_km)
+        required+=1; dm=0.5*(d0+d1); z0=observer_los_height_agl_km(dt,ht,d0,earth_radius_km); z1=observer_los_height_agl_km(dt,ht,d1,earth_radius_km); zm=observer_los_height_agl_km(dt,ht,dm,earth_radius_km)
         row=aerosol_rows[(aerosol_rows["distance_km"]-d0).abs()<1e-8]
         if row.empty: continue
         row=row.iloc[0]; ext532=_interp_aerosol_ext532(row,zm)
@@ -98,7 +98,7 @@ def _integrate_view_gas(target, gas_rows: pd.DataFrame, earth_radius_km: float, 
     taus={int(w):0.0 for w in SIX_BAND_WAVELENGTHS_NM}; used=0; required=0; path_km=0.0
     for d0,d1 in zip(ds[:-1],ds[1:]):
         if d1<=d0: continue
-        required+=1; dm=0.5*(d0+d1); z0=_los_height_agl_km(dt,ht,d0,earth_radius_km); z1=_los_height_agl_km(dt,ht,d1,earth_radius_km); zm=_los_height_agl_km(dt,ht,dm,earth_radius_km)
+        required+=1; dm=0.5*(d0+d1); z0=observer_los_height_agl_km(dt,ht,d0,earth_radius_km); z1=observer_los_height_agl_km(dt,ht,d1,earth_radius_km); zm=observer_los_height_agl_km(dt,ht,dm,earth_radius_km)
         # Use nearest real route profile at or before segment midpoint.
         near=min(drec["distances"], key=lambda x: abs(float(x)-dm)); rec=drec["profiles"].get(float(near))
         if rec is None: continue

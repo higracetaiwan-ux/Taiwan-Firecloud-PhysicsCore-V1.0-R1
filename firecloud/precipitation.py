@@ -15,11 +15,10 @@ import math
 import re
 import numpy as np
 import pandas as pd
-from .shared_geometry.ray import (observer_los_height_agl_km, sample_sun_ray_segment,
-                                  sample_observer_los_segment, sampled_segment_path_km)
+from .shared_geometry.ray import (sample_sun_ray_segment, sample_observer_los_segment, sampled_segment_path_km)
+from .shared_geometry.vertical import center_layer_bounds_km
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
-from .geometry import ray_altitude_km_at_surface_distance
 
 R_D = 287.05
 Q_EXT_VISIBLE = 2.0
@@ -140,26 +139,18 @@ def _integrate_sun_path(canvas, cells: list[dict], solar_altitude_deg: float, ea
         if float(c["support_end_km"]) < td-1e-9: continue
         a=max(td,float(c["support_start_km"])); b=float(c["support_end_km"])
         if b<=a+1e-9: continue
-        xm=0.5*(a+b)
-        za=ray_altitude_km_at_surface_distance(td,tz,a,solar_altitude_deg,earth_radius_km)
-        zm=ray_altitude_km_at_surface_distance(td,tz,xm,solar_altitude_deg,earth_radius_km)
-        zb=ray_altitude_km_at_surface_distance(td,tz,b,solar_altitude_deg,earth_radius_km)
-        if any(v is None or not math.isfinite(float(v)) for v in (za,zm,zb)): continue
+        xs,zz=sample_sun_ray_segment(td,tz,a,b,solar_altitude_deg,sample_count=17,radius_km=earth_radius_km)
+        finite=zz[np.isfinite(zz)]
+        if finite.size == 0: continue
         lo=float(c["z_base_km"]); hi=float(c["z_top_km"])
-        if max(za,zm,zb)<lo or min(za,zm,zb)>hi: continue
+        if float(np.max(finite))<lo or float(np.min(finite))>hi: continue
         hit+=1
         if not bool(c["all_hydrometeor_fields_resolved"]): unresolved+=1
-        # deterministic 17-point path occupancy through the cell
-        xs=np.linspace(a,b,17); zz=np.array([ray_altitude_km_at_surface_distance(td,tz,float(x),solar_altitude_deg,earth_radius_km) for x in xs],dtype=float)
         inside=np.isfinite(zz)&(zz>=lo)&(zz<=hi)
-        seg=0.0
-        for j in range(len(xs)-1):
-            if inside[j] or inside[j+1]:
-                frac=1.0 if inside[j] and inside[j+1] else 0.5
-                seg += frac*math.hypot((xs[j+1]-xs[j])*1000.0,(zz[j+1]-zz[j])*1000.0)
-        if seg>0:
-            path_km += seg/1000.0
-            tau += max(0.0,float(c["extinction_m1"]))*seg
+        seg_km=sampled_segment_path_km(xs,zz,inside)
+        if seg_km>0:
+            path_km += seg_km
+            tau += max(0.0,float(c["extinction_m1"]))*seg_km*1000.0
     if hit==0:
         # Native volume exists along this transect and no cell intersects the ray:
         # zero is a resolved geometric result only when every relevant field is present.

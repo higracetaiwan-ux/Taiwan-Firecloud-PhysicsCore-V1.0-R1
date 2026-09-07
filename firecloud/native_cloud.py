@@ -2,7 +2,6 @@ from __future__ import annotations
 import math
 import numpy as np
 import pandas as pd
-
 from .shared_geometry.vertical import VerticalIndexPlan
 
 # Native condensate thresholds are deliberately very small: model cloud water/ice
@@ -61,7 +60,7 @@ def build_native_cloud_volume(route_at_time: pd.DataFrame, pressure_levels_hpa, 
         pts=native_levels_from_row(r, pressure_levels_hpa)
         d=float(r['distance_km']); off=float(r['direction_offset_deg'])
         alts=np.array([x['altitude_agl_km'] for x in pts]) if pts else np.array([])
-        vplan = VerticalIndexPlan.from_heights(alts) if len(pts) >= 2 else None
+        vplan=VerticalIndexPlan.from_centers(alts) if len(alts)>=2 else None
         for z in altitude_centers_km:
             z=float(z); rec={'direction_offset_deg':off,'distance_km':d,'voxel_center_km':z,
                 'voxel_bottom_km':z-step_km/2,'voxel_top_km':z+step_km/2,
@@ -71,8 +70,7 @@ def build_native_cloud_volume(route_at_time: pd.DataFrame, pressure_levels_hpa, 
                     'total_cloud_condensate_kgkg':np.nan,'cloud_phase':'UNKNOWN','air_density_kgm3':np.nan,
                     'liquid_water_content_gm3':np.nan,'ice_water_content_gm3':np.nan,'native_quality':'OUTSIDE_NATIVE_SUPPORT'})
                 rows.append(rec); continue
-            lo_arr, hi_arr = vplan.bracket_indices(np.asarray([z], dtype=float))
-            lo, hi = int(lo_arr[0]), int(hi_arr[0])
+            lo,hi,_w=vplan.bracket_indices(z)
             if lo==hi and hi+1<len(pts): hi+=1
             a,b=pts[lo],pts[hi]
             vals={k:_interp_pair(z,a,b,k) for k in ['cloud_fraction','cloud_liquid_water_kgkg','cloud_ice_water_kgkg','temperature_k','relative_humidity_pct','pressure_hpa']}

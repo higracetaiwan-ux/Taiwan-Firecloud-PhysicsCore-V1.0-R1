@@ -195,7 +195,6 @@ def materialize_voxel_intersection_plan(
         distances = topo_dir["distances"]
         heights = topo_dir["heights"]
         targets: dict[tuple[float, float], dict[str, Any]] = {}
-        vertical_index = VerticalIndexPlan.from_heights(heights)
 
         # One ray matrix per target distance instead of one ray call per
         # (distance,height) target. The topology object guarantees all heights
@@ -211,7 +210,7 @@ def materialize_voxel_intersection_plan(
                     float(d_t), heights, first["mids"], angle, radius
                 )
                 valid_matrix = first["valid_dx"][None,:] & np.isfinite(ray_matrix) & (ray_matrix >= 0.0)
-                nearest_matrix = vertical_index.nearest_indices(ray_matrix)
+                nearest_matrix = VerticalIndexPlan.from_centers(heights).nearest_indices(ray_matrix)
                 slant_matrix = np.where(valid_matrix, dx[None,:]/cos_sun, 0.0)
             else:
                 ray_matrix=np.empty((len(heights),0),dtype=float)

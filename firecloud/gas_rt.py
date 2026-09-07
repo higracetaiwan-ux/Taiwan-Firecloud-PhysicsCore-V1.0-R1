@@ -3,6 +3,7 @@ import math, os
 from functools import lru_cache
 from dataclasses import dataclass
 import numpy as np
+from .shared_geometry.ray import ray_altitude_matrix_km
 import pandas as pd
 
 GAS_WAVELENGTHS_NM=(600,650,700,750)
@@ -338,30 +339,7 @@ def _interp_fast_profile_state(rec, altitude_km: float):
 
 def _ray_altitudes_matrix(target_distance_km: float, target_altitudes_km, sample_distances_km,
                           solar_altitude_deg: float, earth_radius_km: float = 6371.0):
-    """Vectorized equivalent of geometry.ray_altitude_km_at_surface_distance.
-
-    Returns an [n_target_altitudes, n_sample_distances] matrix. Invalid forward
-    intersections are NaN. This preserves the exact spherical straight-ray
-    geometry while removing Python calls from the voxel hot loop.
-    """
-    tz=np.asarray(target_altitudes_km,dtype=float).reshape(-1,1)
-    ds=np.asarray(sample_distances_km,dtype=float).reshape(1,-1)
-    alpha=math.radians(float(solar_altitude_deg))
-    delta_t=float(target_distance_km)/float(earth_radius_km)
-    delta_s=ds/float(earth_radius_km)
-    rho_t=float(earth_radius_km)+tz
-    px=rho_t*math.cos(delta_t); py=rho_t*math.sin(delta_t)
-    sx=math.sin(alpha); sy=math.cos(alpha)
-    rx=np.cos(delta_s); ry=np.sin(delta_s)
-    det=sx*(-ry)-sy*(-rx)
-    with np.errstate(divide="ignore",invalid="ignore"):
-        b1=-px; b2=-py
-        t=(b1*(-ry)-b2*(-rx))/det
-        rho=(sx*b2-sy*b1)/det
-        z=rho-float(earth_radius_km)
-    bad=(np.abs(det)<1e-12)|(t < -1e-8)|(rho <= 0)|(~np.isfinite(z))
-    return np.where(bad,np.nan,z)
-
+    return ray_altitude_matrix_km(target_distance_km, target_altitudes_km, sample_distances_km, solar_altitude_deg, earth_radius_km)
 
 def _interp_profile_vectors(rec, altitudes_km):
     """Vector-interpolate one real route profile at many ray altitudes.

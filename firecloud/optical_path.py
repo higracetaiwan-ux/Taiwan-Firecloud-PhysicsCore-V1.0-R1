@@ -34,7 +34,7 @@ from .contracts import (
     PredictionUncertainty,
     SpectralOpticalPath,
 )
-from .geometry import ray_altitude_km_at_surface_distance
+from .shared_geometry.ray import ray_altitude_km_at_surface_distance
 from .shared_geometry.ray import sample_sun_ray_segment, sampled_segment_path_km
 
 

@@ -1,64 +1,47 @@
 from __future__ import annotations
-
-"""Shared vertical indexing primitives.
-
-Geometry-only utilities for mapping arbitrary ray/model heights onto sorted
-vertical lattices.  Tie behavior is explicit and stable so all Firecloud
-modules assign the same physical height to the same vertical cell.
-"""
-
+"""Canonical vertical-index and layer-boundary primitives."""
 from dataclasses import dataclass
 import numpy as np
 
-
 @dataclass(frozen=True)
 class VerticalIndexPlan:
-    heights_km: np.ndarray
+    centers_km: np.ndarray
 
     @classmethod
-    def from_heights(cls, heights_km) -> "VerticalIndexPlan":
-        h = np.asarray(heights_km, dtype=float)
-        if h.ndim != 1 or h.size == 0:
-            raise ValueError("heights_km must be a non-empty 1-D array")
-        if np.any(~np.isfinite(h)) or np.any(np.diff(h) < 0):
-            raise ValueError("heights_km must be finite and sorted ascending")
-        return cls(h)
+    def from_centers(cls, centers_km):
+        a=np.asarray(centers_km,dtype=float)
+        if a.ndim != 1 or a.size == 0 or not np.all(np.isfinite(a)):
+            raise ValueError("vertical centers must be a finite non-empty 1-D array")
+        if np.any(np.diff(a) < 0):
+            a=np.sort(a)
+        return cls(a)
 
-    def nearest_indices(self, values_km) -> np.ndarray:
-        """Nearest vertical-cell index; exact midpoint ties choose lower cell.
+    def nearest_indices(self, z_km):
+        z=np.asarray(z_km,dtype=float)
+        h=self.centers_km
+        hi=np.searchsorted(h,z,side="left"); hi=np.clip(hi,0,len(h)-1)
+        lo=np.clip(hi-1,0,len(h)-1)
+        # Strict '<' preserves legacy midpoint tie-to-lower rule.
+        choose_hi=np.abs(h[hi]-z) < np.abs(z-h[lo])
+        return np.where(choose_hi,hi,lo)
 
-        This preserves the existing Firecloud rule used by the R5.7.7+
-        VoxelIntersectionPlan implementation (strict '<' when choosing upper).
-        """
-        v = np.asarray(values_km, dtype=float)
-        h = self.heights_km
-        idx_hi = np.searchsorted(h, v, side="left")
-        idx_hi = np.clip(idx_hi, 0, h.size - 1)
-        idx_lo = np.clip(idx_hi - 1, 0, h.size - 1)
-        choose_hi = np.abs(h[idx_hi] - v) < np.abs(v - h[idx_lo])
-        return np.where(choose_hi, idx_hi, idx_lo).astype(int, copy=False)
-
-    def bracket_indices(self, values_km) -> tuple[np.ndarray, np.ndarray]:
-        """Return lower/upper bracketing indices, clipped to lattice bounds."""
-        v = np.asarray(values_km, dtype=float)
-        h = self.heights_km
-        hi = np.searchsorted(h, v, side="left")
-        hi = np.clip(hi, 0, h.size - 1)
-        lo = np.clip(hi - 1, 0, h.size - 1)
-        return lo.astype(int, copy=False), hi.astype(int, copy=False)
-
-    def overlap_indices(self, z0_km: float, z1_km: float) -> np.ndarray:
-        """Indices whose center heights lie within the closed vertical interval."""
-        lo, hi = sorted((float(z0_km), float(z1_km)))
-        h = self.heights_km
-        i0 = int(np.searchsorted(h, lo, side="left"))
-        i1 = int(np.searchsorted(h, hi, side="right"))
-        return np.arange(i0, i1, dtype=int)
+    def bracket_indices(self, z_km: float) -> tuple[int,int,float]:
+        h=self.centers_km; z=float(z_km)
+        j=int(np.searchsorted(h,z,side="left"))
+        if j<=0: return 0,0,0.0
+        if j>=len(h): return len(h)-1,len(h)-1,0.0
+        lo,hi=j-1,j; den=float(h[hi]-h[lo]); w=0.0 if den==0 else (z-float(h[lo]))/den
+        return lo,hi,float(w)
 
 
-def nearest_vertical_indices(heights_km, values_km) -> np.ndarray:
-    return VerticalIndexPlan.from_heights(heights_km).nearest_indices(values_km)
-
-
-def bracket_vertical_indices(heights_km, values_km) -> tuple[np.ndarray, np.ndarray]:
-    return VerticalIndexPlan.from_heights(heights_km).bracket_indices(values_km)
+def center_layer_bounds_km(centers_km) -> tuple[np.ndarray,np.ndarray]:
+    """Half-level layer bounds from monotonic center heights."""
+    h=np.asarray(centers_km,dtype=float)
+    if h.ndim!=1 or h.size<2: raise ValueError("at least two centers required")
+    if np.any(np.diff(h)<0): h=np.sort(h)
+    mid=0.5*(h[:-1]+h[1:])
+    lower=np.empty_like(h); upper=np.empty_like(h)
+    lower[1:]=mid; upper[:-1]=mid
+    lower[0]=max(0.0,float(h[0]-0.5*(h[1]-h[0])))
+    upper[-1]=float(h[-1]+0.5*(h[-1]-h[-2]))
+    return lower,upper
