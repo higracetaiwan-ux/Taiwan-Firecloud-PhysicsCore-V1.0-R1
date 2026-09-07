@@ -64,6 +64,26 @@ def _bridge_streamlit_ads_secrets() -> None:
 
 _bridge_streamlit_ads_secrets()
 
+def _bridge_streamlit_tier2_scattering_secrets() -> None:
+    """Expose calibrated Tier-2 scattering LUT paths to the analysis worker."""
+    try:
+        secrets = st.secrets
+        lut_path = secrets.get("FIRECLOUD_TIER2_SCATTERING_LUT_PATH")
+        manifest_path = secrets.get("FIRECLOUD_TIER2_SCATTERING_LUT_MANIFEST_PATH")
+        if "tier2_scattering" in secrets:
+            section = secrets["tier2_scattering"]
+            lut_path = lut_path or section.get("lut_path") or section.get("csv_path")
+            manifest_path = manifest_path or section.get("manifest_path")
+        if lut_path and not os.getenv("FIRECLOUD_TIER2_SCATTERING_LUT_PATH"):
+            os.environ["FIRECLOUD_TIER2_SCATTERING_LUT_PATH"] = str(lut_path).strip()
+        if manifest_path and not os.getenv("FIRECLOUD_TIER2_SCATTERING_LUT_MANIFEST_PATH"):
+            os.environ["FIRECLOUD_TIER2_SCATTERING_LUT_MANIFEST_PATH"] = str(manifest_path).strip()
+    except Exception:
+        pass
+
+
+_bridge_streamlit_tier2_scattering_secrets()
+
 def _bridge_streamlit_hitran_secrets() -> None:
     """Expose HITRAN secrets to isolated builder subprocesses without logging them."""
     try:
@@ -725,7 +745,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.18.2 Runtime Type-Safe Audit Hotfix｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.19 Calibrated Scattering LUT Ingestion + Interpolation-Domain Contract｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1271,7 +1291,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R5.7.18.2：Formation × Viewing × Photography Decision")
+    st.subheader("PhysicsCore V1.0-R5.7.19：Formation × Viewing × Photography Decision")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1780,6 +1800,9 @@ if run or st.session_state.analysis_result is not None:
             ("v1_tier2_scattering_readiness_summary.csv", result.get("v1_tier2_scattering_readiness_summary", pd.DataFrame())),
             ("v1_tier2_scattering_foundation.csv", result.get("v1_tier2_scattering_foundation", pd.DataFrame())),
             ("v1_tier2_scattering_foundation_summary.csv", result.get("v1_tier2_scattering_foundation_summary", pd.DataFrame())),
+            ("v1_tier2_scattering_lut_audit.csv", result.get("v1_tier2_scattering_lut_audit", pd.DataFrame())),
+            ("v1_tier2_scattering_lut_domain.csv", result.get("v1_tier2_scattering_lut_domain", pd.DataFrame())),
+            ("v1_tier2_scattering_lut_domain_summary.csv", result.get("v1_tier2_scattering_lut_domain_summary", pd.DataFrame())),
             ("v1_canvas_optical_suitability.csv", result.get("v1_canvas_optical_suitability", pd.DataFrame())),
             ("v1_canvas_optical_suitability_summary.csv", result.get("v1_canvas_optical_suitability_summary", pd.DataFrame())),
             ("v1_secondary_target_optics.csv", result.get("v1_secondary_target_optics", pd.DataFrame())),
@@ -1897,7 +1920,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.18.2_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.19_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

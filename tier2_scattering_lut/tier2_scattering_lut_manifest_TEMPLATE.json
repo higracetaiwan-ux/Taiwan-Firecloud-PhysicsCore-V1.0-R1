@@ -1,0 +1,11 @@
+{
+  "contract": "R5.7.19_TIER2_SCATTERING_LUT_RUNTIME_V1",
+  "lut_version": "REPLACE_WITH_CALIBRATED_LUT_VERSION",
+  "calibration_state": "CALIBRATED",
+  "calibration_id": "REPLACE_WITH_CALIBRATION_ID",
+  "calibration_source": "REPLACE_WITH_CALIBRATION_SOURCE",
+  "calibration_date": "YYYY-MM-DD",
+  "required_wavelengths_nm": [550, 575, 600, 650, 700, 750],
+  "supported_phases": ["LIQUID", "ICE"],
+  "csv_sha256": "REPLACE_WITH_SHA256_OF_CSV"
+}

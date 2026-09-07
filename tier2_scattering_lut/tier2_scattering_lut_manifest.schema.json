@@ -1,7 +1,18 @@
 {
-  "contract": "R5.7.18_TIER2_SCATTERING_FOUNDATION_V1",
-  "required_wavelengths_nm": [550, 575, 600, 650, 700, 750],
-  "required_columns": ["phase", "wavelength_nm", "cot", "effective_radius_um", "cloud_thickness_km", "scattering_angle_deg", "response_factor", "calibration_state", "lut_version"],
-  "production_interpolation_enabled": false,
-  "notes": "Schema foundation only. Scientific calibration and solver interpolation are not enabled in R5.7.18."
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Taiwan Firecloud Tier-2 Scattering LUT Manifest R5.7.19",
+  "type": "object",
+  "required": ["contract", "lut_version", "calibration_state", "calibration_id", "calibration_source", "calibration_date", "required_wavelengths_nm", "supported_phases", "csv_sha256"],
+  "properties": {
+    "contract": {"const": "R5.7.19_TIER2_SCATTERING_LUT_RUNTIME_V1"},
+    "lut_version": {"type": "string", "minLength": 1},
+    "calibration_state": {"const": "CALIBRATED"},
+    "calibration_id": {"type": "string", "minLength": 1},
+    "calibration_source": {"type": "string", "minLength": 1},
+    "calibration_date": {"type": "string", "minLength": 1},
+    "required_wavelengths_nm": {"const": [550,575,600,650,700,750]},
+    "supported_phases": {"type": "array", "minItems": 1, "items": {"enum": ["LIQUID", "ICE", "MIXED"]}},
+    "csv_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+  },
+  "additionalProperties": true
 }

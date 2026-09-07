@@ -82,6 +82,11 @@ from .tier2_scattering_foundation import (
     build_tier2_scattering_foundation, summarize_tier2_scattering_foundation,
     TIER2_SCATTERING_FOUNDATION_COLUMNS, TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS,
 )
+from .tier2_scattering_runtime import load_installed_scattering_lut
+from .tier2_scattering_domain import (
+    evaluate_tier2_scattering_domain, summarize_tier2_scattering_domain, scattering_lut_audit_frame,
+    TIER2_SCATTERING_DOMAIN_COLUMNS, TIER2_SCATTERING_DOMAIN_SUMMARY_COLUMNS,
+)
 
 
 def _clamp01(x):
@@ -1220,6 +1225,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_tier2_scattering_readiness_summary_frames = []
     v1_tier2_scattering_foundation_frames = []
     v1_tier2_scattering_foundation_summary_frames = []
+    v1_tier2_scattering_lut_domain_frames = []
+    v1_tier2_scattering_lut_domain_summary_frames = []
     v1_canvas_optical_suitability_frames = []
     v1_canvas_optical_suitability_summary_frames = []
     v1_secondary_target_optics_frames = []
@@ -1239,6 +1246,18 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     aerosol_spectral_cache = {}
     core_set = {float(x) for x in cfg.firecloud_core_angles_deg}
     late_set = {float(x) for x in cfg.late_glow_angles_deg}
+
+    # R5.7.19: resolve and validate the calibrated Tier-2 scattering LUT once per
+    # event. A missing/invalid LUT is evidence, not an exception and not permission
+    # to synthesize scattering response. Domain auditing later consumes this exact
+    # immutable snapshot for every solar angle.
+    _tier2_scattering_lut, _tier2_scattering_lut_audit = load_installed_scattering_lut()
+    v1_tier2_scattering_lut_audit = scattering_lut_audit_frame(_tier2_scattering_lut_audit)
+    performance_rows.append({
+        "stage":"TIER2_SCATTERING_LUT_RUNTIME_LOAD", "elapsed_seconds":0.0,
+        "cache_status":str(_tier2_scattering_lut_audit.get("state","UNKNOWN")),
+        "detail":str(_tier2_scattering_lut_audit.get("source","")),
+    })
 
     # V8.4.0.2: provider I/O is prefetched before the per-angle loop. Previously the
     # first 0.0° checkpoint silently paid the entire first GFS NOMADS + CAMS ADS
@@ -1814,7 +1833,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             canvases=_v1.get("canvas_objects", ()),
             observer_lat_deg=float(lat), observer_lon_deg=float(lon), observer_alt_km=0.0,
             solar_altitude_deg=float(angle), solar_azimuth_deg=float(az), valid_time=t,
-            calibrated_lut=None,
+            calibrated_lut=_tier2_scattering_lut,
+            lut_validation=_tier2_scattering_lut_audit,
         )
         if _tier2_foundation is not None and not _tier2_foundation.empty:
             v1_tier2_scattering_foundation_frames.append(_tier2_foundation)
@@ -1822,6 +1842,16 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             if _tier2_foundation_sum is not None and not _tier2_foundation_sum.empty:
                 _tier2_foundation_sum.insert(0, "time", t)
                 v1_tier2_scattering_foundation_summary_frames.append(_tier2_foundation_sum)
+        _tier2_domain = evaluate_tier2_scattering_domain(
+            foundation=_tier2_foundation, readiness=_tier2_ready,
+            calibrated_lut=_tier2_scattering_lut, lut_audit=_tier2_scattering_lut_audit,
+        )
+        if _tier2_domain is not None and not _tier2_domain.empty:
+            v1_tier2_scattering_lut_domain_frames.append(_tier2_domain)
+            _tier2_domain_sum = summarize_tier2_scattering_domain(_tier2_domain)
+            if _tier2_domain_sum is not None and not _tier2_domain_sum.empty:
+                _tier2_domain_sum.insert(0, "time", t)
+                v1_tier2_scattering_lut_domain_summary_frames.append(_tier2_domain_sum)
         _angle_progress(candidate_index, 0.98, f"{label}：完成")
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "PER_ANGLE_PHYSICS_TOTAL", "elapsed_seconds": perf_counter()-_angle_t0, "cache_status": "COMPUTED"})
         angle_f = float(angle)
@@ -1999,6 +2029,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_tier2_scattering_readiness_summary = pd.concat(v1_tier2_scattering_readiness_summary_frames, ignore_index=True) if v1_tier2_scattering_readiness_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_READINESS_SUMMARY_COLUMNS])
     v1_tier2_scattering_foundation = pd.concat(v1_tier2_scattering_foundation_frames, ignore_index=True) if v1_tier2_scattering_foundation_frames else pd.DataFrame(columns=TIER2_SCATTERING_FOUNDATION_COLUMNS)
     v1_tier2_scattering_foundation_summary = pd.concat(v1_tier2_scattering_foundation_summary_frames, ignore_index=True) if v1_tier2_scattering_foundation_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS])
+    v1_tier2_scattering_lut_domain = pd.concat(v1_tier2_scattering_lut_domain_frames, ignore_index=True) if v1_tier2_scattering_lut_domain_frames else pd.DataFrame(columns=TIER2_SCATTERING_DOMAIN_COLUMNS)
+    v1_tier2_scattering_lut_domain_summary = pd.concat(v1_tier2_scattering_lut_domain_summary_frames, ignore_index=True) if v1_tier2_scattering_lut_domain_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_DOMAIN_SUMMARY_COLUMNS])
     v1_canvas_optical_suitability = pd.concat(v1_canvas_optical_suitability_frames, ignore_index=True) if v1_canvas_optical_suitability_frames else pd.DataFrame()
     v1_canvas_optical_suitability_summary = pd.concat(v1_canvas_optical_suitability_summary_frames, ignore_index=True) if v1_canvas_optical_suitability_summary_frames else pd.DataFrame()
     v1_secondary_target_optics = pd.concat(v1_secondary_target_optics_frames, ignore_index=True) if v1_secondary_target_optics_frames else pd.DataFrame()
@@ -2297,6 +2329,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_tier2_scattering_readiness_summary": v1_tier2_scattering_readiness_summary,
         "v1_tier2_scattering_foundation": v1_tier2_scattering_foundation,
         "v1_tier2_scattering_foundation_summary": v1_tier2_scattering_foundation_summary,
+        "v1_tier2_scattering_lut_audit": v1_tier2_scattering_lut_audit,
+        "v1_tier2_scattering_lut_domain": v1_tier2_scattering_lut_domain,
+        "v1_tier2_scattering_lut_domain_summary": v1_tier2_scattering_lut_domain_summary,
         "v1_canvas_optical_suitability": v1_canvas_optical_suitability,
         "v1_canvas_optical_suitability_summary": v1_canvas_optical_suitability_summary,
         "v1_secondary_target_optics": v1_secondary_target_optics,

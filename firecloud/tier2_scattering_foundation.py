@@ -88,6 +88,7 @@ def build_tier2_scattering_foundation(
     observer_lat_deg: float, observer_lon_deg: float, observer_alt_km: float,
     solar_altitude_deg: float, solar_azimuth_deg: float, valid_time=None,
     calibrated_lut: pd.DataFrame | None = None,
+    lut_validation: dict | None = None,
 ) -> pd.DataFrame:
     canvases=list(canvases)
     if not canvases:
@@ -96,7 +97,14 @@ def build_tier2_scattering_foundation(
     rmap={}
     if readiness is not None and not readiness.empty:
         rmap={str(r.get("canvas_id")):r for _,r in readiness.iterrows()}
-    lut_check=validate_scattering_lut(calibrated_lut) if calibrated_lut is not None else {"valid":False,"state":"CALIBRATED_LUT_NOT_INSTALLED","reason":"NO_CALIBRATED_LUT_INSTALLED"}
+    if lut_validation is not None:
+        lut_check = {
+            "valid": bool(lut_validation.get("ok", False)),
+            "state": str(lut_validation.get("state", "LUT_RUNTIME_INVALID")),
+            "reason": ";".join(str(x) for x in lut_validation.get("errors", []) or []) or str(lut_validation.get("state", "UNKNOWN")),
+        }
+    else:
+        lut_check=validate_scattering_lut(calibrated_lut) if calibrated_lut is not None else {"valid":False,"state":"CALIBRATED_LUT_NOT_INSTALLED","reason":"NO_CALIBRATED_LUT_INSTALLED"}
     rows=[]
     for cid,c in cmap.items():
         rr=rmap.get(cid)

@@ -1,4 +1,12 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.18.2
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.19
+
+## R5.7.19 Calibrated Scattering LUT Ingestion + Interpolation-Domain Contract
+
+R5.7.19 continues from the accepted R5.7.18.2 runtime hotfix. It adds strict calibrated Tier-2 scattering LUT runtime ingestion, manifest/SHA256/calibration provenance validation, and per-target interpolation-domain evidence. Production Tier-2 radiance interpolation is still disabled.
+
+A target is not considered interpolation-ready merely because it falls between global LUT minima and maxima. For the frozen six bands (550/575/600/650/700/750 nm), R5.7.19 requires a complete local four-dimensional interpolation cell in `COT × effective radius × cloud thickness × scattering angle` for the target phase. Exact optical truth may reach deterministic domain eligibility; bounded truth may reach bounded domain eligibility only when the complete COT interval is covered. Conflict/unknown optical truth remains blocked.
+
+Runtime LUT installation requires both a CSV and a calibrated provenance manifest with matching SHA256. No calibrated LUT is bundled in this release, so a default deployment remains safely in `CALIBRATED_LUT_NOT_INSTALLED` rather than generating synthetic Tier-2 response. CASE export adds `v1_tier2_scattering_lut_audit.csv`, `v1_tier2_scattering_lut_domain.csv`, and `v1_tier2_scattering_lut_domain_summary.csv`.
 
 ## R5.7.18.2 Runtime Type-Safe Audit Hotfix
 
