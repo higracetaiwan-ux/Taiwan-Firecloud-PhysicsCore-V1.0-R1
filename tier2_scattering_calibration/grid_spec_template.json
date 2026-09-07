@@ -1,0 +1,8 @@
+{
+  "phases": ["LIQUID", "ICE"],
+  "wavelengths_nm": [550, 575, 600, 650, 700, 750],
+  "cot": [],
+  "effective_radius_um": [],
+  "cloud_thickness_km": [],
+  "scattering_angle_deg": []
+}

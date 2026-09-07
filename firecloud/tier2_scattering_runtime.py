@@ -18,6 +18,7 @@ import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
 from .tier2_scattering_foundation import validate_scattering_lut
+from .tier2_scattering_calibration import validate_calibration_metadata
 
 LUT_FILENAME = "tier2_scattering_lut.csv"
 MANIFEST_FILENAME = "tier2_scattering_lut_manifest.json"
@@ -79,6 +80,8 @@ def validate_scattering_lut_bytes(csv_bytes: bytes, manifest_bytes: bytes | None
         "calibration_id": "",
         "csv_sha256": _sha256(csv_bytes or b""),
         "runtime_contract": RUNTIME_CONTRACT,
+        "solver_eligible": False,
+        "production_calibration_state": "NOT_EVALUATED",
     }
     if not csv_bytes:
         audit["errors"].append("LUT_CSV_EMPTY")
@@ -139,6 +142,28 @@ def validate_scattering_lut_bytes(csv_bytes: bytes, manifest_bytes: bytes | None
     for field in ("calibration_id", "calibration_source", "calibration_date", "lut_version"):
         if not str(manifest.get(field, "")).strip():
             audit["errors"].append("LUT_MANIFEST_EMPTY_" + field.upper())
+
+    # R5.7.20 production-solver gate.  Legacy R5.7.19 manifests remain valid for
+    # ingestion/domain regression, but they cannot execute Tier-2 radiance.
+    _has_prod_contract = bool(str(manifest.get("calibration_contract", "")).strip())
+    if _has_prod_contract:
+        _cal = validate_calibration_metadata(manifest)
+        audit["production_calibration_state"] = str(_cal.get("state", "UNKNOWN"))
+        audit["solver_eligible"] = bool(_cal.get("ok", False))
+        if not _cal.get("ok", False):
+            audit["errors"].append("LUT_PRODUCTION_CALIBRATION_INVALID:" + ";".join(str(x) for x in _cal.get("errors", []) or []))
+    else:
+        audit["production_calibration_state"] = "PRODUCTION_CALIBRATION_CONTRACT_NOT_PRESENT"
+        audit["solver_eligible"] = False
+        audit["warnings"].append("LUT_PRODUCTION_CALIBRATION_CONTRACT_NOT_PRESENT")
+
+    for field in (
+        "calibration_contract", "qc_state", "solver_family", "solver_version",
+        "cloud_optics_source", "phase_function_source", "response_definition",
+        "response_units", "geometry_convention", "validation_reference",
+    ):
+        audit[field] = str(manifest.get(field, ""))
+    audit["multiple_scattering_enabled"] = bool(manifest.get("multiple_scattering_enabled", False))
     audit["lut_version"] = str(manifest.get("lut_version", ""))
     audit["calibration_id"] = str(manifest.get("calibration_id", ""))
     audit["calibration_source"] = str(manifest.get("calibration_source", ""))

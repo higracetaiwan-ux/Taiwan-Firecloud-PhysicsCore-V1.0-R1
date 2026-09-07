@@ -22,6 +22,13 @@ from .geometry import destination_point, ray_altitude_km_at_surface_distance
 from .illumination import direct_solar_state_g0
 
 
+
+CANVAS_CANDIDATE_TABLE_COLUMNS = [
+    "time", "solar_altitude_deg", "canvas_id", "cloud_layer_id",
+    "latitude", "longitude", "cloud_base_altitude_km", "distance_km",
+    "azimuth_deg", "operational_domain", "geometry_confidence",
+]
+
 def canvas_domain(distance_km: float) -> CanvasDomain:
     d = float(distance_km)
     if 0.0 <= d <= 40.0:
@@ -256,7 +263,7 @@ def build_r2_geometry_tables(
         "scene": scene,
         "canvas_objects": tuple(canvases),
         "cloud_layers": pd.DataFrame(cloud_rows),
-        "canvases": pd.DataFrame(canvas_rows),
+        "canvases": pd.DataFrame(canvas_rows, columns=CANVAS_CANDIDATE_TABLE_COLUMNS),
         "direct_solar": pd.DataFrame(direct_rows),
         "solar_rays": pd.DataFrame(ray_rows),
         "dependency_status": pd.DataFrame(dep_rows),

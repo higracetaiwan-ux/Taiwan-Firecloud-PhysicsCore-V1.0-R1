@@ -83,6 +83,11 @@ from .tier2_scattering_foundation import (
     TIER2_SCATTERING_FOUNDATION_COLUMNS, TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS,
 )
 from .tier2_scattering_runtime import load_installed_scattering_lut
+from .v1_runtime import CANVAS_CANDIDATE_TABLE_COLUMNS
+from .tier2_scattering_solver import (
+    build_tier2_scattering_response, summarize_tier2_scattering_response, mark_domain_interpolation_execution, prepare_scattering_lut,
+    TIER2_SCATTERING_RESPONSE_COLUMNS, TIER2_SCATTERING_RESPONSE_SUMMARY_COLUMNS,
+)
 from .tier2_scattering_domain import (
     evaluate_tier2_scattering_domain, summarize_tier2_scattering_domain, scattering_lut_audit_frame,
     TIER2_SCATTERING_DOMAIN_COLUMNS, TIER2_SCATTERING_DOMAIN_SUMMARY_COLUMNS,
@@ -1227,6 +1232,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_tier2_scattering_foundation_summary_frames = []
     v1_tier2_scattering_lut_domain_frames = []
     v1_tier2_scattering_lut_domain_summary_frames = []
+    v1_tier2_scattering_response_frames = []
+    v1_tier2_scattering_response_summary_frames = []
     v1_canvas_optical_suitability_frames = []
     v1_canvas_optical_suitability_summary_frames = []
     v1_secondary_target_optics_frames = []
@@ -1252,6 +1259,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     # to synthesize scattering response. Domain auditing later consumes this exact
     # immutable snapshot for every solar angle.
     _tier2_scattering_lut, _tier2_scattering_lut_audit = load_installed_scattering_lut()
+    _tier2_scattering_prepared = prepare_scattering_lut(_tier2_scattering_lut) if _tier2_scattering_lut is not None and not _tier2_scattering_lut.empty else None
     v1_tier2_scattering_lut_audit = scattering_lut_audit_frame(_tier2_scattering_lut_audit)
     performance_rows.append({
         "stage":"TIER2_SCATTERING_LUT_RUNTIME_LOAD", "elapsed_seconds":0.0,
@@ -1846,6 +1854,19 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             foundation=_tier2_foundation, readiness=_tier2_ready,
             calibrated_lut=_tier2_scattering_lut, lut_audit=_tier2_scattering_lut_audit,
         )
+        _tier2_response = build_tier2_scattering_response(
+            domain=_tier2_domain, calibrated_lut=_tier2_scattering_lut,
+            lut_audit=_tier2_scattering_lut_audit,
+            cloud_base_illumination=_r3.get("cloud_base_illumination", pd.DataFrame()),
+            prepared_lut=_tier2_scattering_prepared,
+        )
+        if _tier2_response is not None and not _tier2_response.empty:
+            v1_tier2_scattering_response_frames.append(_tier2_response)
+            _tier2_response_sum = summarize_tier2_scattering_response(_tier2_response)
+            if _tier2_response_sum is not None and not _tier2_response_sum.empty:
+                _tier2_response_sum.insert(0, "time", t)
+                v1_tier2_scattering_response_summary_frames.append(_tier2_response_sum)
+        _tier2_domain = mark_domain_interpolation_execution(_tier2_domain, _tier2_response)
         if _tier2_domain is not None and not _tier2_domain.empty:
             v1_tier2_scattering_lut_domain_frames.append(_tier2_domain)
             _tier2_domain_sum = summarize_tier2_scattering_domain(_tier2_domain)
@@ -1984,7 +2005,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     gas_profile_route_snapshots = pd.concat(gas_profile_frames, ignore_index=True) if gas_profile_frames else pd.DataFrame()
 
     v1_cloud_layers = pd.concat(v1_cloud_layer_frames, ignore_index=True) if v1_cloud_layer_frames else pd.DataFrame()
-    v1_canvas_candidates = pd.concat(v1_canvas_frames, ignore_index=True) if v1_canvas_frames else pd.DataFrame()
+    v1_canvas_candidates = pd.concat(v1_canvas_frames, ignore_index=True) if v1_canvas_frames else pd.DataFrame(columns=CANVAS_CANDIDATE_TABLE_COLUMNS)
     v1_direct_solar = pd.concat(v1_direct_solar_frames, ignore_index=True) if v1_direct_solar_frames else pd.DataFrame()
     v1_solar_rays = pd.concat(v1_solar_ray_frames, ignore_index=True) if v1_solar_ray_frames else pd.DataFrame()
     v1_dependency_status = pd.concat(v1_dependency_frames, ignore_index=True) if v1_dependency_frames else pd.DataFrame()
@@ -2031,6 +2052,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     v1_tier2_scattering_foundation_summary = pd.concat(v1_tier2_scattering_foundation_summary_frames, ignore_index=True) if v1_tier2_scattering_foundation_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS])
     v1_tier2_scattering_lut_domain = pd.concat(v1_tier2_scattering_lut_domain_frames, ignore_index=True) if v1_tier2_scattering_lut_domain_frames else pd.DataFrame(columns=TIER2_SCATTERING_DOMAIN_COLUMNS)
     v1_tier2_scattering_lut_domain_summary = pd.concat(v1_tier2_scattering_lut_domain_summary_frames, ignore_index=True) if v1_tier2_scattering_lut_domain_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_DOMAIN_SUMMARY_COLUMNS])
+    v1_tier2_scattering_response = pd.concat(v1_tier2_scattering_response_frames, ignore_index=True) if v1_tier2_scattering_response_frames else pd.DataFrame(columns=TIER2_SCATTERING_RESPONSE_COLUMNS)
+    v1_tier2_scattering_response_summary = pd.concat(v1_tier2_scattering_response_summary_frames, ignore_index=True) if v1_tier2_scattering_response_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_RESPONSE_SUMMARY_COLUMNS])
     v1_canvas_optical_suitability = pd.concat(v1_canvas_optical_suitability_frames, ignore_index=True) if v1_canvas_optical_suitability_frames else pd.DataFrame()
     v1_canvas_optical_suitability_summary = pd.concat(v1_canvas_optical_suitability_summary_frames, ignore_index=True) if v1_canvas_optical_suitability_summary_frames else pd.DataFrame()
     v1_secondary_target_optics = pd.concat(v1_secondary_target_optics_frames, ignore_index=True) if v1_secondary_target_optics_frames else pd.DataFrame()
@@ -2332,6 +2355,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "v1_tier2_scattering_lut_audit": v1_tier2_scattering_lut_audit,
         "v1_tier2_scattering_lut_domain": v1_tier2_scattering_lut_domain,
         "v1_tier2_scattering_lut_domain_summary": v1_tier2_scattering_lut_domain_summary,
+        "v1_tier2_scattering_response": v1_tier2_scattering_response,
+        "v1_tier2_scattering_response_summary": v1_tier2_scattering_response_summary,
         "v1_canvas_optical_suitability": v1_canvas_optical_suitability,
         "v1_canvas_optical_suitability_summary": v1_canvas_optical_suitability_summary,
         "v1_secondary_target_optics": v1_secondary_target_optics,

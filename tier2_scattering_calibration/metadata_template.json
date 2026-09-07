@@ -1,0 +1,18 @@
+{
+  "calibration_contract": "R5.7.20_TIER2_SCATTERING_CALIBRATION_V1",
+  "calibration_state": "PENDING_VALIDATION",
+  "calibration_id": "",
+  "calibration_source": "",
+  "calibration_date": "",
+  "qc_state": "PENDING",
+  "solver_family": "LIBRADTRAN_UVSPEC_DISORT",
+  "solver_version": "",
+  "cloud_optics_source": "",
+  "phase_function_source": "",
+  "multiple_scattering_enabled": true,
+  "response_definition": "TARGET_RADIANCE_PER_UNIT_CLOUD_BASE_INCIDENT_IRRADIANCE",
+  "response_units": "SR^-1",
+  "geometry_convention": "SCATTERING_ANGLE_0_FORWARD_180_BACKWARD",
+  "validation_reference": "",
+  "lut_version": ""
+}

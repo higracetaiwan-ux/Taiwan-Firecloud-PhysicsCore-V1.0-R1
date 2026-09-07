@@ -1,4 +1,10 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.19
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.20
+
+## R5.7.20 Calibrated Scattering Solver + Calibration Package Contract
+
+R5.7.20 completes the executable Tier-2 scattering software path while keeping production physics gated behind an externally generated and validated calibrated LUT. It adds a production calibration-package contract, explicit external RT job generation, strict calibration provenance/QC checks, one immutable prepared LUT index per event, and six-band 4-D multilinear interpolation. Exact target truth may produce deterministic Tier-2 evidence; bounded COT produces interval-only evidence; conflict/unknown targets remain blocked. Tier-2 is still independent of Formation/Photography Decision in this release.
+
+No production calibrated LUT is bundled. A schema-valid R5.7.19 LUT without the R5.7.20 production calibration contract remains usable for domain regression but cannot execute the solver. CASE export adds `v1_tier2_scattering_response_550_750nm.csv` and `v1_tier2_scattering_response_summary.csv`. Genuine NO_CANVAS events now also preserve a fixed schema in `v1_canvas_candidates.csv`.
 
 ## R5.7.19 Calibrated Scattering LUT Ingestion + Interpolation-Domain Contract
 

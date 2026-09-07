@@ -745,7 +745,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.19 Calibrated Scattering LUT Ingestion + Interpolation-Domain Contract｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.20 Calibrated Scattering Solver + Calibration Package Contract｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1291,7 +1291,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R5.7.19：Formation × Viewing × Photography Decision")
+    st.subheader("PhysicsCore V1.0-R5.7.20：Formation × Viewing × Photography Decision")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1803,6 +1803,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_tier2_scattering_lut_audit.csv", result.get("v1_tier2_scattering_lut_audit", pd.DataFrame())),
             ("v1_tier2_scattering_lut_domain.csv", result.get("v1_tier2_scattering_lut_domain", pd.DataFrame())),
             ("v1_tier2_scattering_lut_domain_summary.csv", result.get("v1_tier2_scattering_lut_domain_summary", pd.DataFrame())),
+            ("v1_tier2_scattering_response_550_750nm.csv", result.get("v1_tier2_scattering_response", pd.DataFrame())),
+            ("v1_tier2_scattering_response_summary.csv", result.get("v1_tier2_scattering_response_summary", pd.DataFrame())),
             ("v1_canvas_optical_suitability.csv", result.get("v1_canvas_optical_suitability", pd.DataFrame())),
             ("v1_canvas_optical_suitability_summary.csv", result.get("v1_canvas_optical_suitability_summary", pd.DataFrame())),
             ("v1_secondary_target_optics.csv", result.get("v1_secondary_target_optics", pd.DataFrame())),
@@ -1920,7 +1922,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.19_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.20_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",
