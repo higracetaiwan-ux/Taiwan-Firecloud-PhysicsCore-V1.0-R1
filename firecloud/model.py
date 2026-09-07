@@ -28,6 +28,7 @@ from .config import (
     PROFILE_CLOUD_OCCUPANCY_THRESHOLD, PROFILE_RH_SUPPORT_THRESHOLD_PCT,
     CLOUD_EXTINCTION_PROXY_PER_KM, RAY_HORIZONTAL_STEP_KM,
     horizontal_sampling_segment, adaptive_horizontal_distance_samples,
+    REFERENCE_ROUTE_CONTRACT,
 )
 from .shared_geometry import (
     destination_point,
@@ -159,6 +160,26 @@ def build_geometry_diagnostics(cfg: ModelConfig) -> tuple[pd.DataFrame, pd.DataF
                     "illuminated": bool(sunlit),
                 })
     return pd.DataFrame(matrix_rows), pd.DataFrame(rez_rows)
+
+def resolve_reference_route_geometry(
+    lat: float, lon: float, day: date, event: str, tz_name: str, cfg: ModelConfig,
+    candidates=None,
+) -> tuple[datetime, float, str]:
+    """Resolve the fixed provider-sampling reference route geometry.
+
+    The reference solar altitude is independent from the runtime angle list.
+    If that crossing already exists in ``candidates`` we reuse the exact solved
+    instant; otherwise it is solved independently. This keeps provider/GFS/CAMS
+    spatial sampling invariant when the analysis angle range is expanded.
+    """
+    ref_angle = float(cfg.reference_route_solar_altitude_deg)
+    seq = candidates or ()
+    match = next((x for x in seq if abs(float(x[0]) - ref_angle) <= 1e-9), None)
+    if match is not None:
+        return match[1], float(match[2]), "RUNTIME_CANDIDATE_MATCH"
+    t = find_time_for_solar_altitude(lat, lon, day, event, ref_angle, tz_name)
+    return t, float(solar_azimuth_deg(lat, lon, t)), "INDEPENDENT_REFERENCE_CROSSING"
+
 
 def build_route_points(lat: float, lon: float, sun_azimuth_deg: float, cfg: ModelConfig) -> list[dict]:
     points = []
@@ -1171,11 +1192,32 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # date/crossing; every physical instant is also preserved explicitly in UTC.
     event_time_contract = build_event_time_contract(candidates, _tz_resolution, day, event)
 
-    # Use the middle candidate azimuth to build one route lattice; directional motion across
-    # the ~30 minute interval is small, and each offset remains explicit.
+    # R5.7.22.1 Route Invariance: provider sampling is anchored to a fixed
+    # reference solar altitude (-2° by default), independent of how many runtime
+    # angles are requested. Per-angle Sun→Cloud physics still uses each
+    # candidate's own (time, altitude, azimuth) below.
     performance_rows.append({"stage": "SOLAR_GEOMETRY_AND_TIMELINE", "elapsed_seconds": perf_counter()-_stage_t0, "cache_status": "COMPUTED"})
-    ref_az = candidates[len(candidates)//2][2]
+    _ref_angle = float(cfg.reference_route_solar_altitude_deg)
+    _ref_time, ref_az, _ref_time_source = resolve_reference_route_geometry(
+        lat, lon, day, event, tz_name, cfg, candidates=candidates,
+    )
     route_points = build_route_points(lat, lon, ref_az, cfg)
+    route_reference_contract = pd.DataFrame([{
+        "contract": REFERENCE_ROUTE_CONTRACT,
+        "reference_solar_altitude_deg": _ref_angle,
+        "reference_time_local": _ref_time,
+        "reference_time_utc": _ref_time.astimezone(timezone.utc),
+        "reference_time_source": _ref_time_source,
+        "reference_azimuth_deg": ref_az,
+        "event_timezone": tz_name,
+        "runtime_angle_count": int(len(candidates)),
+        "runtime_angle_min_deg": float(min(float(x[0]) for x in candidates)),
+        "runtime_angle_max_deg": float(max(float(x[0]) for x in candidates)),
+        "route_domain_max_km": float(cfg.dynamic_domain_max_km),
+        "route_point_count": int(len(route_points)),
+        "route_invariant_to_runtime_angle_set": True,
+        "per_angle_solar_geometry_independent": True,
+    }])
     _sampling_nodes = list(cfg.dynamic_distance_samples_km)
     horizontal_sampling_profile = pd.DataFrame([
         {
@@ -2287,6 +2329,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     from .case_integrity import build_analysis_integrity_audit
     _pre_integrity_result = {
         "route_points": pd.DataFrame(route_points),
+        "route_reference_contract": route_reference_contract,
         "hourly_raw": hourly,
         "gfs_native_request_audit": gfs_native_request_audit,
         "gfs_grib_message_inventory": gfs_grib_message_inventory,
@@ -2402,6 +2445,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "openmeteo_request_audit": openmeteo_request_audit,
         "openmeteo_aerosol_request_audit": pd.DataFrame(aerosol_hourly.attrs.get("api_request_audit", [])) if not aerosol_hourly.empty else pd.DataFrame(),
         "reference_azimuth_deg": ref_az,
+        "reference_route_solar_altitude_deg": _ref_angle,
+        "route_reference_contract": route_reference_contract,
         "config": cfg,
     }
 

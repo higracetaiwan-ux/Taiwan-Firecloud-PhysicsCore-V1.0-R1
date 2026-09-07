@@ -15,12 +15,15 @@ def _profile(distances=(0.0,20.0,40.0,60.0,80.0,100.0,120.0,140.0,160.0,180.0,20
     return pd.DataFrame(rows)
 
 
-def test_dynamic_domain_is_geometry_derived_not_840_constant():
+def test_dynamic_domain_is_geometry_derived_and_route_invariant_not_840_constant():
     cfg=ModelConfig()
     assert cfg.dynamic_domain_max_km == 1180.0
-    # Changing the deepest diagnostic angle changes the derived route domain.
+    # R5.7.22.1 Route Invariance: the provider/GFS/CAMS sampling domain is
+    # derived from the frozen full 0°..-6° route-sampling physics contract, not
+    # from the caller's runtime subset.  Selecting fewer analysis angles must
+    # therefore not shorten the evidence lattice used by the older angles.
     shallower=ModelConfig(solar_angles_deg=(0.0,-0.5,-1.0,-2.0,-3.0,-4.0))
-    assert shallower.dynamic_domain_max_km < cfg.dynamic_domain_max_km
+    assert shallower.dynamic_domain_max_km == cfg.dynamic_domain_max_km
     assert shallower.dynamic_domain_max_km > 440.0
 
 

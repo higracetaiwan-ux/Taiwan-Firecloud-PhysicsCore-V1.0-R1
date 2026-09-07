@@ -9,7 +9,8 @@ from firecloud.case_integrity import (
 
 def _base_result():
     return {
-        "route_points": pd.DataFrame({"distance_km": [0, 20]}),
+        "route_points": pd.DataFrame({"distance_km": [0, 20], "direction_offset_deg": [0.0, 0.0], "bearing_deg": [270.0, 270.0]}),
+        "route_reference_contract": pd.DataFrame({"reference_azimuth_deg": [270.0], "route_domain_max_km": [20.0], "route_invariant_to_runtime_angle_set": [True]}),
         "hourly_raw": pd.DataFrame({"time": [1]}),
         "gfs_native_request_audit": pd.DataFrame({"status": ["OK_DOWNLOADED"]}),
         "gfs_grib_message_inventory": pd.DataFrame({"short_name": ["CLWMR", "ICMR"]}),
@@ -69,7 +70,7 @@ def test_archive_integrity_propagates_analysis_failure_and_checks_required_membe
     result["gfs_grib_message_inventory"] = pd.DataFrame()
     analysis = build_analysis_integrity_audit(result)
     names = [
-        "summary.csv", "route_points.csv", "forecast_raw.csv", "performance_diagnostics.csv",
+        "summary.csv", "route_reference_contract.csv", "route_points.csv", "forecast_raw.csv", "performance_diagnostics.csv",
         "gfs_native_request_audit.csv", "gfs_grib_message_inventory.csv", "gfs_native_field_completeness.csv",
         "v1_formation.csv", "v1_viewing_summary.csv", "analysis_integrity_audit.csv",
     ]

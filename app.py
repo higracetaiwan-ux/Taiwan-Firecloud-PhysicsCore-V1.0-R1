@@ -752,7 +752,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.20 Calibrated Scattering Solver + Calibration Package Contract｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.22.1 Route Invariance Hotfix + Full Directional Scattering Contract｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1786,6 +1786,7 @@ if run or st.session_state.analysis_result is not None:
         _items = [
             ("summary.csv", result["summary"]),
             ("event_time_contract.csv", result.get("event_time_contract", pd.DataFrame())),
+            ("route_reference_contract.csv", result.get("route_reference_contract", pd.DataFrame())),
             ("directions.csv", detail["directions"]),
             ("voxels.csv", detail["voxels"]),
             ("route_points.csv", result["route_points"]),

@@ -1,6 +1,21 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.22
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.22.1
 
 ## 目前版本重點
+
+## R5.7.22.1 Route Invariance Hotfix
+
+本版在 R5.7.22 Full Directional Cloud Scattering Geometry Contract 上修正 provider sampling route 與 runtime 太陽角度集合耦合的問題。
+
+正式凍結：
+
+- GFS / CAMS / Forecast 的 Reference Route 固定以太陽高度 **−2.0°** 的太陽方位建立。
+- Provider spatial sampling distance lattice 固定依完整 **0°～−6°** PhysicsCore 路徑需求建立。
+- 改變 runtime angle subset、或從 9-angle 擴充到 13-angle，不得旋轉或縮短既有 sampling corridor。
+- 每個太陽高度仍使用自己的事件時間、太陽高度與太陽方位計算 Sun→Cloud 與 Tier-2 directional geometry。
+- CASE 新增 `route_reference_contract.csv`，保存 reference angle、reference time、reference azimuth、route domain 與 invariance provenance。
+
+此修正關閉 R5.7.21.1 / 未修正 R5.7.22 中因核心角度中點由 −2° 變成 −3°，導致 route bearing 約偏移 0.672° 的回歸。
+
 
 R5.7.22 正式把 Tier-2 雲散射方向幾何由原本只依賴 `scattering_angle`，升級為完整的 target-local directional contract：
 

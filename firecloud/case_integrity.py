@@ -97,6 +97,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         })
 
     route = _df(result.get("route_points"))
+    route_ref = _df(result.get("route_reference_contract"))
     forecast = _df(result.get("hourly_raw"))
     gfs_req = _df(result.get("gfs_native_request_audit"))
     gfs_inv = _df(result.get("gfs_grib_message_inventory"))
@@ -113,6 +114,26 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     spectral = _df(result.get("v1_spectral_optical_paths"))
 
     add("ROUTE_POINTS_PRESENT", PASS if not route.empty else FAIL, "ROUTE", _rows(route), ">0 rows")
+    if not route_ref.empty:
+        _contract_ok = bool(route_ref.get("route_invariant_to_runtime_angle_set", pd.Series([False])).astype(bool).all())
+        add("ROUTE_REFERENCE_CONTRACT_PRESENT", PASS if _contract_ok else FAIL, "ROUTE", _rows(route_ref), "fixed reference-route contract with invariance=true")
+        try:
+            _ref_az = float(pd.to_numeric(route_ref["reference_azimuth_deg"], errors="coerce").iloc[0])
+            _ref_max = float(pd.to_numeric(route_ref["route_domain_max_km"], errors="coerce").iloc[0])
+            if not route.empty and {"bearing_deg","direction_offset_deg"}.issubset(route.columns):
+                _b = pd.to_numeric(route["bearing_deg"], errors="coerce")
+                _o = pd.to_numeric(route["direction_offset_deg"], errors="coerce")
+                _expected = (_ref_az + _o) % 360.0
+                _err = (((_b - _expected + 180.0) % 360.0) - 180.0).abs()
+                _maxerr = float(_err.max()) if len(_err) else float("nan")
+                add("ROUTE_REFERENCE_BEARING_INVARIANT", PASS if _maxerr <= 1e-8 else FAIL, "ROUTE", _maxerr, "<=1e-8 deg from fixed reference azimuth + direction offset")
+            if not route.empty and "distance_km" in route.columns:
+                _route_max = float(pd.to_numeric(route["distance_km"], errors="coerce").max())
+                add("ROUTE_REFERENCE_DOMAIN_INVARIANT", PASS if abs(_route_max-_ref_max) <= 1e-8 else FAIL, "ROUTE", _route_max, f"contract route_domain_max_km={_ref_max}")
+        except Exception as exc:
+            add("ROUTE_REFERENCE_CONTRACT_DECODE", FAIL, "ROUTE", type(exc).__name__, "decodable reference-route provenance", str(exc))
+    else:
+        add("ROUTE_REFERENCE_CONTRACT_PRESENT", WARN, "ROUTE", 0, "present in R5.7.22.1+ CASE; legacy CASE may omit it")
     add("FORECAST_RAW_PRESENT", PASS if not forecast.empty else FAIL, "FORECAST", _rows(forecast), ">0 rows")
 
     gfs_requested = not gfs_req.empty or bool(result.get("details"))
@@ -224,6 +245,7 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
     names = set(manifest.get("artifact", pd.Series(dtype=str)).astype(str)) if not manifest.empty else set()
     required = {
         "summary.csv",
+        "route_reference_contract.csv",
         "route_points.csv",
         "forecast_raw.csv",
         "performance_diagnostics.csv",

@@ -23,6 +23,14 @@ NAUTICAL_TWILIGHT_DIAGNOSTIC_ANGLES_DEG = (-7.0, -8.0, -9.0, -10.0, -11.0, -12.0
 # angle checkpoints overlap the Core Formation timeline.
 TWILIGHT_DIAGNOSTIC_ANGLES_DEG = FIRECLOUD_CORE_ANGLES_DEG
 
+# R5.7.22.1 Route Invariance contract. Provider/forecast sampling is anchored
+# to a fixed solar-altitude reference and a fixed full 0°..-6° distance-domain
+# contract. Changing which runtime angles are evaluated must never rotate or
+# shorten the GFS/CAMS spatial sampling lattice.
+REFERENCE_ROUTE_SOLAR_ALTITUDE_DEG = -2.0
+REFERENCE_ROUTE_CONTRACT = "FIXED_REFERENCE_ROUTE_MINUS2_PER_ANGLE_RAYS_V1_R5_7_22_1"
+ROUTE_SAMPLING_PHYSICS_ANGLES_DEG = FIRECLOUD_CORE_ANGLES_DEG
+
 # Backward-compatible alias used by older code paths.
 SOLAR_ANGLES_DEG = TWILIGHT_DIAGNOSTIC_ANGLES_DEG
 DIRECTION_OFFSETS_DEG = (-5.0, 0.0, 5.0)
@@ -103,6 +111,9 @@ class ModelConfig:
     pre_sunset_diagnostic_angles_deg: tuple = PRE_SUNSET_DIAGNOSTIC_ANGLES_DEG
     nautical_twilight_diagnostic_angles_deg: tuple = NAUTICAL_TWILIGHT_DIAGNOSTIC_ANGLES_DEG
     direction_offsets_deg: tuple = DIRECTION_OFFSETS_DEG
+    # Provider/forecast sampling route is independent from the runtime angle set.
+    # This is a sampling-lattice contract, not a Formation decision threshold.
+    reference_route_solar_altitude_deg: float = REFERENCE_ROUTE_SOLAR_ALTITUDE_DEG
     # Kept as the legacy diagnostic/scoring lattice for backward compatibility.
     distance_samples_km: tuple = DISTANCE_SAMPLES_KM
     earth_radius_km: float = EARTH_RADIUS_KM
@@ -159,12 +170,11 @@ class ModelConfig:
         target_distances = list(range(0, int(round(float(self.rt_canvas_max_distance_km))) + 1, int(round(step))))
         target_altitudes = [0.25 + 0.5 * i for i in range(int(18.0 / 0.5))]
 
-        # Route-domain geometry must cover the late-firecloud diagnostic branch
-        # across the full thirteen-angle 0°..-6° Core Formation runtime.
-        _runtime_angles = tuple(float(x) for x in self.solar_angles_deg)
-        _default_core = tuple(float(x) for x in FIRECLOUD_CORE_ANGLES_DEG)
-        _domain_angles = (tuple(dict.fromkeys((*self.firecloud_core_angles_deg, *self.late_glow_angles_deg)))
-                          if _runtime_angles == _default_core else _runtime_angles)
+        # R5.7.22.1 Route Invariance: provider spatial coverage is frozen to the
+        # full 0°..-6° PhysicsCore route-sampling contract. A caller may analyze
+        # a subset of solar angles, but that must not shorten the forecast/CAMS
+        # lattice and thereby change the cloud evidence sampled at older angles.
+        _domain_angles = tuple(float(x) for x in ROUTE_SAMPLING_PHYSICS_ANGLES_DEG)
         for angle in _domain_angles:
             a = float(angle)
             # Dynamic-REZ entries for the operational diagnostic cloud heights must
