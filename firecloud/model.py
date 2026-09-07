@@ -2159,6 +2159,28 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
             "reuse_scope":"RUN_LEAD_ROUTE_SURFACE_ANCHOR_PERSISTENT_OPTICS"
         })
     api_efficiency_audit=pd.DataFrame(_api_eff_rows)
+
+    # R5.7.14 Data Integrity Core: provider/decode/evidence handoff audit.
+    # This audit is intentionally non-physical and must not alter Formation/Viewing.
+    from .case_integrity import build_analysis_integrity_audit
+    _pre_integrity_result = {
+        "route_points": pd.DataFrame(route_points),
+        "hourly_raw": hourly,
+        "gfs_native_request_audit": gfs_native_request_audit,
+        "gfs_grib_message_inventory": gfs_grib_message_inventory,
+        "gfs_native_field_completeness": gfs_native_field_completeness,
+        "native_cloud_voxel_matrix": native_cloud_voxel_matrix,
+        "gas_profile_route_snapshots": gas_profile_route_snapshots,
+        "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),
+        "cams_request_audit": _cams_audit_df,
+        "v1_formation": v1_formation,
+        "v1_viewing_summary": v1_viewing_summary,
+        "performance_diagnostics": pd.DataFrame(performance_rows),
+        "v1_canvas_candidates": v1_canvas_candidates,
+        "v1_spectral_optical_paths": v1_spectral_optical_paths,
+        "details": details,
+    }
+    analysis_integrity_audit = build_analysis_integrity_audit(_pre_integrity_result)
     return {
         "summary": summary,
         "details": details,
@@ -2241,6 +2263,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
         "performance_diagnostics": pd.DataFrame(performance_rows),
         "api_efficiency_audit": api_efficiency_audit,
+        "analysis_integrity_audit": analysis_integrity_audit,
         "aerosol_provider_error": aerosol_error,
         "openmeteo_request_audit": openmeteo_request_audit,
         "openmeteo_aerosol_request_audit": pd.DataFrame(aerosol_hourly.attrs.get("api_request_audit", [])) if not aerosol_hourly.empty else pd.DataFrame(),

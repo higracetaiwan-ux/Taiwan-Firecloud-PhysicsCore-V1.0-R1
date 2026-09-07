@@ -1,3 +1,7 @@
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.14
+
+Current operational focus: **Data & CASE Integrity Core**, built on the R5.7.13 Shared Geometry Phase-1 baseline. No scientific thresholds, Formation/Viewing formulas, or UI semantics are changed in this release.
+
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.13
 
 

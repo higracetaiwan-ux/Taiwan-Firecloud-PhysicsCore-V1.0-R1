@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 import os
 import io
+import hashlib
 import json
 import re
 import zipfile
@@ -721,7 +722,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.13 Shared Geometry Core V1.5 Phase-1 Complete｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.14 Data & CASE Integrity Core｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1267,7 +1268,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R5.7.13：Formation × Viewing × Photography Decision")
+    st.subheader("PhysicsCore V1.0-R5.7.14：Formation × Viewing × Photography Decision")
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1676,17 +1677,35 @@ if run or st.session_state.analysis_result is not None:
         st.session_state.case_archive_elapsed = None
 
     def _zip_write_csv_stream(zf, arcname, df, *, chunksize=8192):
-        """Stream a DataFrame CSV directly into one ZIP member.
-
-        This intentionally avoids ``df.to_csv()`` returning one giant Python
-        string before compression.  The latter doubled/tripled peak memory for
-        the 3-D/spectral matrices and could make Streamlit appear hung.
-        """
+        """Stream CSV and return uncompressed member integrity metadata."""
         frame = df if isinstance(df, pd.DataFrame) else pd.DataFrame()
+        digest = hashlib.sha256()
+        byte_count = 0
+
+        class _HashingTextWriter:
+            def __init__(self, raw):
+                self.raw = raw
+            def write(self, text):
+                nonlocal byte_count
+                data = str(text).encode("utf-8")
+                digest.update(data)
+                byte_count += len(data)
+                self.raw.write(data)
+                return len(text)
+            def flush(self):
+                return None
+
         with zf.open(arcname, mode="w") as raw:
-            with io.TextIOWrapper(raw, encoding="utf-8", newline="", write_through=False) as text:
-                frame.to_csv(text, index=False, chunksize=chunksize)
-                text.flush()
+            writer = _HashingTextWriter(raw)
+            frame.to_csv(writer, index=False, chunksize=chunksize)
+        return {
+            "artifact": arcname,
+            "status": "WRITTEN",
+            "row_count": int(len(frame)),
+            "byte_size": int(byte_count),
+            "sha256": digest.hexdigest(),
+            "detail": "CSV uncompressed payload",
+        }
 
     def _build_case_archive_bytes():
         _t0 = perf_counter()
@@ -1767,6 +1786,7 @@ if run or st.session_state.analysis_result is not None:
             ("ecmwf_ifs_request_audit.csv", result.get("ecmwf_ifs_request_audit", pd.DataFrame())),
             ("dwd_icon_request_audit.csv", result.get("dwd_icon_request_audit", pd.DataFrame())),
             ("api_efficiency_audit.csv", result.get("api_efficiency_audit", pd.DataFrame())),
+            ("analysis_integrity_audit.csv", result.get("analysis_integrity_audit", pd.DataFrame())),
             ("secondary_provider_audit.csv", result.get("secondary_provider_audit", pd.DataFrame())),
             ("v1_six_band_spectroscopy_readiness.csv", result.get("v1_six_band_spectroscopy_readiness", pd.DataFrame())),
             ("spectral_rt_coverage_diagnostics.csv", result.get("spectral_coverage_diagnostics", pd.DataFrame())),
@@ -1791,17 +1811,24 @@ if run or st.session_state.analysis_result is not None:
         _total = len(_items) + len(_json_items) + 1
         _progress = st.progress(0.0, text="準備 CASE 封存…")
         _status = st.empty()
+        _manifest_rows = []
         with zipfile.ZipFile(_mem, "w", zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as z:
             for _i, (_name, _df) in enumerate(_items, start=1):
                 _rows = len(_df) if isinstance(_df, pd.DataFrame) else 0
                 _status.caption(f"CASE：{_name}｜{_rows:,} rows")
-                _zip_write_csv_stream(z, _name, _df)
+                _manifest_rows.append(_zip_write_csv_stream(z, _name, _df))
                 _progress.progress(_i / _total, text=f"CASE 封存 {_i}/{_total}")
 
             _offset = len(_items)
             for _j, (_name, _obj) in enumerate(_json_items, start=1):
                 _status.caption(f"CASE：{_name}")
-                z.writestr(_name, json.dumps(_obj, ensure_ascii=False, indent=2, default=str))
+                _payload = json.dumps(_obj, ensure_ascii=False, indent=2, default=str).encode("utf-8")
+                z.writestr(_name, _payload)
+                _manifest_rows.append({
+                    "artifact": _name, "status": "WRITTEN", "row_count": None,
+                    "byte_size": len(_payload), "sha256": hashlib.sha256(_payload).hexdigest(),
+                    "detail": "JSON payload",
+                })
                 _progress.progress((_offset + _j) / _total, text=f"CASE 封存 {_offset + _j}/{_total}")
 
             _case_export_elapsed = perf_counter() - _t0
@@ -1814,7 +1841,21 @@ if run or st.session_state.analysis_result is not None:
             ])
             _perf_export = pd.concat([_perf_export, _extra_perf], ignore_index=True, sort=False)
             _status.caption("CASE：performance_diagnostics.csv")
-            _zip_write_csv_stream(z, "performance_diagnostics.csv", _perf_export)
+            _manifest_rows.append(_zip_write_csv_stream(z, "performance_diagnostics.csv", _perf_export))
+
+            # R5.7.14 second integrity layer: inspect actual members written to CASE.
+            from firecloud.case_integrity import build_archive_integrity_audit
+            _manifest_df = pd.DataFrame(_manifest_rows)
+            _case_integrity_df = build_archive_integrity_audit(
+                _manifest_df,
+                result.get("analysis_integrity_audit", pd.DataFrame()),
+            )
+            _status.caption("CASE：case_archive_manifest.csv")
+            _manifest_manifest = _zip_write_csv_stream(z, "case_archive_manifest.csv", _manifest_df)
+            _status.caption("CASE：case_integrity_audit.csv")
+            _integrity_manifest = _zip_write_csv_stream(z, "case_integrity_audit.csv", _case_integrity_df)
+            # The two self-describing audit members are deliberately not folded back
+            # into case_archive_manifest.csv to avoid a recursive hash definition.
             _progress.progress(1.0, text="CASE ZIP 完成")
 
         _elapsed = perf_counter() - _t0
@@ -1849,7 +1890,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.13_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.14_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",
