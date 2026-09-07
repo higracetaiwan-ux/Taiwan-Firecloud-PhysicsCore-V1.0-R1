@@ -1,4 +1,13 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.16
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.17
+
+## R5.7.17 Tier-2 Scattering Readiness Contract
+
+R5.7.17 continues directly from the user-selected R5.7.16 Target Cloud Optical Response Tier-1 Closure baseline. It adds a target-by-target Tier-2 readiness truth layer only; no Tier-2 scattering solver, LUT multiplier, Mie approximation, or multiple-scattering response is enabled in this release.
+
+Each Canvas target now records independent readiness for COT truth (exact / bounded / conflict / missing), phase, effective radius, geometric thickness, and six-band incident illumination. Even when all inputs are present, the strongest allowed state in this release is `INPUTS_READY_AWAITING_LUT_SOLVER`, because the calibrated scattering LUT/solver is intentionally not frozen yet. Conflict/unknown COT cannot be rescued by Cloud Fraction, RH, phase, or r_eff.
+
+CASE export adds `v1_tier2_scattering_readiness.csv` and `v1_tier2_scattering_readiness_summary.csv`. Formation, Viewing, six-band Tier-1 response, thresholds, Shared Geometry, and UI decision logic are unchanged.
+
 
 Current operational focus: **Data & CASE Integrity Core**, built on the R5.7.13 Shared Geometry Phase-1 baseline. No scientific thresholds, Formation/Viewing formulas, or UI semantics are changed in this release.
 
