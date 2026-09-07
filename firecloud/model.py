@@ -11,7 +11,11 @@ import threading
 import time
 from time import perf_counter
 import numpy as np
-from .shared_geometry.intersections import build_voxel_intersection_plan, plan_direction_if_compatible
+from .shared_geometry.intersections import (
+    build_voxel_intersection_plan, build_voxel_intersection_topology,
+    materialize_voxel_intersection_plan, voxel_lattice_key,
+    plan_direction_if_compatible,
+)
 from .shared_geometry.ray import ray_altitudes_vectorized_km
 # Backward-compatible alias; implementation lives in Shared Geometry Core.
 _ray_altitudes_vectorized_km = ray_altitudes_vectorized_km
@@ -1240,6 +1244,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     cams_native_cache = {}
     secondary_optics_cache = {}
     native_volume_cache = {}
+    voxel_topology_cache = {}
     native_optical_base_cache = {}
     gas_profile_cache = {}
     gas_rt_context_cache = {}
@@ -1596,8 +1601,24 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         _ts = perf_counter()
         _opt_proxy_t0 = perf_counter()
         _ray_plan_t0 = perf_counter()
-        shared_ray_geometry_plan = prepare_shared_ray_geometry_plan(profile_voxels, angle, cfg)
-        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "SHARED_RAY_GEOMETRY_PLAN", "elapsed_seconds": perf_counter()-_ray_plan_t0, "cache_status": "BUILT_ONCE_PER_ANGLE", "geometry_plan_type": shared_ray_geometry_plan.get("plan_type", "LEGACY"), "target_plan_count": int(shared_ray_geometry_plan.get("target_plan_count", 0)), "segment_count": int(shared_ray_geometry_plan.get("segment_count", 0)), "valid_segment_count": int(shared_ray_geometry_plan.get("valid_segment_count", 0))})
+        _topology_t0 = perf_counter()
+        _lattice_key = voxel_lattice_key(profile_voxels)
+        if _lattice_key in voxel_topology_cache:
+            _voxel_topology = voxel_topology_cache[_lattice_key]
+            _topology_status = "HIT_CROSS_ANGLE"
+        else:
+            _voxel_topology = build_voxel_intersection_topology(profile_voxels)
+            voxel_topology_cache[_lattice_key] = _voxel_topology
+            _topology_status = "MISS_BUILT"
+        _topology_elapsed = perf_counter() - _topology_t0
+        _materialize_t0 = perf_counter()
+        shared_ray_geometry_plan = materialize_voxel_intersection_plan(
+            _voxel_topology, float(angle), radius_km=float(cfg.earth_radius_km),
+            topology_cache_status=_topology_status,
+        ).as_legacy_dict()
+        _materialize_elapsed = perf_counter() - _materialize_t0
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "SHARED_VOXEL_TOPOLOGY", "elapsed_seconds": _topology_elapsed, "cache_status": _topology_status, "geometry_plan_type": shared_ray_geometry_plan.get("plan_type", "LEGACY"), "target_plan_count": int(shared_ray_geometry_plan.get("target_plan_count", 0)), "segment_count": int(shared_ray_geometry_plan.get("segment_count", 0)), "valid_segment_count": int(shared_ray_geometry_plan.get("valid_segment_count", 0))})
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "SHARED_RAY_GEOMETRY_PLAN", "elapsed_seconds": perf_counter()-_ray_plan_t0, "cache_status": _topology_status, "geometry_plan_type": shared_ray_geometry_plan.get("plan_type", "LEGACY"), "topology_elapsed_seconds": _topology_elapsed, "angle_materialize_elapsed_seconds": _materialize_elapsed, "target_plan_count": int(shared_ray_geometry_plan.get("target_plan_count", 0)), "segment_count": int(shared_ray_geometry_plan.get("segment_count", 0)), "valid_segment_count": int(shared_ray_geometry_plan.get("valid_segment_count", 0))})
         optical_voxels = apply_3d_optical_blocking(profile_voxels, angle, cfg, shared_ray_geometry_plan=shared_ray_geometry_plan)
         optical_columns = summarize_vertical_blocking(optical_voxels)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "CLOUD_PROXY_RAY_BLOCKING", "elapsed_seconds": perf_counter()-_opt_proxy_t0, "cache_status": "COMPUTED"})

@@ -1,7 +1,7 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.10
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.11
 
 
-R5.7.10 operational focus: Firecloud Shared Geometry Core V1.2. Angle-specific Sun→voxel/layer mapping is now an authoritative `VoxelIntersectionPlan` in `firecloud/shared_geometry/intersections.py`, with exact-lattice compatibility guards and geometry-only workload counters (`target_plan_count`, `segment_count`, `valid_segment_count`) exported through performance diagnostics. `model.py` keeps a compatibility wrapper only. R5.7.9 shared segment samplers, R5.7.7 shared ray-plan reuse, and provider decoded caches remain enabled. No scientific thresholds, optical evidence rules, or Formation/Viewing separation changed.
+R5.7.11 operational focus: Firecloud Shared Geometry Core V1.3. Voxel/layer geometry now separates angle-independent lattice topology from angle-dependent ray materialization, reuses identical topology across solar-angle candidates, and batch-evaluates all target heights at each target distance with a shared ray-height matrix. CASE diagnostics retain target/segment workload counters and add topology cache/materialization timing. Scientific thresholds, optical evidence semantics, Formation/Viewing separation, and six-band RT are unchanged.
 
 R5.7 continues from the verified R5.6.1 baseline. It keeps Formation, Viewing and Photography Decision physically separate while adding forecast-native 3-D hydrometeor optics and an independent Cloud→Observer six-band extinction branch.
 

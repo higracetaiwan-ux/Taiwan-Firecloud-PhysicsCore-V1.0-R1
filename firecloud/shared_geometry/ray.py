@@ -24,6 +24,39 @@ def ray_altitudes_vectorized_km(target_distance_km: float, target_altitude_km: f
     t[good]=(b1*(-ry[good])-b2*(-rx[good]))/det[good]; rho[good]=(sx*b2-sy*b1)/det[good]
     good &= (t>=-1e-8)&(rho>0.0); out=np.full(ds.shape,np.nan); out[good]=rho[good]-float(radius_km); return out
 
+
+def ray_altitude_matrix_km(target_distance_km: float, target_altitudes_km, sample_distances_km, solar_altitude_deg: float, radius_km: float = EARTH_RADIUS_KM) -> np.ndarray:
+    """Broadcast Sun-ray heights for all target altitudes at one target distance.
+
+    Output shape is (n_target_altitudes, n_sample_distances). This is the
+    batch primitive used by Shared Geometry Core V1.3 to remove thousands of
+    target-level Python calls while preserving the scalar/vector equations.
+    """
+    zs=np.asarray(target_altitudes_km,dtype=float)
+    ds=np.asarray(sample_distances_km,dtype=float)
+    if zs.size==0 or ds.size==0:
+        return np.empty((zs.size,ds.size),dtype=float)
+    r=float(radius_km); alpha=math.radians(float(solar_altitude_deg)); dt=float(target_distance_km)/r
+    delta_s=ds/r
+    rho_t=(r+zs)[:,None]
+    px=rho_t*math.cos(dt); py=rho_t*math.sin(dt)
+    sx=math.sin(alpha); sy=math.cos(alpha)
+    rx=np.cos(delta_s)[None,:]; ry=np.sin(delta_s)[None,:]
+    det=sx*(-ry)-sy*(-rx)
+    good=np.abs(det)>=1e-12
+    b1=-px; b2=-py
+    t=np.full((zs.size,ds.size),np.nan,dtype=float)
+    rho=np.full((zs.size,ds.size),np.nan,dtype=float)
+    # det is 1xS and broadcasts across target heights.
+    num_t=b1*(-ry)-b2*(-rx)
+    num_rho=sx*b2-sy*b1
+    np.divide(num_t,det,out=t,where=np.broadcast_to(good,t.shape))
+    np.divide(num_rho,det,out=rho,where=np.broadcast_to(good,rho.shape))
+    good2=np.broadcast_to(good,t.shape)&(t>=-1e-8)&(rho>0.0)
+    out=np.full_like(t,np.nan)
+    out[good2]=rho[good2]-r
+    return out
+
 def observer_los_height_agl_km(target_distance_km: float, target_height_agl_km: float, sample_distance_km: float, radius_km: float = EARTH_RADIUS_KM) -> float:
     """Curved-Earth observer→target LOS height above local surface.
 
