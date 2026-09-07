@@ -217,6 +217,9 @@ def build_r4_formation_tables(
         target_tau_upper = target_tau if _finite(target_tau) else None
         target_optics_bounded = False
         target_optics_source = "CLOUD_LAYER_NATIVE_CONDENSATE" if _finite(target_tau) else "NO_RESOLVED_TARGET_COT"
+        target_optical_truth_state = "OPTICS_UNKNOWN"
+        target_cot_semantics = "UNRESOLVED_MISSING"
+        target_response_eligibility = "NO_EXACT_RESPONSE"
 
         # R4.9 resolver is authoritative for target-cloud optical provenance.
         # A two-sided spatial bracket is retained as a bound only; it is not
@@ -234,6 +237,9 @@ def build_r4_formation_tables(
             target_tau_upper = float(_hi) if _finite(_hi) else None
             target_optics_bounded = bool(_te.get("target_optics_bounded", False))
             target_optics_ready = bool(_te.get("target_optics_ready", False))
+            target_optical_truth_state = str(_te.get("target_optical_truth_state", target_optical_truth_state))
+            target_cot_semantics = str(_te.get("target_cot_semantics", target_cot_semantics))
+            target_response_eligibility = str(_te.get("target_response_eligibility", target_response_eligibility))
         else:
             _conflict = target_optical_state in (
                 "GEOMETRY_CONFIRMED_TARGET_OPTICS_UNRESOLVED_CF_CONDENSATE_DISAGREEMENT",
@@ -307,6 +313,9 @@ def build_r4_formation_tables(
             "target_optical_evidence": layer.optical_evidence.value,
             "target_evidence_consistency": getattr(layer, "evidence_consistency", "UNKNOWN"),
             "target_canvas_optical_state": target_optical_state,
+            "target_optical_truth_state": target_optical_truth_state,
+            "target_cot_semantics": target_cot_semantics,
+            "target_response_eligibility": target_response_eligibility,
             "target_optics_ready": bool(target_optics_ready),
             "target_optics_bounded": bool(target_optics_bounded),
             "target_vertical_cloud_optical_depth": target_tau,
@@ -377,6 +386,11 @@ def build_r4_formation_tables(
     ]).sum())
     _target_bounded_count = int(canvas_df.get("target_optics_bounded", pd.Series(dtype=bool)).astype(bool).sum())
     _target_geometry_only_count = int(canvas_df.get("target_canvas_optical_state", pd.Series(dtype=str)).astype(str).eq("GEOMETRY_ONLY_TARGET_OPTICS_UNKNOWN").sum())
+    _truth = canvas_df.get("target_optical_truth_state", pd.Series("OPTICS_UNKNOWN", index=canvas_df.index)).astype(str)
+    _target_exact_truth_count = int(_truth.str.startswith("EXACT_").sum())
+    _target_bounded_truth_count = int(_truth.eq("BOUNDED_NATIVE_BRACKET").sum())
+    _target_conflict_truth_count = int(_truth.isin(["DIRECT_EVIDENCE_CONFLICT","MULTISOURCE_DISAGREEMENT"]).sum())
+    _target_unknown_truth_count = int(_truth.isin(["OPTICS_UNKNOWN","INSUFFICIENT_NATIVE_BRACKET"]).sum())
     formation = pd.DataFrame([{
         "time": valid_time,
         "solar_altitude_deg": float(solar_altitude_deg),
@@ -392,6 +406,10 @@ def build_r4_formation_tables(
         "target_optics_evidence_conflict_canvas_count": _target_conflict_count,
         "target_optics_bounded_canvas_count": _target_bounded_count,
         "target_geometry_only_canvas_count": _target_geometry_only_count,
+        "target_optical_truth_exact_canvas_count": _target_exact_truth_count,
+        "target_optical_truth_bounded_canvas_count": _target_bounded_truth_count,
+        "target_optical_truth_conflict_canvas_count": _target_conflict_truth_count,
+        "target_optical_truth_unknown_canvas_count": _target_unknown_truth_count,
         "formation_confidence": conf,
         "rt_tier": "TIER1_FAST_SOURCE_PROXY",
         "aggregation_note": "NO_DISTANCE_WEIGHT;NO_CLOUD_TYPE_MULTIPLIER;NO_SINGLE_FORMATION_SCORE",

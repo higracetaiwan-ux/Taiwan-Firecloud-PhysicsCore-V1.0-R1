@@ -248,7 +248,54 @@ def build_target_canvas_optical_evidence(
         solar_altitude_deg=float(solar_altitude_deg), valid_time=valid_time,
         min_vertical_overlap_fraction=min_vertical_overlap_fraction,
     )
-    return arbitrate_primary_secondary(primary, matched)
+    return annotate_target_optical_truth(arbitrate_primary_secondary(primary, matched))
+
+
+
+
+def classify_target_optical_truth(row: pd.Series | dict) -> tuple[str, str, str]:
+    """Return (truth_state, cot_semantics, response_eligibility).
+
+    This classification is intentionally evidence-only.  It never derives COT
+    from cloud fraction, RH, geometry, or photography heuristics.
+    """
+    state=str(row.get("resolver_state", "") or "")
+    ready=bool(row.get("target_optics_ready", False))
+    bounded=bool(row.get("target_optics_bounded", False))
+    if ready:
+        if state == "SECONDARY_FORECAST_NATIVE_OPTICS_EXACT":
+            return "EXACT_SECONDARY_NATIVE", "EXACT_VALUE", "EXACT_RESPONSE_ELIGIBLE"
+        return "EXACT_PRIMARY_NATIVE", "EXACT_VALUE", "EXACT_RESPONSE_ELIGIBLE"
+    if bounded:
+        return "BOUNDED_NATIVE_BRACKET", "BOUNDED_INTERVAL", "BOUNDED_ONLY_NOT_EXACT"
+    if state in {
+        "CF_CLOUD_CONDENSATE_ZERO_UNRESOLVED",
+        "CONDENSATE_CLOUD_CF_LOW_CONFLICT",
+        "MULTISOURCE_DIRECT_CONFLICT_UNRESOLVED",
+    }:
+        return "DIRECT_EVIDENCE_CONFLICT", "UNRESOLVED_CONFLICT", "NO_EXACT_RESPONSE"
+    if state == "MULTISOURCE_COT_DISAGREEMENT_UNRESOLVED":
+        return "MULTISOURCE_DISAGREEMENT", "UNRESOLVED_CONFLICT", "NO_EXACT_RESPONSE"
+    if state == "NO_TARGET_CLOUD_GEOMETRY_FOR_OPTICAL_RESOLUTION":
+        return "NO_TARGET_CLOUD_GEOMETRY", "NOT_APPLICABLE", "NOT_APPLICABLE"
+    if state.startswith("ADJACENT_OPTICAL_BRACKET_"):
+        return "INSUFFICIENT_NATIVE_BRACKET", "UNRESOLVED_MISSING", "NO_EXACT_RESPONSE"
+    return "OPTICS_UNKNOWN", "UNRESOLVED_MISSING", "NO_EXACT_RESPONSE"
+
+
+def annotate_target_optical_truth(evidence: pd.DataFrame) -> pd.DataFrame:
+    if evidence is None or evidence.empty:
+        return pd.DataFrame() if evidence is None else evidence.copy()
+    out=evidence.copy()
+    truth=[]; semantics=[]; eligibility=[]
+    for _,r in out.iterrows():
+        t,s,e=classify_target_optical_truth(r)
+        truth.append(t); semantics.append(s); eligibility.append(e)
+    out["target_optical_truth_state"]=truth
+    out["target_cot_semantics"]=semantics
+    out["target_response_eligibility"]=eligibility
+    out["cf_or_rh_used_to_infer_cot"]=False
+    return out
 
 
 def summarize_target_canvas_optical_evidence(evidence: pd.DataFrame) -> pd.DataFrame:
@@ -257,6 +304,23 @@ def summarize_target_canvas_optical_evidence(evidence: pd.DataFrame) -> pd.DataF
     rows=[]
     for a,g in evidence.groupby("solar_altitude_deg",sort=False):
         state=g.get("resolver_state",pd.Series(dtype=str)).astype(str)
+        truth=g.get("target_optical_truth_state",pd.Series("OPTICS_UNKNOWN",index=g.index)).astype(str)
+        exact=int(truth.str.startswith("EXACT_").sum())
+        bounded_count=int(truth.eq("BOUNDED_NATIVE_BRACKET").sum())
+        conflict_count=int(truth.isin(["DIRECT_EVIDENCE_CONFLICT","MULTISOURCE_DISAGREEMENT"]).sum())
+        unknown_count=int(truth.isin(["OPTICS_UNKNOWN","INSUFFICIENT_NATIVE_BRACKET"]).sum())
+        not_applicable_count=int(truth.eq("NO_TARGET_CLOUD_GEOMETRY").sum())
+        applicable=max(0, int(len(g))-not_applicable_count)
+        if applicable == 0:
+            closure_state="NOT_APPLICABLE"
+        elif exact == applicable:
+            closure_state="EXACT_CLOSED"
+        elif exact + bounded_count == applicable:
+            closure_state="BOUNDED_CLOSED"
+        elif conflict_count > 0:
+            closure_state="CONFLICT_UNRESOLVED"
+        else:
+            closure_state="OPTICS_INCOMPLETE"
         rows.append({
             "solar_altitude_deg":float(a),
             "canvas_count":int(len(g)),
@@ -266,7 +330,16 @@ def summarize_target_canvas_optical_evidence(evidence: pd.DataFrame) -> pd.DataF
             "other_unresolved_target_optics_count":int((~state.isin(["DIRECT_NATIVE_CONDENSATE_COT","ADJACENT_NATIVE_COT_BRACKET_BOUNDED","CF_CLOUD_CONDENSATE_ZERO_UNRESOLVED"])).sum()),
             "target_optics_exact_ready_count":int(g.get("target_optics_ready",pd.Series(False,index=g.index)).astype(bool).sum()),
             "target_optics_bounded_count":int(g.get("target_optics_bounded",pd.Series(False,index=g.index)).astype(bool).sum()),
-            "resolver_contract":"R5.0_MULTI_SOURCE_TARGET_OPTICS_NO_AVERAGING",
+            "optical_truth_exact_count":exact,
+            "optical_truth_bounded_count":bounded_count,
+            "optical_truth_conflict_count":conflict_count,
+            "optical_truth_unknown_count":unknown_count,
+            "optical_truth_not_applicable_count":not_applicable_count,
+            "exact_fraction":float(truth.str.startswith("EXACT_").mean()) if len(g) else 0.0,
+            "exact_or_bounded_fraction":float((truth.str.startswith("EXACT_") | truth.eq("BOUNDED_NATIVE_BRACKET")).mean()) if len(g) else 0.0,
+            "conflict_fraction":float(conflict_count / applicable) if applicable else 0.0,
+            "closure_state":closure_state,
+            "resolver_contract":"R5.7.15_TARGET_OPTICAL_TRUTH_NO_CF_RH_TO_COT",
             "sampling_step_is_cloud_width":False,
         })
     return pd.DataFrame(rows)

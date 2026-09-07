@@ -1,4 +1,4 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.14
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.15
 
 Current operational focus: **Data & CASE Integrity Core**, built on the R5.7.13 Shared Geometry Phase-1 baseline. No scientific thresholds, Formation/Viewing formulas, or UI semantics are changed in this release.
 
@@ -22,3 +22,11 @@ R5.7 continues from the verified R5.6.1 baseline. It keeps Formation, Viewing an
 Core invariants remain frozen: Formation != Viewing != Glow; Penumbra Geometry != Spectral RT; Missing != Clear != Zero; Cloud Fraction != COT; Satellite Observation != Forecast Input; Brightness != Redness != Effective Illuminated Area.
 
 See `RELEASE_NOTES_PhysicsCore_V1.0-R5.7.md` and `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R5.7.md`.
+
+
+## R5.7.15 Target Canvas Optical Evidence Closure
+- Preserve Shared Geometry V1.5 and R5.7.14 Data/CASE Integrity Core unchanged.
+- Add target-level optical truth classification: exact / bounded / direct conflict / multi-source disagreement / unknown / not-applicable.
+- Explicit `CF_CLOUD_CONDENSATE_ZERO` remains unresolved evidence conflict; it is not COT=0 and is never replaced by CF/RH/geometry inference.
+- Formation output now carries target optical truth provenance/counts without changing Formation formulas, thresholds, or weights.
+- `v1_target_canvas_optical_summary.csv` now reports exact/bounded/conflict/unknown counts and closure state.
