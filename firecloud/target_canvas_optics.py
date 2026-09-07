@@ -37,6 +37,31 @@ import pandas as pd
 from .contracts import CanvasCandidate, CloudScene, EvidenceState, CloudFractionState
 from .secondary_target_optics import match_secondary_to_canvases, arbitrate_primary_secondary
 
+TARGET_CANVAS_OPTICAL_EVIDENCE_COLUMNS = [
+    "time","solar_altitude_deg","canvas_id","cloud_layer_id","direction_offset_deg",
+    "distance_km","z_base_km","z_top_km","cloud_fraction","cloud_fraction_state",
+    "direct_optical_evidence","evidence_consistency","direct_native_cot",
+    "target_optics_ready","target_optics_bounded","target_cot_nominal",
+    "target_cot_lower_bound","target_cot_upper_bound","target_effective_radius_um",
+    "left_support_layer_id","right_support_layer_id","left_support_distance_km",
+    "right_support_distance_km","left_support_cot","right_support_cot",
+    "left_vertical_overlap_fraction","right_vertical_overlap_fraction",
+    "resolver_state","evidence_source","bound_level","sampling_step_is_cloud_width",
+    "note","target_optical_truth_state","target_cot_semantics",
+    "target_response_eligibility","cf_or_rh_used_to_infer_cot"
+]
+
+TARGET_CANVAS_OPTICAL_SUMMARY_COLUMNS = [
+    "solar_altitude_deg","canvas_count","direct_native_target_cot_count",
+    "bounded_adjacent_native_cot_count","cf_condensate_zero_conflict_count",
+    "other_unresolved_target_optics_count","target_optics_exact_ready_count",
+    "target_optics_bounded_count","optical_truth_exact_count",
+    "optical_truth_bounded_count","optical_truth_conflict_count",
+    "optical_truth_unknown_count","optical_truth_not_applicable_count",
+    "exact_fraction","exact_or_bounded_fraction","conflict_fraction",
+    "closure_state","resolver_contract","sampling_step_is_cloud_width"
+]
+
 
 def _finite(v) -> bool:
     try:
@@ -242,7 +267,7 @@ def build_target_canvas_optical_evidence(
             "note":"BOUNDED_SPATIAL_INTERPOLATION_ONLY;NOT_DIRECT_TARGET_COT;SAMPLING_SPACING_IS_NOT_CLOUD_WIDTH",
         })
         rows.append(rec)
-    primary=pd.DataFrame(rows)
+    primary=pd.DataFrame(rows, columns=TARGET_CANVAS_OPTICAL_EVIDENCE_COLUMNS[:-4])
     matched=match_secondary_to_canvases(
         scene, canvases, secondary_forecast_optics,
         solar_altitude_deg=float(solar_altitude_deg), valid_time=valid_time,
@@ -285,7 +310,7 @@ def classify_target_optical_truth(row: pd.Series | dict) -> tuple[str, str, str]
 
 def annotate_target_optical_truth(evidence: pd.DataFrame) -> pd.DataFrame:
     if evidence is None or evidence.empty:
-        return pd.DataFrame() if evidence is None else evidence.copy()
+        return pd.DataFrame(columns=TARGET_CANVAS_OPTICAL_EVIDENCE_COLUMNS)
     out=evidence.copy()
     truth=[]; semantics=[]; eligibility=[]
     for _,r in out.iterrows():
@@ -300,7 +325,7 @@ def annotate_target_optical_truth(evidence: pd.DataFrame) -> pd.DataFrame:
 
 def summarize_target_canvas_optical_evidence(evidence: pd.DataFrame) -> pd.DataFrame:
     if evidence is None or evidence.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=TARGET_CANVAS_OPTICAL_SUMMARY_COLUMNS)
     rows=[]
     for a,g in evidence.groupby("solar_altitude_deg",sort=False):
         state=g.get("resolver_state",pd.Series(dtype=str)).astype(str)

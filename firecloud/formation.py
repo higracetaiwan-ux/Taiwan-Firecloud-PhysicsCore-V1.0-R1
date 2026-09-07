@@ -108,6 +108,19 @@ def _source_fraction_from_tau(tau: Optional[float]) -> Optional[float]:
     return max(0.0, min(1.0, 1.0 - math.exp(-max(0.0, float(tau)))))
 
 
+FORMATION_PROVENANCE_ZERO = {
+    "earth_shadow_zero_canvas_count": 0,
+    "total_canvas_count": 0,
+    "target_optics_ready_canvas_count": 0,
+    "target_optics_evidence_conflict_canvas_count": 0,
+    "target_optics_bounded_canvas_count": 0,
+    "target_geometry_only_canvas_count": 0,
+    "target_optical_truth_exact_canvas_count": 0,
+    "target_optical_truth_bounded_canvas_count": 0,
+    "target_optical_truth_conflict_canvas_count": 0,
+    "target_optical_truth_unknown_canvas_count": 0,
+}
+
 # Approximate CIE photopic V(lambda) values at the six retained channels.
 # They are physical spectral sensitivity samples, not calibrated firecloud
 # decision weights.  750 nm intentionally contributes negligibly to brightness.
@@ -255,9 +268,13 @@ def build_r4_formation_tables(
         cf = float(layer.cloud_fraction) if _finite(layer.cloud_fraction) else None
 
         radiance: dict[int, Optional[float]] = {int(wl): None for wl in SIX_BAND_WAVELENGTHS_NM}
+        radiance_lower: dict[int, Optional[float]] = {int(wl): None for wl in SIX_BAND_WAVELENGTHS_NM}
+        radiance_upper: dict[int, Optional[float]] = {int(wl): None for wl in SIX_BAND_WAVELENGTHS_NM}
         if fsun is not None and fsun <= 0.0:
             for wl in SIX_BAND_WAVELENGTHS_NM:
                 radiance[int(wl)] = 0.0
+                radiance_lower[int(wl)] = 0.0
+                radiance_upper[int(wl)] = 0.0
             response_status = "CONFIRMED_ZERO_EARTH_SHADOW"
             confirmed_area = 0.0
             uncertain_area = 0.0
@@ -268,6 +285,8 @@ def build_r4_formation_tables(
                     base = il.get(f"relative_base_illumination_{int(wl)}nm", np.nan)
                     if _finite(base):
                         radiance[int(wl)] = max(0.0, float(base)) * source_fraction
+                        radiance_lower[int(wl)] = radiance[int(wl)]
+                        radiance_upper[int(wl)] = radiance[int(wl)]
                 if all(_finite(radiance[int(wl)]) for wl in SIX_BAND_WAVELENGTHS_NM):
                     response_status = "READY_TIER1_UNCALIBRATED"
                     confirmed_area = (cf if cf is not None else None)
@@ -277,8 +296,17 @@ def build_r4_formation_tables(
                     confirmed_area = 0.0
                     uncertain_area = cf
             elif source_fraction is None:
-                if target_optics_bounded:
-                    response_status = "BOUNDED_TARGET_CLOUD_OPTICS_NOT_PROMOTED_TO_EXACT_RESPONSE"
+                if target_optics_bounded and source_fraction_lower is not None and source_fraction_upper is not None:
+                    for wl in SIX_BAND_WAVELENGTHS_NM:
+                        base = il.get(f"relative_base_illumination_{int(wl)}nm", np.nan) if il is not None else np.nan
+                        if _finite(base):
+                            radiance_lower[int(wl)] = max(0.0, float(base)) * min(source_fraction_lower, source_fraction_upper)
+                            radiance_upper[int(wl)] = max(0.0, float(base)) * max(source_fraction_lower, source_fraction_upper)
+                    response_status = (
+                        "BOUNDED_TIER1_RESPONSE_AVAILABLE"
+                        if all(_finite(radiance_lower[int(wl)]) and _finite(radiance_upper[int(wl)]) for wl in SIX_BAND_WAVELENGTHS_NM)
+                        else "BOUNDED_TARGET_CLOUD_OPTICS_WITH_INCOMPLETE_ILLUMINATION"
+                    )
                 else:
                     response_status = (
                         "UNCERTAIN_TARGET_CLOUD_OPTICS_EVIDENCE_CONFLICT"
@@ -299,6 +327,10 @@ def build_r4_formation_tables(
 
         brightness = _brightness_proxy(radiance)
         redness = _redness_proxy(radiance)
+        brightness_lower = _brightness_proxy(radiance_lower)
+        brightness_upper = _brightness_proxy(radiance_upper)
+        redness_lower = _redness_proxy(radiance_lower)
+        redness_upper = _redness_proxy(radiance_upper)
         colour_diag = reconstruct_six_band_colour(radiance)
         row = {
             "time": valid_time,
@@ -323,13 +355,24 @@ def build_r4_formation_tables(
             "target_vertical_cloud_optical_depth_upper_bound": target_tau_upper,
             "target_cloud_cot_source": target_optics_source,
             "target_effective_radius_um": layer.effective_radius_um,
+            "target_phase_evidence_available": str(getattr(layer, "phase", "UNKNOWN") or "UNKNOWN").upper() not in ("", "UNKNOWN", "NONE"),
+            "target_reff_evidence_available": _finite(layer.effective_radius_um),
+            "tier2_scattering_readiness": (
+                "READY_FOR_TIER2_INPUTS"
+                if str(getattr(layer, "phase", "UNKNOWN") or "UNKNOWN").upper() not in ("", "UNKNOWN", "NONE") and _finite(layer.effective_radius_um)
+                else "PARTIAL_TIER2_INPUTS"
+            ),
             "tier1_source_fraction": source_fraction,
             "tier1_source_fraction_lower_bound": source_fraction_lower,
             "tier1_source_fraction_upper_bound": source_fraction_upper,
             "rt_tier": "TIER1_FAST_SOURCE_PROXY",
             "response_status": response_status,
             "brightness": brightness,
+            "brightness_lower_bound": brightness_lower,
+            "brightness_upper_bound": brightness_upper,
             "redness": redness,
+            "redness_lower_bound": redness_lower,
+            "redness_upper_bound": redness_upper,
             "effective_illuminated_area_fraction": confirmed_area,
             "uncertain_area_fraction": uncertain_area,
             "texture_structure": None,
@@ -339,6 +382,8 @@ def build_r4_formation_tables(
         }
         for wl in SIX_BAND_WAVELENGTHS_NM:
             row[f"cloud_radiance_proxy_{int(wl)}nm"] = radiance[int(wl)]
+            row[f"cloud_radiance_proxy_{int(wl)}nm_lower_bound"] = radiance_lower[int(wl)]
+            row[f"cloud_radiance_proxy_{int(wl)}nm_upper_bound"] = radiance_upper[int(wl)]
         rows.append(row)
 
     canvas_df = pd.DataFrame(rows)
@@ -348,7 +393,9 @@ def build_r4_formation_tables(
             "formation_state": "NO_CANVAS_EVIDENCE", "brightness": None,
             "redness": None, "effective_illuminated_area": None,
             "confirmed_canvas_count": 0, "uncertain_canvas_count": 0,
+            **FORMATION_PROVENANCE_ZERO,
             "formation_confidence": "UNKNOWN", "rt_tier": "NONE",
+            "aggregation_note": "NO_DISTANCE_WEIGHT;NO_CLOUD_TYPE_MULTIPLIER;NO_SINGLE_FORMATION_SCORE",
         }])
         return {"canvas_radiance": canvas_df, "formation": formation, "spectral_colour": pd.DataFrame()}
 
