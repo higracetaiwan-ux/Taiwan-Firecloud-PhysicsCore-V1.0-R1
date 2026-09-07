@@ -5,10 +5,10 @@ from firecloud.contracts import CanvasCandidate, CanvasDomain, GeometryConfidenc
 from firecloud.v1_runtime import build_canvas_solar_ray_g0
 
 
-def test_r2_runtime_uses_frozen_nine_core_angles():
+def test_runtime_uses_full_thirteen_core_angles():
     cfg = ModelConfig()
     assert tuple(cfg.solar_angles_deg) == tuple(FIRECLOUD_CORE_ANGLES_DEG)
-    assert tuple(cfg.solar_angles_deg) == (0.0, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0)
+    assert tuple(cfg.solar_angles_deg) == (0.0, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0, -4.5, -5.0, -5.5, -6.0)
 
 
 def test_canvas_specific_ray_has_no_fixed_rez_boundary():

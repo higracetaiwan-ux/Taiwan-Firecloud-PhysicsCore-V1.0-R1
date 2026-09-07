@@ -7,18 +7,20 @@ EARTH_RADIUS_KM = 6371.0
 # -0.5° is deliberately retained because it resolves the transition into the
 # principal second-burn window better than integer-degree sampling alone.
 # PhysicsCore V1.0 frozen angle contracts.
-# Core Formation uses 0°..-4° at 0.5° resolution.  The broader windows are
-# diagnostic branches and are kept separate from the R1 legacy execution loop
-# so this first refactor checkpoint does not multiply expensive provider/RT calls.
-FIRECLOUD_CORE_ANGLES_DEG = (0.0, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0)
+# Core Formation uses the full 0°..-6° civil-twilight range at 0.5° resolution.
+# R5.7.21.1 extends the former -4° lower bound through -6° so Formation,
+# Viewing, Tier-2 readiness and CASE evidence all share the same 13-angle grid.
+FIRECLOUD_CORE_ANGLES_DEG = (
+    0.0, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5,
+    -4.0, -4.5, -5.0, -5.5, -6.0,
+)
 PRE_SUNSET_DIAGNOSTIC_ANGLES_DEG = (2.0, 1.0)
 LATE_GLOW_ANGLES_DEG = (-4.0, -4.5, -5.0, -5.5, -6.0)
 NAUTICAL_TWILIGHT_DIAGNOSTIC_ANGLES_DEG = (-7.0, -8.0, -9.0, -10.0, -11.0, -12.0)
 
-# R2 runtime: execute the frozen 0°..-4° Core Formation grid at 0.5°.
-# Extended/Late/Nautical diagnostics remain separate contracts and are not
-# multiplied into the expensive RT scheduler until their dependency-aware
-# branches are connected.
+# R5.7.21.1 runtime: execute the full 0°..-6° Core Formation grid at 0.5°.
+# Late-glow remains an independent diagnostic classification even where its
+# angle checkpoints overlap the Core Formation timeline.
 TWILIGHT_DIAGNOSTIC_ANGLES_DEG = FIRECLOUD_CORE_ANGLES_DEG
 
 # Backward-compatible alias used by older code paths.
@@ -158,7 +160,7 @@ class ModelConfig:
         target_altitudes = [0.25 + 0.5 * i for i in range(int(18.0 / 0.5))]
 
         # Route-domain geometry must cover the late-firecloud diagnostic branch
-        # even though the expensive R2 runtime executes only the nine Core angles.
+        # across the full thirteen-angle 0°..-6° Core Formation runtime.
         _runtime_angles = tuple(float(x) for x in self.solar_angles_deg)
         _default_core = tuple(float(x) for x in FIRECLOUD_CORE_ANGLES_DEG)
         _domain_angles = (tuple(dict.fromkeys((*self.firecloud_core_angles_deg, *self.late_glow_angles_deg)))

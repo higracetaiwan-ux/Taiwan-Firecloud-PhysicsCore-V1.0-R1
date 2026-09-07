@@ -1950,8 +1950,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     _progress(0.93, "彙整民用曙暮光時間軸與矩陣…")
     _aggregate_t0 = perf_counter()
     summary = pd.DataFrame(result_rows).sort_values("time")
-    # IMPORTANT: expanding the timeline to 0...-6° must not change the existing
-    # firecloud core selection domain. Only -0.5...-4° candidates can win.
+    # R5.7.21.1: the operational Core Formation/selection domain is the same
+    # full 0°..-6° half-degree timeline used by the expensive physics scheduler.
     valid = summary[summary["core_score_eligible"]].dropna(subset=["physics_score"])
     selected_angle = None
     if not valid.empty:

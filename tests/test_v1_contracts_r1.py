@@ -5,8 +5,8 @@ from firecloud.contracts import (
 from firecloud.config import ModelConfig
 
 
-def test_v1_core_angle_contract_is_0_to_minus4_half_degree():
-    expected=(0.0,-0.5,-1.0,-1.5,-2.0,-2.5,-3.0,-3.5,-4.0)
+def test_v1_core_angle_contract_is_0_to_minus6_half_degree():
+    expected=(0.0,-0.5,-1.0,-1.5,-2.0,-2.5,-3.0,-3.5,-4.0,-4.5,-5.0,-5.5,-6.0)
     assert CORE_FIRECLOUD_ANGLES_DEG == expected
     assert ModelConfig().firecloud_core_angles_deg == expected
 

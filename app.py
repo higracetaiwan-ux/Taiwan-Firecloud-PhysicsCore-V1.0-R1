@@ -1263,9 +1263,9 @@ if run or st.session_state.analysis_result is not None:
     for col in ["physics_score", "visual_magnitude", "data_completeness"]:
         summary[col] = (summary[col] * 100).round(1)
 
-    st.subheader("PhysicsCore V1.0 核心形成時間軸（0°～−4°，0.5°）")
+    st.subheader("PhysicsCore V1.0 核心形成時間軸（0°～−6°，0.5°）")
     st.caption(
-        "R4 使用 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° 九個核心角度。"
+        "R5.7.21.1 使用 0° / −0.5° / −1° / −1.5° / −2° / −2.5° / −3° / −3.5° / −4° / −4.5° / −5° / −5.5° / −6° 共 13 個核心角度。"
         "本階段在 R3 六波段 OpticalPathResult / CloudBaseIllumination 後新增 Canvas Optical Response 與 Formation。"
         "Brightness、Redness、Effective Illuminated Area 保持分離；不產生單一 Formation Score。R5.7 另以 Cloud→Observer Viewing、六波段 Viewing Extinction 與 Photography Decision 判斷此觀測點實際是否可拍。"
     )
@@ -1302,7 +1302,7 @@ if run or st.session_state.analysis_result is not None:
     # from the operational selection gate so users can inspect WHY the gate
     # rejected all candidates.
     _summary_raw = result["summary"].copy()
-    _core_diag = _summary_raw[_summary_raw["solar_altitude_deg"].between(-4.0, -0.5, inclusive="both")].copy()
+    _core_diag = _summary_raw[_summary_raw["solar_altitude_deg"].between(-6.0, 0.0, inclusive="both")].copy()
     if selected is not None:
         diagnostic_angle = float(selected)
     elif not _core_diag.empty:
@@ -1330,7 +1330,7 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R5.7.21：Formation × Viewing × Photography Decision")
+    st.subheader("PhysicsCore V1.0-R5.7.21.1：Formation × Viewing × Photography Decision")
     _event_time_contract = result.get("event_time_contract", pd.DataFrame())
     if not _event_time_contract.empty:
         with st.expander("事件時區 × UTC 物理時間契約", expanded=False):
@@ -1968,7 +1968,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.21_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.21.1_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",
