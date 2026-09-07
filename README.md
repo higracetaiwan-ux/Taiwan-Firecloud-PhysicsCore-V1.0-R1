@@ -1,4 +1,10 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.18
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.18.1
+
+## R5.7.18.1 Spectral Evidence Payload Integrity
+
+R5.7.18.1 is a narrow integrity hardening release on top of R5.7.18. It does not change Formation, Viewing, Tier-1 response, scattering geometry, or the Tier-2 LUT foundation. The release extends the Data/CASE Integrity contract from table/row existence to payload validity.
+
+New payload-level checks include CAMS request-audit presence when CAMS-dependent evidence is expected, numeric O3 payload coverage, O3 quality-missing fraction, core gas payload coverage, and spectral aerosol payload coverage. A table with rows but all O3 values missing is now a hard integrity failure; a valid provider/payload case remains PASS.
 
 ## R5.7.18 Tier-2 Scattering LUT / Solver Foundation
 

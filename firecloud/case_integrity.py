@@ -37,6 +37,23 @@ def _contains_any(series: pd.Series, patterns: Iterable[str]) -> pd.Series:
     return mask
 
 
+
+
+def _row_any_numeric_valid_fraction(df: pd.DataFrame, columns: Iterable[str]) -> float:
+    cols = [c for c in columns if c in df.columns]
+    if df.empty or not cols:
+        return 0.0
+    numeric = pd.concat([pd.to_numeric(df[c], errors="coerce").rename(c) for c in cols], axis=1)
+    return float(numeric.notna().any(axis=1).mean()) if len(numeric) else 0.0
+
+
+def _text_token_fraction(df: pd.DataFrame, columns: Iterable[str], token: str) -> float:
+    cols = [c for c in columns if c in df.columns]
+    if df.empty or not cols:
+        return 0.0
+    text = pd.concat([df[c].astype(str) for c in cols], axis=1).agg(" ".join, axis=1).str.upper()
+    return float(text.str.contains(str(token).upper(), regex=False, na=False).mean()) if len(text) else 0.0
+
 def _audit_success(df: pd.DataFrame) -> bool:
     """Conservative provider-audit success detector, schema tolerant."""
     if df.empty:
@@ -88,6 +105,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     gas = _df(result.get("gas_profile_route_snapshots"))
     ozone = _df(result.get("ozone_profile_route_snapshots"))
     cams_req = _df(result.get("cams_request_audit"))
+    aerosol_spectral = _df(result.get("aerosol_spectral_route_snapshots"))
     formation = _df(result.get("v1_formation"))
     viewing = _df(result.get("v1_viewing_summary"))
     perf = _df(result.get("performance_diagnostics"))
@@ -123,6 +141,14 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add("GFS_NATIVE_VOXEL_HANDOFF", PASS, "NOAA_GFS_NATIVE", _rows(native_vox), ">0 rows")
 
     o3_success = _cams_role_success(cams_req, ["O3", "OZONE"])
+    o3_missing_signal = _text_token_fraction(ozone, ["o3_quality"], "MISSING") > 0.95 or _text_token_fraction(gas, ["o3_quality", "gas_profile_source"], "O3_MISSING") > 0.95
+    aerosol_missing_signal = False
+    if not spectral.empty and "missing_components" in spectral.columns:
+        aerosol_missing_signal = float(spectral["missing_components"].fillna("").astype(str).str.upper().str.contains("AEROSOL", regex=False).mean()) > 0.95
+    cams_payload_expected = o3_missing_signal or aerosol_missing_signal or not ozone.empty or not aerosol_spectral.empty
+    if cams_payload_expected:
+        add("CAMS_REQUEST_AUDIT_PRESENT", PASS if not cams_req.empty else FAIL, "CAMS", _rows(cams_req), ">0 request-audit rows when CAMS-dependent payload is expected", "A blank request audit must not coexist silently with missing O3/aerosol payload")
+
     if o3_success:
         add("CAMS_O3_ROUTE_HANDOFF", PASS if not ozone.empty else FAIL, "CAMS_O3", _rows(ozone), ">0 rows after successful O3 request")
     elif not ozone.empty:
@@ -130,10 +156,31 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     else:
         add("CAMS_O3_ROUTE_HANDOFF", WARN, "CAMS_O3", 0, "route evidence or explicit failed/deferred audit")
 
+    if not ozone.empty:
+        o3_valid_fraction = _row_any_numeric_valid_fraction(ozone, ["o3_mass_mixing_ratio_kgkg", "o3_mole_fraction", "o3_number_density_m3"])
+        o3_payload_status = PASS if o3_valid_fraction >= 0.95 else (FAIL if o3_valid_fraction <= 0.0 else WARN)
+        add("CAMS_O3_ROUTE_PAYLOAD_VALIDITY", o3_payload_status, "CAMS_O3", round(o3_valid_fraction, 6), ">=0.95 rows with numeric O3 payload", "Table presence is insufficient: O3 numeric payload must be present; all-missing payload is a hard failure")
+        o3_missing_fraction = _text_token_fraction(ozone, ["o3_quality"], "MISSING")
+        add("CAMS_O3_QUALITY_MISSING_FRACTION", FAIL if o3_missing_fraction >= 0.95 else (WARN if o3_missing_fraction > 0 else PASS), "CAMS_O3", round(o3_missing_fraction, 6), "<0.95; ideally 0", "CAMS_O3_MISSING quality on nearly all route rows is not a valid O3 evidence payload")
+
     if not gas.empty:
         add("GAS_PROFILE_ROUTE_HANDOFF", PASS, "GAS_PROFILE", _rows(gas), ">0 rows")
+        _gas_core_cols = [c for c in ["temperature_k", "h2o_mole_fraction", "o2_mole_fraction"] if c in gas.columns]
+        if _gas_core_cols:
+            gas_valid_fraction = _row_any_numeric_valid_fraction(gas, _gas_core_cols)
+            add("GAS_CORE_PAYLOAD_VALIDITY", PASS if gas_valid_fraction >= 0.95 else (FAIL if gas_valid_fraction <= 0.0 else WARN), "GAS_PROFILE", round(gas_valid_fraction, 6), ">=0.95 rows with core thermodynamic/H2O/O2 payload")
+        else:
+            add("GAS_CORE_PAYLOAD_VALIDITY", WARN, "GAS_PROFILE", "SCHEMA_NOT_AVAILABLE", "core payload columns when exported", "Legacy/minimal fixtures may omit core gas columns; do not convert schema absence into a false payload hard failure")
     else:
         add("GAS_PROFILE_ROUTE_HANDOFF", WARN, "GAS_PROFILE", 0, "gas evidence may be absent only with explicit upstream failure")
+
+    if not aerosol_spectral.empty:
+        aerosol_valid_fraction = _row_any_numeric_valid_fraction(aerosol_spectral, ["aod550", "aod600", "aod645", "aod650", "aod670", "aod700", "aod750", "aod800"])
+        add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", PASS if aerosol_valid_fraction >= 0.95 else (FAIL if aerosol_valid_fraction <= 0.0 else WARN), "CAMS_AEROSOL", round(aerosol_valid_fraction, 6), ">=0.95 rows with numeric spectral AOD payload")
+    elif not canvas.empty and aerosol_missing_signal:
+        add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", FAIL, "CAMS_AEROSOL", 0.0, "spectral aerosol payload or explicit provider failure", "Canvas spectral paths report AEROSOL missing while aerosol route payload is empty")
+    else:
+        add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", WARN, "CAMS_AEROSOL", 0.0, "payload when required by target spectral RT")
 
     add("FORMATION_TABLE_PRESENT", PASS if not formation.empty else FAIL, "FORMATION", _rows(formation), ">0 rows")
     add("VIEWING_SUMMARY_PRESENT", PASS if not viewing.empty else WARN, "VIEWING", _rows(viewing), ">0 rows when viewing targets exist")
