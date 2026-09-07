@@ -73,7 +73,8 @@ def main(argv: list[str] | None = None) -> int:
         day_value = date.fromisoformat(str(day)) if not isinstance(day, date) else day
         result = analyze_event(
             float(req["lat"]), float(req["lon"]), day_value, str(req["event"]),
-            str(req.get("tz_name", "Asia/Taipei")), progress_callback=progress_callback,
+            req.get("tz_name") or None, progress_callback=progress_callback,
+            timezone_mode=str(req.get("tz_mode", "AUTO_COORDINATE")),
         )
         _atomic_pickle(result_path, result)
         done = dict(base)

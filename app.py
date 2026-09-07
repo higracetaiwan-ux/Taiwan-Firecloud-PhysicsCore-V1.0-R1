@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from firecloud import PROGRAM_NAME, __version__, __baseline__
+from firecloud.timezone_contract import AUTO_COORDINATE, USER_OVERRIDE, resolve_event_timezone
 from firecloud.hitran_readiness import hitran_backend_status, resolve_hitran_db_path, resolve_hitran_lut_path
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
@@ -834,6 +835,10 @@ try:
 except Exception:
     _default_day = date.today()
 _default_event = str(_recovery_req.get("event", "sunset"))
+_default_tz_mode = str(_recovery_req.get("tz_mode", AUTO_COORDINATE) or AUTO_COORDINATE).upper()
+if _default_tz_mode not in {AUTO_COORDINATE, USER_OVERRIDE}:
+    _default_tz_mode = AUTO_COORDINATE
+_default_tz_override = str(_recovery_req.get("tz_name", "Asia/Taipei") or "Asia/Taipei")
 
 with st.sidebar:
     st.header("事件設定")
@@ -842,6 +847,32 @@ with st.sidebar:
     day = st.date_input("日期", value=_default_day)
     event_zh = st.selectbox("事件", ["日落", "日出"], index=1 if _default_event == "sunrise" else 0)
     event = {"日落": "sunset", "日出": "sunrise"}[event_zh]
+
+    with st.expander("時區／UTC 物理時間（跨區域測試）", expanded=False):
+        _tz_mode_label = st.radio(
+            "事件時區來源", ["依座標自動", "手動指定"],
+            index=1 if _default_tz_mode == USER_OVERRIDE else 0, horizontal=True,
+            help="地方時區只決定事件日期與日出/日落的 civil-time 表示；太陽幾何與 forecast valid time 會保存 UTC 物理時刻。",
+        )
+        tz_mode = USER_OVERRIDE if _tz_mode_label == "手動指定" else AUTO_COORDINATE
+        _tz_override_value = _default_tz_override
+        if tz_mode == USER_OVERRIDE:
+            _tz_override_value = st.text_input("IANA 時區", value=_default_tz_override, placeholder="Asia/Tokyo")
+        try:
+            _tz_resolution_ui = resolve_event_timezone(
+                float(lat), float(lon), mode=tz_mode,
+                requested_tz_name=_tz_override_value if tz_mode == USER_OVERRIDE else None,
+            )
+            st.caption(
+                f"座標解析：{_tz_resolution_ui.coordinate_timezone}｜實際事件時區：{_tz_resolution_ui.effective_timezone}｜"
+                f"來源：{_tz_resolution_ui.resolver_source}"
+            )
+            if _tz_resolution_ui.warning:
+                st.warning(_tz_resolution_ui.warning)
+        except Exception as _tz_exc:
+            st.error(f"時區設定無效：{_tz_exc}")
+            _tz_resolution_ui = resolve_event_timezone(float(lat), float(lon), mode=AUTO_COORDINATE)
+            tz_mode = AUTO_COORDINATE
     st.info(
         "預報資料來源：Open-Meteo 路徑／氣壓層剖面，並在可用時加入 NOAA GFS 原生雲微物理。"
         "V8.3.3 另支援具 ADS API 憑證時的 CAMS 原生 3D 氣膠消光（532 nm）＋多波長 AOD；"
@@ -1136,12 +1167,20 @@ if run or st.session_state.analysis_result is not None:
     if run:
         progress = st.progress(0, text="準備分析…")
         status_box = st.empty()
+        _tz_resolution_run = resolve_event_timezone(
+            float(lat), float(lon), mode=tz_mode,
+            requested_tz_name=(_tz_resolution_ui.effective_timezone if tz_mode == USER_OVERRIDE else None),
+        )
         _request = {
             "lat": float(lat),
             "lon": float(lon),
             "day": day.isoformat() if hasattr(day, "isoformat") else str(day),
             "event": str(event),
-            "tz_name": "Asia/Taipei",
+            "tz_mode": _tz_resolution_run.mode,
+            "tz_name": _tz_resolution_run.effective_timezone,
+            "tz_coordinate_name": _tz_resolution_run.coordinate_timezone,
+            "tz_source": _tz_resolution_run.resolver_source,
+            "tz_warning": _tz_resolution_run.warning,
         }
         _old_job = dict(_persisted_job) if resume_run else {}
         _old_progress = _read_json_file(Path(str(_old_job.get("worker_progress_path")))) if _old_job.get("worker_progress_path") else {}
@@ -1291,7 +1330,12 @@ if run or st.session_state.analysis_result is not None:
         c3.metric("基礎預報完整率", f"{chosen['data_completeness']*100:.1f}%")
         c4.metric("Legacy 判定（非 V1）", _zh_text(chosen["operational_decision"]))
 
-    st.subheader("PhysicsCore V1.0-R5.7.20：Formation × Viewing × Photography Decision")
+    st.subheader("PhysicsCore V1.0-R5.7.21：Formation × Viewing × Photography Decision")
+    _event_time_contract = result.get("event_time_contract", pd.DataFrame())
+    if not _event_time_contract.empty:
+        with st.expander("事件時區 × UTC 物理時間契約", expanded=False):
+            st.caption("地方時區只定義 civil event date / 日出日落顯示；太陽幾何與 forecast valid time 保存同一 UTC 物理瞬間。")
+            st.dataframe(_event_time_contract, use_container_width=True, hide_index=True)
     _v1_dep = result.get("v1_dependency_status", pd.DataFrame())
     _v1_canvas = result.get("v1_canvas_candidates", pd.DataFrame())
     _v1_sun = result.get("v1_direct_solar_fraction", pd.DataFrame())
@@ -1735,6 +1779,7 @@ if run or st.session_state.analysis_result is not None:
         _mem = io.BytesIO()
         _items = [
             ("summary.csv", result["summary"]),
+            ("event_time_contract.csv", result.get("event_time_contract", pd.DataFrame())),
             ("directions.csv", detail["directions"]),
             ("voxels.csv", detail["voxels"]),
             ("route_points.csv", result["route_points"]),
@@ -1835,6 +1880,7 @@ if run or st.session_state.analysis_result is not None:
             ("cams_native_aerosol_provider_metadata.json", {str(k): v.get("cams_native_aerosol_metadata", {}) for k, v in result.get("details", {}).items()}),
             ("cams_native_ozone_provider_status.json", result.get("cams_native_ozone_provider_status", {})),
             ("hitran_backend_status.json", result.get("hitran_backend_status", {})),
+            ("event_timezone_resolution.json", result.get("event_timezone_resolution", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),
             ("cams_worker_checkpoints.json", _load_all_cams_worker_checkpoints()),
@@ -1922,7 +1968,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.20_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.21_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",

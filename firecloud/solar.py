@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 import math
 
 
 def _fractional_year(when: datetime) -> float:
+    # R5.7.21: declination/equation-of-time are physical functions of the
+    # instant, not of the timezone used to display that instant. Canonicalize
+    # to UTC so Asia/Taipei vs Asia/Tokyo representations cannot perturb the
+    # solar state.
+    if when.tzinfo is None:
+        raise ValueError("Solar calculations require a timezone-aware datetime")
+    when = when.astimezone(timezone.utc)
     doy = when.timetuple().tm_yday
     hour = when.hour + when.minute / 60 + when.second / 3600
     days = 366 if (when.year % 4 == 0 and (when.year % 100 != 0 or when.year % 400 == 0)) else 365
@@ -30,10 +37,14 @@ def _eqtime_declination(when: datetime) -> tuple[float, float]:
 def _solar_geometry(lat: float, lon: float, when: datetime) -> tuple[float, float]:
     if when.tzinfo is None:
         raise ValueError("Solar calculations require a timezone-aware datetime")
-    eqtime, decl = _eqtime_declination(when)
-    offset_hours = when.utcoffset().total_seconds() / 3600.0
-    minutes = when.hour * 60 + when.minute + when.second / 60 + when.microsecond / 60_000_000
-    true_solar_time = (minutes + eqtime + 4.0 * lon - 60.0 * offset_hours) % 1440.0
+    when_utc = when.astimezone(timezone.utc)
+    eqtime, decl = _eqtime_declination(when_utc)
+    # UTC canonical form of NOAA true-solar-time equation. This is
+    # algebraically equivalent to local-minutes - timezone-offset, but makes
+    # the physics contract explicit and timezone-representation invariant.
+    minutes = (when_utc.hour * 60 + when_utc.minute + when_utc.second / 60
+               + when_utc.microsecond / 60_000_000)
+    true_solar_time = (minutes + eqtime + 4.0 * lon) % 1440.0
     hour_angle_deg = true_solar_time / 4.0 - 180.0
     if hour_angle_deg < -180:
         hour_angle_deg += 360.0

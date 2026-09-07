@@ -1,3 +1,15 @@
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.21
+
+## R5.7.21 Cross-Region Timezone + UTC Physics Contract
+
+R5.7.21 makes event time semantics coordinate-aware for cross-region PhysicsCore regression testing. The local civil timezone is resolved from coordinates (global IANA resolution through optional/runtime `timezonefinder`, with deterministic Taiwan/Japan/fixed-offset fallbacks), while solar physics is canonicalized to UTC so the same physical instant produces identical solar elevation/azimuth regardless of whether it is represented in Asia/Taipei, Asia/Tokyo, or UTC.
+
+The Streamlit event request now stores timezone mode, coordinate-resolved timezone, effective timezone, resolver provenance, and mismatch warnings. Manual IANA timezone overrides are preserved rather than silently rewritten. CASE export adds `event_time_contract.csv` and `event_timezone_resolution.json`, explicitly pairing local civil event times with their UTC instants for every solar-altitude checkpoint.
+
+The R5.7.20 Tier-2 calibration/solver chain is unchanged. No physical thresholds, Formation/Viewing semantics, target optical truth, or LUT production gates are altered.
+
+---
+
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.20
 
 ## R5.7.20 Calibrated Scattering Solver + Calibration Package Contract

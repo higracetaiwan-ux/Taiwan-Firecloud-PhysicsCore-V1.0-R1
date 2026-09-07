@@ -12,3 +12,4 @@ hitran-api>=1.3.0.0
 hitran-api2==0.2.2
 
 scipy>=1.10
+timezonefinder>=6.5

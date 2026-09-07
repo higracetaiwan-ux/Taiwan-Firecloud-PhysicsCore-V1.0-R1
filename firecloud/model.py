@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, wait
 import math
 import os
@@ -38,6 +38,7 @@ from .shared_geometry import (
     geometric_illumination_state,
 )
 from .solar import find_time_for_solar_altitude, solar_azimuth_deg
+from .timezone_contract import AUTO_COORDINATE, resolve_event_timezone, build_event_time_contract
 from .providers.openmeteo import (
     fetch_route_hourly, fetch_route_surface_hourly, fetch_route_pressure_hourly,
     interpolate_route_at_time, PRESSURE_LEVELS_HPA as GAS_PRESSURE_LEVELS_HPA,
@@ -1134,9 +1135,14 @@ def _select_v1_canvas_rt_targets(native_optical_voxels: pd.DataFrame, canvases, 
     return out.drop_duplicates(subset=subset,keep="first").reset_index(drop=True) if subset else out.reset_index(drop=True)
 
 
-def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = "Asia/Taipei",
-                  cfg: ModelConfig | None = None, progress_callback=None) -> dict:
+def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | None = None,
+                  cfg: ModelConfig | None = None, progress_callback=None,
+                  timezone_mode: str = AUTO_COORDINATE) -> dict:
     cfg = cfg or ModelConfig()
+    _tz_resolution = resolve_event_timezone(
+        float(lat), float(lon), mode=timezone_mode, requested_tz_name=tz_name,
+    )
+    tz_name = _tz_resolution.effective_timezone
     _analysis_t0 = perf_counter()
     performance_rows = []
     def _progress(fraction: float, message: str):
@@ -1153,6 +1159,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         t = find_time_for_solar_altitude(lat, lon, day, event, angle, tz_name)
         az = solar_azimuth_deg(lat, lon, t)
         candidates.append((angle, t, az))
+
+    # R5.7.21 cross-region time contract. Local civil time chooses the event
+    # date/crossing; every physical instant is also preserved explicitly in UTC.
+    event_time_contract = build_event_time_contract(candidates, _tz_resolution, day, event)
 
     # Use the middle candidate azimuth to build one route lattice; directional motion across
     # the ~30 minute interval is small, and each offset remains explicit.
@@ -1897,6 +1907,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
         result_rows.append({
             "solar_altitude_deg": angle,
             "time": t,
+            "time_utc": t.astimezone(timezone.utc),
+            "event_timezone": tz_name,
+            "timezone_mode": _tz_resolution.mode,
             "solar_azimuth_deg": az,
             "twilight_phase": phase,
             "core_score_eligible": is_core,
@@ -2286,6 +2299,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str = 
     analysis_integrity_audit = build_analysis_integrity_audit(_pre_integrity_result)
     return {
         "summary": summary,
+        "event_time_contract": event_time_contract,
+        "event_timezone_resolution": _tz_resolution.to_dict(),
         "details": details,
         "illumination_matrix": illumination_matrix,
         "dynamic_rez": dynamic_rez,
