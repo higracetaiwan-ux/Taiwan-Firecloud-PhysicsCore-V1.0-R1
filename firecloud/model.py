@@ -1421,6 +1421,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         _cams_parallel_workers = 1
     _cams_progress_lock = threading.Lock()
     _cams_progress_states = {}
+    # R5.7.23.3: in production single-flight mode the bundle runs synchronously
+    # on the analysis thread.  Role callbacks therefore have to repaint the UI
+    # immediately; otherwise both time slices remain labelled WAITING until the
+    # whole first bundle returns even though ADS work is already in progress.
+    _cams_completed_visible = {"count": 0}
     # UI elapsed is driven by the main scheduler's monotonic clock, not by CAMS
     # child heartbeats.  If a provider callback stops at 5s the display still
     # advances and the operator can see the real wall-clock wait.
@@ -1442,6 +1447,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 "SPECTRAL_COLUMN_AOD_RETRY": "光譜AOD重試",
                 "DECODED_ROUTE_CACHE_WRITE": "解碼快取落盤",
                 "CAMS_BUNDLE_POSTPROCESS": "時次後處理",
+                "DECODED_ROUTE_CACHE_LOOKUP": "解碼快取查找",
+                "CAMS_WORKER_STARTUP": "worker啟動",
             }.get(_role, _role)
             _status_u = str(_status).upper()
             with _cams_progress_lock:
@@ -1452,6 +1459,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                     _cams_progress_started.pop((_key, _short), None)
                     _role_state[_short] = f"{_status} {float(_elapsed):.1f}s"
                 _cams_progress_states[_key] = dict(_role_state)
+            # Production-safe mode is synchronous: repaint from the callback so
+            # the operator sees CACHE LOOKUP / WORKER START / role heartbeats in
+            # real time.  Expert parallel mode retains the scheduler-side 0.5 s
+            # renderer to avoid Streamlit UI calls from worker threads.
+            if _cams_parallel_workers == 1:
+                try: _render_cams_prefetch_progress(int(_cams_completed_visible.get("count", 0)))
+                except Exception: pass
 
         try:
             _payload = fetch_route_native_aerosol_bundle_timed(route_points, _t, progress_callback=_cams_role_progress)
@@ -1523,6 +1537,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 _elapsed = perf_counter() - _prefetch_t0
             _record_cams_bundle(_key, _payload, _elapsed)
             _completed += 1
+            _cams_completed_visible["count"] = _completed
             _render_cams_prefetch_progress(_completed)
     else:
         _future_to_item = {}

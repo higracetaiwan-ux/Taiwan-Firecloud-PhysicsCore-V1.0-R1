@@ -783,7 +783,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.23.2 Memory-Safe Aggregation Hotfix + R5.7.23 Runtime Hardening + Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.23.3 CAMS Live-Telemetry Hotfix + R5.7.23.2 Memory-Safe Aggregation Hotfix + R5.7.23 Runtime Hardening + Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。

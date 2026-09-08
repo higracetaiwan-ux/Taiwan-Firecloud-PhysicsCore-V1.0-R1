@@ -1,6 +1,15 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.23.2
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.23.3
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+## R5.7.23.3 CAMS Live-Telemetry Hotfix
+
+- 修正 production global ADS single-flight 模式中，第一個 CAMS time bundle 實際執行時 UI 仍可能顯示「時次 1/2｜等待；時次 2/2｜等待」的 telemetry blind spot。
+- role heartbeat 在 single-flight 模式下會立即刷新 UI。
+- 新增「解碼快取查找」與「worker啟動」子階段，區分 cache I/O、worker spawn 與真正 ADS request。
+- 第二時次在第一 time bundle 完成前維持「等待」仍屬正常 single-flight 行為。
+- 不修改 CAMS 90 秒 deadline、request variables、adaptive planner、Formation / Viewing / 六波段或 Tier-2 科學契約。
+
 
 ## R5.7.23.2 Memory-Safe Aggregation Hotfix
 

@@ -976,16 +976,29 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
     the whole worker process group; Missing remains Missing.
     """
     deadline_seconds=max(0.2,float(deadline_seconds))
+    # R5.7.23.3: expose the decoded-route cache lookup itself.  Previously the
+    # production single-flight UI could show both time slices as WAITING while
+    # the first bundle was already doing cache I/O.  On a mounted filesystem a
+    # pickle/stat lookup can be slow enough to look like an ADS stall.
     _cache_started = time.monotonic()
+    if heartbeat_callback:
+        try: heartbeat_callback("DECODED_ROUTE_CACHE_LOOKUP", "RUNNING", 0.0)
+        except Exception: pass
     _cached = _load_decoded_role_cache(role, points, valid_time, cache_dir)
+    _cache_elapsed = time.monotonic() - _cache_started
     if _cached is not None:
-        _cached["elapsed_seconds"] = time.monotonic() - _cache_started
+        _cached["elapsed_seconds"] = _cache_elapsed
         _cached["ipc_mode"] = "PERSISTENT_DECODED_ROUTE_CACHE"
         _cached["worker_mode"] = "WORKER_SKIPPED_DECODED_CACHE_HIT"
         if heartbeat_callback:
+            try: heartbeat_callback("DECODED_ROUTE_CACHE_LOOKUP", "CACHE_HIT", _cache_elapsed)
+            except Exception: pass
             try: heartbeat_callback(role, "CACHE_HIT", _cached["elapsed_seconds"])
             except Exception: pass
         return _cached
+    if heartbeat_callback:
+        try: heartbeat_callback("DECODED_ROUTE_CACHE_LOOKUP", "MISS", _cache_elapsed)
+        except Exception: pass
     try:
         heartbeat_seconds=max(0.5,float(os.getenv("FIRECLOUD_CAMS_HEARTBEAT_SECONDS","5")))
     except Exception:
@@ -1067,6 +1080,10 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
             except Exception: pass
 
         try:
+            if heartbeat_callback:
+                try: heartbeat_callback("CAMS_WORKER_STARTUP", "RUNNING", 0.0)
+                except Exception: pass
+            _worker_start_t0 = time.monotonic()
             with stdout_path.open("wb") as out_fh, stderr_path.open("wb") as err_fh:
                 _write_cams_worker_checkpoint(
                     role, "O3_WORKER_STARTING" if role == "O3_PRESSURE_LEVEL" else "CAMS_WORKER_STARTING",
@@ -1086,6 +1103,8 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
                     result_path=result_path, stdout_path=stdout_path, stderr_path=stderr_path,
                 )
                 if heartbeat_callback:
+                    try: heartbeat_callback("CAMS_WORKER_STARTUP", "OK", time.monotonic()-_worker_start_t0)
+                    except Exception: pass
                     try: heartbeat_callback(role,"RUNNING",0.0)
                     except Exception: pass
 
