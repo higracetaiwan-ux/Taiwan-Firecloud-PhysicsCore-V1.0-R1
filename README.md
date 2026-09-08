@@ -1,6 +1,15 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.23.3
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.23.4
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+
+## R5.7.23.4 Integrity-Audit Robustness Hotfix
+
+- 修正 `case_integrity.py::_cams_role_success()` 在 Python 3.14 / pandas mixed-type CAMS audit 上可能因 float/NaN 進入字串 join 而拋出 `TypeError`。
+- CAMS / GFS integrity 文字欄位改用逐 scalar 型別安全正規化，不再依賴 `DataFrame.agg(" ".join)`。
+- 任一 CAMS time bundle 對同一 role 發生 `TIMEOUT/FAILED/ERROR/429/HTTP 4xx/5xx` 時，該 role 不再被誤提升為完整成功。
+- CAMS timeout 只降低 optical/integrity completeness；不得因 audit 自身型別錯誤中止整個 CASE。
+- 不修改 Formation、Viewing、六波段 RT、CAMS 90 秒 watchdog 或 Tier-2 calibration 科學邏輯。
 
 ## R5.7.23.3 CAMS Live-Telemetry Hotfix
 
