@@ -1,6 +1,18 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.24
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.24.1
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+
+## R5.7.24.1 CAMS Availability Guard
+
+R5.7.24 現場 CASE 已驗證記憶體收斂有效，但在 2026-09-08 10:21 UTC 的 WARM_PRODUCTION 分析中，CAMS cycle resolver 過早選到當日 00Z +9/+12h。ADS 對 O₃ 與 Spectral AOD 回覆 HTTP 400 `invalid request / valid combination`，舊 adaptive planner 又把這種非空間型錯誤誤判成可由縮小 route bbox 修復，造成大量無效子區重試與 CAMS 預取約 573 秒，最終 O₃ evidence chain 仍 FAIL。
+
+R5.7.24.1 因此採可靠性優先修正：
+
+- CAMS 預設 availability guard 由 10.25 h 調整為 **12.25 h**，避免過早切換到剛發布但角色資料尚未完整可取的新 cycle。
+- HTTP 400 `invalid request / invalid combination / valid combination` 被分類為**非空間型 ADS request failure**，不再做 adaptive spatial subdivision。
+- 仍維持 Missing / fail-closed 語義；不以舊值、常數或 synthetic profile 補 O₃ / aerosol evidence。
+- R5.7.24 的 Runtime Reliability、Recovery、Memory Containment 全部保留。
 
 ## R5.7.24 Runtime Reliability / Completion Guarantee + Memory Containment
 

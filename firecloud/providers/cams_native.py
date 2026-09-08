@@ -145,15 +145,17 @@ def resolve_cams_run_and_lead(valid_time: datetime, now_utc: datetime | None = N
     and trigger ADS HTTP 400 ``invalid combination`` for every Dynamic tile.
 
     ``FIRECLOUD_CAMS_AVAILABILITY_LAG_HOURS`` is configurable for deployments;
-    the default 10.25 h adds a small safety margin while keeping the previous
-    cycle scientifically valid for the requested forecast valid time.
+    the default 12.25 h is intentionally conservative for production reliability.
+    Field availability on ADS can lag the nominal publication time; selecting a
+    just-released cycle too early has repeatedly produced HTTP 400 invalid-combination
+    responses even though the previous 12-hour cycle remains scientifically valid.
     """
     target = _utc(valid_time)
     now = _utc(now_utc or datetime.now(timezone.utc))
     try:
-        lag_hours = float(os.getenv("FIRECLOUD_CAMS_AVAILABILITY_LAG_HOURS", "10.25"))
+        lag_hours = float(os.getenv("FIRECLOUD_CAMS_AVAILABILITY_LAG_HOURS", "12.25"))
     except Exception:
-        lag_hours = 10.25
+        lag_hours = 12.25
     lag_hours = max(10.0, lag_hours)
 
     # Never select a cycle newer than the latest one expected to be delivered,
@@ -1489,6 +1491,24 @@ def _split_points_by_distance_midpoint(points: list[dict]) -> list[list[dict]]:
     return [x for x in (left, right) if x]
 
 
+def _is_nonspatial_ads_request_failure(error: str) -> bool:
+    """Return True when subdivision cannot repair the ADS request.
+
+    HTTP 400 invalid-request/invalid-combination errors describe the selected
+    forecast cycle/variable/lead contract, not the geographic extent. Repeating
+    the same request against smaller route tiles only multiplies failures and can
+    waste many minutes. Keep these failures fail-closed and auditable.
+    """
+    text = str(error or "").lower()
+    if "400 client error" not in text and "http 400" not in text:
+        return False
+    return (
+        "invalid request" in text
+        or "valid combination" in text
+        or "invalid combination" in text
+    )
+
+
 def _fetch_cams_role_adaptive(points: list[dict], valid_time: datetime, role: str,
                               cache_dir: str | Path | None = None,
                               deadline_seconds: float | None = None,
@@ -1572,6 +1592,12 @@ def _fetch_cams_role_adaptive(points: list[dict], valid_time: datetime, role: st
         # can make one event spend several minutes producing no new information.
         worker_error = str(res.get("error", "") or "")
         if worker_error.startswith(("CAMS_PREFLIGHT_", "CAMS_EXTERNAL_WORKER_", "CAMS_WORKER_")):
+            return
+
+        # ADS HTTP 400 invalid-selection errors are non-spatial. Subdividing the
+        # same cycle/lead/variable contract cannot repair them and previously
+        # turned one bad cycle selection into dozens of futile requests.
+        if _is_nonspatial_ads_request_failure(worker_error):
             return
 
         # A timeout may represent a remote ADS job still running.  Do not create

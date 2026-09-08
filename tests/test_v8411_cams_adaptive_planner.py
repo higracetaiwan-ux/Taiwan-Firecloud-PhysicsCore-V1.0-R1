@@ -51,3 +51,28 @@ def test_planner_best_case_uses_one_request_per_role(monkeypatch):
     assert meta['cams_request_planner']=='WHOLE_ROUTE_FIRST_ADAPTIVE_SUBTILING'
     assert meta['cams_tile_count']==3
     assert len(df)==len(_pts())
+
+
+def test_http_400_invalid_combination_does_not_spatially_subdivide(monkeypatch):
+    calls=[]
+    def fake(role, points, valid_time, cache_dir, deadline_seconds, heartbeat_callback=None):
+        calls.append((role, len(points)))
+        return {
+            'role': role,
+            'status': 'FAILED',
+            'df': pd.DataFrame(),
+            'meta': {'request_audit': {'status': 'FAILED'}},
+            'inventory': [],
+            'error': 'RuntimeError: HTTPError: 400 Client Error: Bad Request; invalid request; Request has not produced a valid combination of values',
+            'elapsed_seconds': 0.01,
+        }
+    monkeypatch.setattr(cams_native, '_run_cams_role_isolated', fake)
+    df,aud,inv,stats = cams_native._fetch_cams_role_adaptive(
+        _pts(), datetime(2026,9,4,10,tzinfo=timezone.utc),
+        'O3_PRESSURE_LEVEL', deadline_seconds=1
+    )
+    assert len(calls) == 1
+    assert stats['adaptive_splits'] == 0
+    assert stats['requests'] == 1
+    assert df.empty
+    assert len(aud) == 1
