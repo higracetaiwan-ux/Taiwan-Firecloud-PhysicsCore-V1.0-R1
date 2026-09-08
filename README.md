@@ -1,6 +1,15 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.23.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.23.2
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+## R5.7.23.2 Memory-Safe Aggregation Hotfix
+
+- 修正 13-angle 完成後「彙整民用曙暮光時間軸與矩陣」階段的 RAM 尖峰。
+- 大型 per-angle DataFrame 不再先 `.copy()` 後與原件同時留在 `details`；改為先完成 completeness audit，再逐類 drain 到最終 aggregate matrix。
+- 每完成一類 aggregation 即釋放暫存 frame 並執行 GC，降低同時存在的 duplicate buffers。
+- aggregation 拆成可見子階段並寫入 runtime resource telemetry，便於定位真正的記憶體瓶頸。
+- 不減少 13 angles、不降低 0.5 km 垂直解析度、不刪 CASE 證據，也不修改 Formation / Viewing / Tier-2 科學邏輯。
+
 
 ## R5.7.23.1 Runtime Hotfix
 

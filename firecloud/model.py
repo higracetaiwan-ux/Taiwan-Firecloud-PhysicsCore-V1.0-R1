@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, wait
 import math
 import os
+import gc
 import re
 import threading
 import time
@@ -2079,96 +2080,116 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         ranked = valid.sort_values(["physics_score", "visual_magnitude", "data_completeness"], ascending=False)
         selected_angle = float(ranked.iloc[0]["solar_altitude_deg"])
 
-    illumination_matrix, dynamic_rez = build_geometry_diagnostics(cfg)
-    voxel_frames = []
-    for angle, t, _az in candidates:
-        vf = details[angle]["forecast_voxels"].copy()
-        if not vf.empty:
-            vf["time"] = t
-            voxel_frames.append(vf)
-    forecast_voxel_matrix = pd.concat(voxel_frames, ignore_index=True) if voxel_frames else pd.DataFrame()
-    recon_v_frames, recon_c_frames = [], []
-    for angle, t, _az in candidates:
-        rv = details[angle]["reconstructed_voxels"].copy()
-        rc = details[angle]["reconstructed_columns"].copy()
-        if not rv.empty:
-            rv["time"] = t; recon_v_frames.append(rv)
-        if not rc.empty:
-            rc["time"] = t; recon_c_frames.append(rc)
-    reconstructed_voxel_matrix = pd.concat(recon_v_frames, ignore_index=True) if recon_v_frames else pd.DataFrame()
-    reconstructed_cloud_columns = pd.concat(recon_c_frames, ignore_index=True) if recon_c_frames else pd.DataFrame()
-    profile_v_frames, profile_c_frames, native_v_frames, native_c_frames, optical_v_frames, optical_c_frames, native_opt_v_frames, native_opt_c_frames, spectral_v_frames, spectral_c_frames, aerosol_spec_frames, cams_aerosol_frames, gas_profile_frames = [], [], [], [], [], [], [], [], [], [], [], [], []
-    for angle, t, _az in candidates:
-        for key, dest in [("profile_voxels", profile_v_frames), ("profile_columns", profile_c_frames),
-                          ("native_voxels", native_v_frames), ("native_columns", native_c_frames),
-                          ("optical_voxels", optical_v_frames), ("optical_columns", optical_c_frames),
-                          ("native_optical_voxels", native_opt_v_frames), ("native_optical_columns", native_opt_c_frames),
-                          ("spectral_voxels", spectral_v_frames), ("spectral_columns", spectral_c_frames)]:
-            df = details[angle][key].copy()
-            if not df.empty:
-                df["time"] = t
-                if "solar_altitude_deg" not in df.columns:
-                    df["solar_altitude_deg"] = float(angle)
-                dest.append(df)
-        adf = details[angle].get("aerosol_spectral_snapshot", pd.DataFrame()).copy()
-        if not adf.empty:
-            adf["time"] = t
-            adf["solar_altitude_deg"] = float(angle)
-            aerosol_spec_frames.append(adf)
-        gpf = details[angle].get("gas_profile", pd.DataFrame()).copy()
-        if not gpf.empty:
-            gpf["time"] = t; gpf["solar_altitude_deg"] = float(angle); gas_profile_frames.append(gpf)
-        cdf = details[angle].get("cams_native_aerosol_snapshot", pd.DataFrame()).copy()
-        if not cdf.empty:
-            cdf["time"] = t
-            cdf["solar_altitude_deg"] = float(angle)
-            cams_aerosol_frames.append(cdf)
-    pressure_profile_voxel_matrix = pd.concat(profile_v_frames, ignore_index=True) if profile_v_frames else pd.DataFrame()
-    pressure_profile_cloud_columns = pd.concat(profile_c_frames, ignore_index=True) if profile_c_frames else pd.DataFrame()
-    native_cloud_voxel_matrix = pd.concat(native_v_frames, ignore_index=True) if native_v_frames else pd.DataFrame()
-    native_cloud_columns = pd.concat(native_c_frames, ignore_index=True) if native_c_frames else pd.DataFrame()
-    optical_blocking_voxel_matrix = pd.concat(optical_v_frames, ignore_index=True) if optical_v_frames else pd.DataFrame()
-    vertical_blocking_columns = pd.concat(optical_c_frames, ignore_index=True) if optical_c_frames else pd.DataFrame()
-    native_optical_blocking_voxel_matrix = pd.concat(native_opt_v_frames, ignore_index=True) if native_opt_v_frames else pd.DataFrame()
-    native_optical_blocking_columns = pd.concat(native_opt_c_frames, ignore_index=True) if native_opt_c_frames else pd.DataFrame()
-    spectral_rt_voxel_matrix = pd.concat(spectral_v_frames, ignore_index=True) if spectral_v_frames else pd.DataFrame()
-    spectral_rt_columns = pd.concat(spectral_c_frames, ignore_index=True) if spectral_c_frames else pd.DataFrame()
-    aerosol_spectral_route_snapshots = pd.concat(aerosol_spec_frames, ignore_index=True) if aerosol_spec_frames else pd.DataFrame()
-    cams_native_aerosol_route_snapshots = pd.concat(cams_aerosol_frames, ignore_index=True) if cams_aerosol_frames else pd.DataFrame()
-    gas_profile_route_snapshots = pd.concat(gas_profile_frames, ignore_index=True) if gas_profile_frames else pd.DataFrame()
+    # R5.7.23.2: build the completeness audit before draining heavyweight
+    # per-angle evidence from ``details``.  The audit needs only a few of those
+    # frames; after it is built, the large matrices can be moved (not copied)
+    # into their final aggregate tables and released progressively.
+    physics_data_completeness = _build_physics_data_completeness(details, candidates, summary)
 
-    v1_cloud_layers = pd.concat(v1_cloud_layer_frames, ignore_index=True) if v1_cloud_layer_frames else pd.DataFrame()
-    v1_canvas_candidates = pd.concat(v1_canvas_frames, ignore_index=True) if v1_canvas_frames else pd.DataFrame(columns=CANVAS_CANDIDATE_TABLE_COLUMNS)
-    v1_direct_solar = pd.concat(v1_direct_solar_frames, ignore_index=True) if v1_direct_solar_frames else pd.DataFrame()
-    v1_solar_rays = pd.concat(v1_solar_ray_frames, ignore_index=True) if v1_solar_ray_frames else pd.DataFrame()
-    v1_dependency_status = pd.concat(v1_dependency_frames, ignore_index=True) if v1_dependency_frames else pd.DataFrame()
-    v1_solar_geometry = pd.concat(v1_solar_geometry_frames, ignore_index=True) if v1_solar_geometry_frames else pd.DataFrame()
-    v1_ray_cloud_intersections = pd.concat(v1_ray_cloud_intersection_frames, ignore_index=True) if v1_ray_cloud_intersection_frames else pd.DataFrame()
-    v1_cloud_horizontal_support = pd.concat(v1_cloud_horizontal_support_frames, ignore_index=True) if v1_cloud_horizontal_support_frames else pd.DataFrame()
-    v1_native_condensate_support_diagnostics = pd.concat(v1_native_condensate_support_diagnostic_frames, ignore_index=True) if v1_native_condensate_support_diagnostic_frames else pd.DataFrame()
-    v1_spectral_optical_paths = pd.concat(v1_spectral_optical_path_frames, ignore_index=True) if v1_spectral_optical_path_frames else pd.DataFrame()
-    v1_cloud_base_illumination = pd.concat(v1_cloud_base_illumination_frames, ignore_index=True) if v1_cloud_base_illumination_frames else pd.DataFrame()
-    v1_uncertainty = pd.concat(v1_uncertainty_frames, ignore_index=True) if v1_uncertainty_frames else pd.DataFrame()
-    v1_optical_bottlenecks = pd.concat(v1_optical_bottleneck_frames, ignore_index=True) if v1_optical_bottleneck_frames else pd.DataFrame()
-    v1_canvas_radiance = pd.concat(v1_canvas_radiance_frames, ignore_index=True) if v1_canvas_radiance_frames else pd.DataFrame()
-    v1_formation = pd.concat(v1_formation_frames, ignore_index=True) if v1_formation_frames else pd.DataFrame()
+    _agg_step = 0
+    _agg_total = 8
+    def _aggregation_checkpoint(message: str, **frames):
+        nonlocal _agg_step
+        _agg_step += 1
+        frac = 0.93 + 0.045 * min(1.0, _agg_step / max(1, _agg_total))
+        _progress(frac, f"彙整民用曙暮光時間軸與矩陣｜{message}")
+        _record_runtime_resource(f"AGGREGATION_{_agg_step:02d}_{message}", None, **frames)
+
+    def _drain_detail_matrix(key: str, *, ensure_angle: bool = False) -> pd.DataFrame:
+        """Move one heavyweight per-angle frame family into one final matrix.
+
+        R5.7.23.1 copied every frame while the originals remained referenced in
+        ``details``.  With 13 angles that created a large transient RAM spike.
+        Here the original frame is popped, annotated in-place, concatenated with
+        ``copy=False``, and the temporary list is immediately released.
+        """
+        frames = []
+        for angle, t, _az in candidates:
+            d = details.get(angle, {})
+            df = d.pop(key, pd.DataFrame())
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                df["time"] = t
+                if ensure_angle and "solar_altitude_deg" not in df.columns:
+                    df["solar_altitude_deg"] = float(angle)
+                frames.append(df)
+        if not frames:
+            return pd.DataFrame()
+        out = pd.concat(frames, ignore_index=True, copy=False)
+        frames.clear()
+        return out
+
+    def _concat_release(frames, empty=None) -> pd.DataFrame:
+        if frames:
+            out = pd.concat(frames, ignore_index=True, copy=False)
+            frames.clear()
+            return out
+        return empty if empty is not None else pd.DataFrame()
+
+    illumination_matrix, dynamic_rez = build_geometry_diagnostics(cfg)
+    _aggregation_checkpoint("幾何診斷完成", illumination_matrix=illumination_matrix, dynamic_rez=dynamic_rez)
+
+    forecast_voxel_matrix = _drain_detail_matrix("forecast_voxels")
+    reconstructed_voxel_matrix = _drain_detail_matrix("reconstructed_voxels")
+    reconstructed_cloud_columns = _drain_detail_matrix("reconstructed_columns")
+    _aggregation_checkpoint("基礎雲體矩陣完成", forecast_voxel_matrix=forecast_voxel_matrix, reconstructed_voxel_matrix=reconstructed_voxel_matrix)
+    gc.collect()
+
+    pressure_profile_voxel_matrix = _drain_detail_matrix("profile_voxels", ensure_angle=True)
+    pressure_profile_cloud_columns = _drain_detail_matrix("profile_columns", ensure_angle=True)
+    native_cloud_voxel_matrix = _drain_detail_matrix("native_voxels", ensure_angle=True)
+    native_cloud_columns = _drain_detail_matrix("native_columns", ensure_angle=True)
+    _aggregation_checkpoint("氣壓層與原生雲體矩陣完成", pressure_profile_voxel_matrix=pressure_profile_voxel_matrix, native_cloud_voxel_matrix=native_cloud_voxel_matrix)
+    gc.collect()
+
+    optical_blocking_voxel_matrix = _drain_detail_matrix("optical_voxels", ensure_angle=True)
+    vertical_blocking_columns = _drain_detail_matrix("optical_columns", ensure_angle=True)
+    native_optical_blocking_voxel_matrix = _drain_detail_matrix("native_optical_voxels", ensure_angle=True)
+    native_optical_blocking_columns = _drain_detail_matrix("native_optical_columns", ensure_angle=True)
+    _aggregation_checkpoint("雲光學阻擋矩陣完成", optical_blocking_voxel_matrix=optical_blocking_voxel_matrix, native_optical_blocking_voxel_matrix=native_optical_blocking_voxel_matrix)
+    gc.collect()
+
+    spectral_rt_voxel_matrix = _drain_detail_matrix("spectral_voxels", ensure_angle=True)
+    spectral_rt_columns = _drain_detail_matrix("spectral_columns", ensure_angle=True)
+    aerosol_spectral_route_snapshots = _drain_detail_matrix("aerosol_spectral_snapshot", ensure_angle=True)
+    cams_native_aerosol_route_snapshots = _drain_detail_matrix("cams_native_aerosol_snapshot", ensure_angle=True)
+    gas_profile_route_snapshots = _drain_detail_matrix("gas_profile", ensure_angle=True)
+    _aggregation_checkpoint("光譜與大氣矩陣完成", spectral_rt_voxel_matrix=spectral_rt_voxel_matrix, gas_profile_route_snapshots=gas_profile_route_snapshots)
+    gc.collect()
+
+    v1_cloud_layers = _concat_release(v1_cloud_layer_frames)
+    v1_canvas_candidates = _concat_release(v1_canvas_frames, pd.DataFrame(columns=CANVAS_CANDIDATE_TABLE_COLUMNS))
+    v1_direct_solar = _concat_release(v1_direct_solar_frames)
+    v1_solar_rays = _concat_release(v1_solar_ray_frames)
+    v1_dependency_status = _concat_release(v1_dependency_frames)
+    v1_solar_geometry = _concat_release(v1_solar_geometry_frames)
+    v1_ray_cloud_intersections = _concat_release(v1_ray_cloud_intersection_frames)
+    v1_cloud_horizontal_support = _concat_release(v1_cloud_horizontal_support_frames)
+    v1_native_condensate_support_diagnostics = _concat_release(v1_native_condensate_support_diagnostic_frames)
+    v1_spectral_optical_paths = _concat_release(v1_spectral_optical_path_frames)
+    v1_cloud_base_illumination = _concat_release(v1_cloud_base_illumination_frames)
+    v1_uncertainty = _concat_release(v1_uncertainty_frames)
+    v1_optical_bottlenecks = _concat_release(v1_optical_bottleneck_frames)
+    v1_canvas_radiance = _concat_release(v1_canvas_radiance_frames)
+    v1_formation = _concat_release(v1_formation_frames)
+    _aggregation_checkpoint("V1 Formation 證據矩陣完成", v1_cloud_layers=v1_cloud_layers, v1_canvas_candidates=v1_canvas_candidates, v1_spectral_optical_paths=v1_spectral_optical_paths)
+    gc.collect()
     # PhysicsCore V1.0-R5.7: projected-volume Cloud→Observer Viewing plus an
     # independent six-band viewing extinction branch. No Sun→CloudBase optical
     # quantity is reused here.
     v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
     v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry)
-    _view_route_snapshots = pd.concat(viewing_route_snapshot_frames, ignore_index=True) if viewing_route_snapshot_frames else pd.DataFrame()
+    _view_route_snapshots = _concat_release(viewing_route_snapshot_frames)
     _view_precip_frames=[]
     if not v1_viewing_path_geometry.empty and not _view_route_snapshots.empty:
         for (_vt,_va),_vg in v1_viewing_path_geometry.groupby(["time","solar_altitude_deg"],dropna=False,sort=False):
             _rs=_view_route_snapshots[(_view_route_snapshots["time"].astype(str)==str(_vt)) & (pd.to_numeric(_view_route_snapshots["solar_altitude_deg"],errors="coerce").sub(float(_va)).abs()<1e-8)]
             _vp=build_viewing_precipitation_evidence(_vg,_rs,earth_radius_km=cfg.earth_radius_km)
             if not _vp.empty: _view_precip_frames.append(_vp)
-    v1_viewing_precipitation_evidence = pd.concat(_view_precip_frames,ignore_index=True) if _view_precip_frames else pd.DataFrame()
+    v1_viewing_precipitation_evidence = _concat_release(_view_precip_frames)
     # Aggregate target-cloud optical evidence before the Viewing spectral branch
     # consumes it. This variable must exist on every pipeline path, including
     # fully-missing target-optics cases.
-    v1_target_canvas_optical_evidence = pd.concat(v1_target_canvas_optical_evidence_frames, ignore_index=True) if v1_target_canvas_optical_evidence_frames else pd.DataFrame(columns=TARGET_CANVAS_OPTICAL_EVIDENCE_COLUMNS)
+    v1_target_canvas_optical_evidence = _concat_release(v1_target_canvas_optical_evidence_frames, pd.DataFrame(columns=TARGET_CANVAS_OPTICAL_EVIDENCE_COLUMNS))
     v1_viewing_spectral_extinction = build_viewing_spectral_extinction(
         v1_viewing_path_geometry, v1_cloud_layers, v1_target_canvas_optical_evidence,
         aerosol_spectral_route_snapshots, gas_profile_route_snapshots,
@@ -2176,21 +2197,21 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     )
     v1_viewing_spectral_summary = summarize_viewing_spectral_extinction(v1_viewing_spectral_extinction)
     v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary, v1_viewing_spectral_summary)
-    v1_spectral_colour = pd.concat(v1_spectral_colour_frames, ignore_index=True) if v1_spectral_colour_frames else pd.DataFrame()
-    v1_precipitation_path_evidence = pd.concat(v1_precipitation_path_frames, ignore_index=True) if v1_precipitation_path_frames else pd.DataFrame()
-    v1_target_canvas_optical_summary = pd.concat(v1_target_canvas_optical_summary_frames, ignore_index=True) if v1_target_canvas_optical_summary_frames else pd.DataFrame(columns=["time", *TARGET_CANVAS_OPTICAL_SUMMARY_COLUMNS])
-    v1_tier2_scattering_readiness = pd.concat(v1_tier2_scattering_readiness_frames, ignore_index=True) if v1_tier2_scattering_readiness_frames else pd.DataFrame(columns=TIER2_SCATTERING_READINESS_COLUMNS)
-    v1_tier2_scattering_readiness_summary = pd.concat(v1_tier2_scattering_readiness_summary_frames, ignore_index=True) if v1_tier2_scattering_readiness_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_READINESS_SUMMARY_COLUMNS])
-    v1_tier2_scattering_foundation = pd.concat(v1_tier2_scattering_foundation_frames, ignore_index=True) if v1_tier2_scattering_foundation_frames else pd.DataFrame(columns=TIER2_SCATTERING_FOUNDATION_COLUMNS)
-    v1_tier2_scattering_foundation_summary = pd.concat(v1_tier2_scattering_foundation_summary_frames, ignore_index=True) if v1_tier2_scattering_foundation_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS])
-    v1_tier2_scattering_lut_domain = pd.concat(v1_tier2_scattering_lut_domain_frames, ignore_index=True) if v1_tier2_scattering_lut_domain_frames else pd.DataFrame(columns=TIER2_SCATTERING_DOMAIN_COLUMNS)
-    v1_tier2_scattering_lut_domain_summary = pd.concat(v1_tier2_scattering_lut_domain_summary_frames, ignore_index=True) if v1_tier2_scattering_lut_domain_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_DOMAIN_SUMMARY_COLUMNS])
-    v1_tier2_scattering_response = pd.concat(v1_tier2_scattering_response_frames, ignore_index=True) if v1_tier2_scattering_response_frames else pd.DataFrame(columns=TIER2_SCATTERING_RESPONSE_COLUMNS)
-    v1_tier2_scattering_response_summary = pd.concat(v1_tier2_scattering_response_summary_frames, ignore_index=True) if v1_tier2_scattering_response_summary_frames else pd.DataFrame(columns=["time", *TIER2_SCATTERING_RESPONSE_SUMMARY_COLUMNS])
-    v1_canvas_optical_suitability = pd.concat(v1_canvas_optical_suitability_frames, ignore_index=True) if v1_canvas_optical_suitability_frames else pd.DataFrame()
-    v1_canvas_optical_suitability_summary = pd.concat(v1_canvas_optical_suitability_summary_frames, ignore_index=True) if v1_canvas_optical_suitability_summary_frames else pd.DataFrame()
-    v1_secondary_target_optics = pd.concat(v1_secondary_target_optics_frames, ignore_index=True) if v1_secondary_target_optics_frames else pd.DataFrame()
-    v1_formation_gates = pd.concat(v1_formation_gate_frames, ignore_index=True) if v1_formation_gate_frames else pd.DataFrame()
+    v1_spectral_colour = _concat_release(v1_spectral_colour_frames)
+    v1_precipitation_path_evidence = _concat_release(v1_precipitation_path_frames)
+    v1_target_canvas_optical_summary = _concat_release(v1_target_canvas_optical_summary_frames, pd.DataFrame(columns=["time", *TARGET_CANVAS_OPTICAL_SUMMARY_COLUMNS]))
+    v1_tier2_scattering_readiness = _concat_release(v1_tier2_scattering_readiness_frames, pd.DataFrame(columns=TIER2_SCATTERING_READINESS_COLUMNS))
+    v1_tier2_scattering_readiness_summary = _concat_release(v1_tier2_scattering_readiness_summary_frames, pd.DataFrame(columns=["time", *TIER2_SCATTERING_READINESS_SUMMARY_COLUMNS]))
+    v1_tier2_scattering_foundation = _concat_release(v1_tier2_scattering_foundation_frames, pd.DataFrame(columns=TIER2_SCATTERING_FOUNDATION_COLUMNS))
+    v1_tier2_scattering_foundation_summary = _concat_release(v1_tier2_scattering_foundation_summary_frames, pd.DataFrame(columns=["time", *TIER2_SCATTERING_FOUNDATION_SUMMARY_COLUMNS]))
+    v1_tier2_scattering_lut_domain = _concat_release(v1_tier2_scattering_lut_domain_frames, pd.DataFrame(columns=TIER2_SCATTERING_DOMAIN_COLUMNS))
+    v1_tier2_scattering_lut_domain_summary = _concat_release(v1_tier2_scattering_lut_domain_summary_frames, pd.DataFrame(columns=["time", *TIER2_SCATTERING_DOMAIN_SUMMARY_COLUMNS]))
+    v1_tier2_scattering_response = _concat_release(v1_tier2_scattering_response_frames, pd.DataFrame(columns=TIER2_SCATTERING_RESPONSE_COLUMNS))
+    v1_tier2_scattering_response_summary = _concat_release(v1_tier2_scattering_response_summary_frames, pd.DataFrame(columns=["time", *TIER2_SCATTERING_RESPONSE_SUMMARY_COLUMNS]))
+    v1_canvas_optical_suitability = _concat_release(v1_canvas_optical_suitability_frames)
+    v1_canvas_optical_suitability_summary = _concat_release(v1_canvas_optical_suitability_summary_frames)
+    v1_secondary_target_optics = _concat_release(v1_secondary_target_optics_frames)
+    v1_formation_gates = _concat_release(v1_formation_gate_frames)
     v1_earth_shadow_penumbra_matrix = build_earth_shadow_penumbra_matrix([float(a) for a, _, _ in candidates])
     v1_canvas_penumbra_red_illumination = build_canvas_penumbra_red_illumination(
         v1_canvas_candidates, v1_spectral_optical_paths, v1_cloud_base_illumination
@@ -2250,7 +2271,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         })
     v1_core_summary = pd.DataFrame(_v1_summary_rows)
 
-    physics_data_completeness = _build_physics_data_completeness(details, candidates, summary)
+    _aggregation_checkpoint("Viewing / Tier-2 / 摘要完成", v1_viewing_path_geometry=v1_viewing_path_geometry, v1_viewing_spectral_extinction=v1_viewing_spectral_extinction)
+    gc.collect()
 
     # V8.4.9.1: the headline summary completeness must reflect the actual
     # mandatory PhysicsCore data chain, not only the legacy path/REZ forecast
@@ -2320,6 +2342,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         ranked = valid.sort_values(["physics_score", "visual_magnitude", "data_completeness"], ascending=False)
         selected_angle = float(ranked.iloc[0]["solar_altitude_deg"])
 
+    _aggregation_checkpoint("完整性與營運摘要完成", physics_data_completeness=physics_data_completeness, v1_dependency_status=v1_dependency_status)
     spectral_coverage_diagnostics = _build_spectral_coverage_diagnostics(spectral_rt_voxel_matrix)
     performance_rows.append({"stage": "AGGREGATION_AND_MATRIX_BUILD", "elapsed_seconds": perf_counter()-_aggregate_t0, "cache_status": "COMPUTED"})
     _progress(1.0, "分析完成。")
