@@ -1,6 +1,20 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.22.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.23
 
 ## 目前版本重點
+
+## R5.7.23 Genuine Liquid-Cloud Full Directional Calibration Pipeline
+
+本版以 **R5.7.22.1 ACCEPTED BASELINE** 為唯一基準，不改動 Route Invariance、Formation / Viewing / Glow 分離或六波段契約。新增 production calibration 生產線：
+
+`REAL Tier-2-ready liquid targets → calibration domain → libRadtran/MYSTIC spherical jobs → external RT QC → calibrated directional LUT package`
+
+- Production LUT 軸維持 `COT × r_eff × θ₀ × θᵥ × Δφ × wavelength`。
+- `cloud_thickness_km` 只保留為幾何／光學證據，不是 production interpolation axis。
+- 第一階段只建立 **liquid cloud** genuine calibration，不以 ICE 或 synthetic response 混入。
+- 外部結果必須完整覆蓋 job tensor、solver exit=0、Monte-Carlo convergence QC、approved full-hemisphere solver 與 provenance。
+- 若沒有 genuine RT 結果，production LUT 必須維持 `NOT_YET_GENERATED_EXTERNAL_RT_REQUIRED`；不可用 synthetic LUT 冒充。
+- 本版提供正式 job generator、MYSTIC spherical recipe/template、external-result validator 與 production package builder。
+
 
 ## R5.7.22.1 Route Invariance Hotfix
 
