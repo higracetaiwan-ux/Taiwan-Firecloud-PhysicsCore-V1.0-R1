@@ -16,15 +16,18 @@ def test_memory_safe_aggregation_drains_details_instead_of_copying_all_angles():
     assert 'details[angle]["native_optical_voxels"].copy()' not in src
 
 
-def test_completeness_audit_runs_before_heavy_details_are_drained():
+def test_completeness_audit_is_compacted_before_heavy_frames_are_spooled():
     src = _src()
-    audit = src.index('physics_data_completeness = _build_physics_data_completeness(details, candidates, summary)')
-    drain = src.index('forecast_voxel_matrix = _drain_detail_matrix("forecast_voxels")')
-    assert audit < drain
+    # R5.7.24 computes the 9-row readiness summary while the current angle's
+    # gas/aerosol/spectral frames are still live, then spools those frames.
+    audit = src.index('_angle_completeness = _build_physics_data_completeness(')
+    spool = src.index('"gas_profile": gas_profile,', audit)
+    assert audit < spool
+    assert 'pd.concat(physics_completeness_frames, ignore_index=True, copy=False)' in src
 
 
 def test_aggregation_exposes_multiple_runtime_checkpoints():
     src = _src()
     assert '彙整民用曙暮光時間軸與矩陣｜' in src
     assert 'AGGREGATION_' in src
-    assert 'gc.collect()' in src
+    assert 'collect_and_trim()' in src

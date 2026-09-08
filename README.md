@@ -1,15 +1,25 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.23.4
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.24
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
 
+## R5.7.24 Runtime Reliability / Completion Guarantee + Memory Containment
 
-## R5.7.23.4 Integrity-Audit Robustness Hotfix
+本版把「程式能可靠完成分析」放在效能之前。R5.7.23.4 已有一次真正 `COLD_ISOLATED_TEST` one-shot 完成案例，但長時間執行仍曾出現 app/session 中止與約 1.0–1.1 GB RSS，因此 R5.7.24 專門收斂 worker、recovery 與記憶體生命週期。
 
-- 修正 `case_integrity.py::_cams_role_success()` 在 Python 3.14 / pandas mixed-type CAMS audit 上可能因 float/NaN 進入字串 join 而拋出 `TypeError`。
-- CAMS / GFS integrity 文字欄位改用逐 scalar 型別安全正規化，不再依賴 `DataFrame.agg(" ".join)`。
-- 任一 CAMS time bundle 對同一 role 發生 `TIMEOUT/FAILED/ERROR/429/HTTP 4xx/5xx` 時，該 role 不再被誤提升為完整成功。
-- CAMS timeout 只降低 optical/integrity completeness；不得因 audit 自身型別錯誤中止整個 CASE。
-- 不修改 Formation、Viewing、六波段 RT、CAMS 90 秒 watchdog 或 Tier-2 calibration 科學邏輯。
+- Streamlit 主 script 不再用長時間 `while` 監看背景分析；改為 detached analysis worker + 非阻塞自動刷新 fragment。
+- live worker 在頁面 rerun/reload 後會自動重新連線監看，不會因刷新啟動第二個 worker。
+- recovery journal 同時保存 master 與 per-job `job_state.json`；master 遺失/損壞時可掃描 per-job / attempt progress 重建。
+- 每次 attempt 保存獨立 request / progress / stdout / stderr / result，前次錯誤不再冒充本次 worker stderr。
+- 13 個完整 route snapshots 改為 worker-local `/tmp` spool，不再同時常駐 RAM。
+- Viewing route snapshot、Cloud/Gas/Aerosol/Spectral 大型 per-angle evidence 也改為 spool；完整性 audit 先轉成小型 per-angle 摘要。
+- `details` 僅保留 UI 垂直剖面必要的 direction/distance/low-mid-high cloud cover 欄位，不再保存完整 provider snapshot。
+- 每角度邊界執行 `gc.collect + malloc_trim`（支援 glibc 時）；analysis worker 啟動時使用 `MALLOC_ARENA_MAX=2` 與 `MALLOC_TRIM_THRESHOLD_=131072` 降低 heap arena retention。
+- 13-angle 完成後、aggregation 前主動釋放 GFS/CAMS/Secondary provider in-memory cache。
+- 不減少 13 angles、不降低 0.5 km 垂直解析度、不刪六波段、不改 Formation / Viewing / Glow / Missing / Route Invariance / Tier-2 科學契約。
+
+**本版不是效能優化版。** 外部 CAMS ADS / DWD 網路仍可能耗時；R5.7.24 的目標是即使慢，也盡量能跑完、能留下狀態、能安全 Resume。
+
+正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
 
 ## R5.7.23.3 CAMS Live-Telemetry Hotfix
 

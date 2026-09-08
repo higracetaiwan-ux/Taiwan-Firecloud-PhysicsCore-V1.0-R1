@@ -24,6 +24,8 @@ _ray_altitudes_vectorized_km = ray_altitudes_vectorized_km
 import pandas as pd
 
 from .runtime_hardening import process_resource_snapshot, dataframe_memory_mb
+from .angle_frame_spool import AngleFrameSpool
+from .runtime_memory import collect_and_trim
 
 from .config import (
     CLOUD_LAYERS_KM, BANDS, ILLUMINATION_HEIGHTS_KM, ModelConfig,
@@ -1282,6 +1284,21 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
 
     result_rows = []
     details = {}
+    # R5.7.23.4: keep heavyweight per-angle matrices off the Python heap while
+    # later angles are still being computed.  The spool is worker-local /tmp,
+    # not provider cache and not a recovery artifact.
+    _angle_frame_spool = AngleFrameSpool()
+    _spooled_detail_keys = (
+        "forecast_voxels", "reconstructed_voxels", "reconstructed_columns",
+        "profile_voxels", "profile_columns", "native_voxels", "native_columns",
+        "optical_voxels", "optical_columns",
+        "native_optical_voxels", "native_optical_columns",
+        # R5.7.24 reliability: these atmospheric/spectral tables were smaller
+        # than the cloud voxel matrices but still accumulated across 13 angles
+        # and kept object/string-heavy Pandas blocks resident on the heap.
+        "spectral_voxels", "spectral_columns", "gas_profile",
+        "aerosol_spectral_snapshot", "cams_native_aerosol_snapshot",
+    )
     # PhysicsCore V1.0-R2 geometry/illumination audit frames. These are the new
     # runtime contracts and are deliberately independent from the inherited V8
     # physics_score / global completeness gate retained below only for legacy UI.
@@ -1316,7 +1333,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_canvas_optical_suitability_summary_frames = []
     v1_secondary_target_optics_frames = []
     v1_formation_gate_frames = []
-    viewing_route_snapshot_frames = []
+    # Small per-angle readiness rows are computed before large atmospheric and
+    # spectral frames are spooled.  This removes the former reason for keeping
+    # gas/aerosol/spectral DataFrames resident until the final aggregation.
+    physics_completeness_frames = []
     ecmwf_ifs_request_audit_rows = []
     dwd_icon_request_audit_rows = []
     secondary_provider_audit_rows = []
@@ -1590,20 +1610,42 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         frac = 0.40 + 0.51 * (idx + max(0.0, min(1.0, sub))) / max(1, len(candidates))
         _progress(frac, message)
 
-    # V8.4.6: precompute all Open-Meteo route snapshots before the expensive
-    # per-angle 3-D stages.  This isolates interpolation cost, avoids repeated
-    # pandas group/filter work, and makes any provider-frame problem visible
-    # before a later angle can look frozen at the first sub-stage label.
+    # R5.7.24 reliability: keep the interpolation contract but not 13 complete
+    # route snapshots simultaneously on the Python heap.  Each full snapshot is
+    # written to worker-local /tmp and popped exactly once by its angle.  Only
+    # the tiny surface-pressure/elevation anchor needed by the secondary optics
+    # provider stays resident.
     _progress(0.395, f"預先內插 {len(candidates)} 個太陽高度角路徑預報…")
     _snapshot_t0 = perf_counter()
-    route_snapshot_cache = {}
+    _route_snapshot_spool = AngleFrameSpool(prefix="firecloud-route-snapshot-")
+    _secondary_surface_anchor_cache = {}
     for _si, (_sa, _st, _saz) in enumerate(candidates):
         _key = pd.Timestamp(_st.replace(tzinfo=None))
         _one_t0 = perf_counter()
-        route_snapshot_cache[_key] = interpolate_route_at_time(hourly, _st)
-        performance_rows.append({"time": _st, "solar_altitude_deg": float(_sa), "stage": "OPENMETEO_ROUTE_INTERPOLATION", "elapsed_seconds": perf_counter()-_one_t0, "cache_status": "PRECOMPUTED"})
+        _route_snapshot = interpolate_route_at_time(hourly, _st)
+        _anchors = {}
+        if _route_snapshot is not None and not _route_snapshot.empty and "point_id" in _route_snapshot.columns:
+            for _rr in _route_snapshot.itertuples(index=False):
+                _anchor = {}
+                try:
+                    _anchor["surface_pressure_hpa"] = float(getattr(_rr, "surface_pressure"))
+                except Exception:
+                    pass
+                try:
+                    _anchor["surface_elevation_m"] = float(getattr(_rr, "model_surface_elevation_m"))
+                except Exception:
+                    pass
+                if _anchor:
+                    _anchors[str(getattr(_rr, "point_id"))] = _anchor
+        _secondary_surface_anchor_cache[_key] = _anchors
+        _route_snapshot_spool.put("route_snapshot", float(_sa), _route_snapshot)
+        del _route_snapshot, _anchors
+        if (_si + 1) % 3 == 0 or (_si + 1) == len(candidates):
+            collect_and_trim()
+        performance_rows.append({"time": _st, "solar_altitude_deg": float(_sa), "stage": "OPENMETEO_ROUTE_INTERPOLATION", "elapsed_seconds": perf_counter()-_one_t0, "cache_status": "PRECOMPUTED_LOCAL_TMP_SPOOL"})
         _progress(0.395 + 0.005 * (_si + 1) / max(1, len(candidates)), f"路徑預報內插：{_si+1}/{len(candidates)}")
-    performance_rows.append({"stage": "OPENMETEO_ROUTE_INTERPOLATION_TOTAL", "elapsed_seconds": perf_counter()-_snapshot_t0, "cache_status": "PRECOMPUTED"})
+    performance_rows.append({"stage": "OPENMETEO_ROUTE_INTERPOLATION_TOTAL", "elapsed_seconds": perf_counter()-_snapshot_t0, "cache_status": "PRECOMPUTED_LOCAL_TMP_SPOOL"})
+    _record_runtime_resource("ROUTE_SNAPSHOTS_SPOOLED", None)
 
     # PhysicsCore V1.0-R5.5.2: real secondary forecast-native optics chain.
     # Priority: (1) entitled/local ECMWF IFS model-level CLWC/CIWC; (2) public
@@ -1619,16 +1661,15 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         # be reconstructed from native P/T without relying on unavailable FI
         # model-level files. This does not alter cloud microphysics or COT.
         _sec_points = [dict(p) for p in route_points]
-        _rs = route_snapshot_cache.get(_k, pd.DataFrame())
-        if _rs is not None and not _rs.empty and "point_id" in _rs.columns:
-            _rmap = {str(r.point_id): r for r in _rs.itertuples(index=False)}
+        _rmap = _secondary_surface_anchor_cache.get(_k, {})
+        if _rmap:
             for _p in _sec_points:
-                _rr = _rmap.get(str(_p.get("point_id")))
-                if _rr is not None:
-                    try: _p["surface_pressure_hpa"] = float(getattr(_rr, "surface_pressure"))
-                    except Exception: pass
-                    try: _p["surface_elevation_m"] = float(getattr(_rr, "model_surface_elevation_m"))
-                    except Exception: pass
+                _anchor = _rmap.get(str(_p.get("point_id")))
+                if _anchor:
+                    if "surface_pressure_hpa" in _anchor:
+                        _p["surface_pressure_hpa"] = _anchor["surface_pressure_hpa"]
+                    if "surface_elevation_m" in _anchor:
+                        _p["surface_elevation_m"] = _anchor["surface_elevation_m"]
         try:
             _idf, _imeta = fetch_ifs_secondary_target_optics(_sec_points, _st)
         except Exception as _exc:
@@ -1662,7 +1703,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         _angle_t0 = perf_counter()
         label = f"太陽高度角 {float(angle):.1f}°（{candidate_index+1}/{len(candidates)}）"
         _angle_progress(candidate_index, 0.00, f"{label}：載入已內插路徑預報…")
-        snap = route_snapshot_cache.get(pd.Timestamp(t.replace(tzinfo=None)), pd.DataFrame()).copy()
+        snap = _route_snapshot_spool.pop("route_snapshot", float(angle))
+        if snap is None or snap.empty:
+            # Defensive fallback only; normal R5.7.24 path is the local spool.
+            snap = interpolate_route_at_time(hourly, t)
         if snap is not None and not snap.empty:
             # R5.7.2: interpolate_route_at_time() already returns a `time`
             # column.  Re-inserting it raises ValueError: cannot insert time,
@@ -1676,7 +1720,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 _vsnap.insert(1 if "time" in _vsnap.columns else 0, "solar_altitude_deg", float(angle))
             _front = [c for c in ("time", "solar_altitude_deg") if c in _vsnap.columns]
             _vsnap = _vsnap[_front + [c for c in _vsnap.columns if c not in _front]]
-            viewing_route_snapshot_frames.append(_vsnap)
+            _angle_frame_spool.put("viewing_route_snapshot", float(angle), _vsnap)
+            del _vsnap
         _angle_progress(candidate_index, 0.04, f"{label}：合併 GFS 原生雲微物理…")
         native_meta = {"native_status": "UNAVAILABLE", **native_provider_status()}
         cache_key = None
@@ -2018,7 +2063,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             if _tier2_domain_sum is not None and not _tier2_domain_sum.empty:
                 _tier2_domain_sum.insert(0, "time", t)
                 v1_tier2_scattering_lut_domain_summary_frames.append(_tier2_domain_sum)
-        _angle_progress(candidate_index, 0.98, f"{label}：完成")
+        _angle_progress(candidate_index, 0.975, f"{label}：整理本角度輸出…")
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "PER_ANGLE_PHYSICS_TOTAL", "elapsed_seconds": perf_counter()-_angle_t0, "cache_status": "COMPUTED"})
         _record_runtime_resource("PER_ANGLE_PHYSICS_TOTAL", angle, spectral_voxels=spectral_voxels, spectral_columns=spectral_columns, target_optics=_target_canvas_optics, tier2_ready=_tier2_ready)
         angle_f = float(angle)
@@ -2055,11 +2100,36 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "data_completeness": ev["data_completeness"],
             "operational_decision": displayed_operational,
         })
-        details[angle] = {
-            "snapshot": snap,
-            "twilight_phase": phase,
-            "core_score_eligible": is_core,
-            "late_glow_diagnostic": is_late,
+        _angle_progress(candidate_index, 0.982, f"{label}：建立本角度完整性摘要…")
+        _hitran_status = hitran_backend_status()
+        # Compute the layered readiness audit while the full angle-local frames
+        # are still available.  Only the resulting 9-row summary remains in
+        # memory; the large atmospheric/spectral DataFrames can then be spooled.
+        _angle_completeness_detail = {
+            float(angle): {
+                "cams_native_aerosol_snapshot": cams_aerosol_snap,
+                "cams_native_aerosol_metadata": cams_aerosol_meta,
+                "gas_profile": gas_profile,
+                "hitran_backend_status": _hitran_status,
+                "spectral_voxels": spectral_voxels,
+            }
+        }
+        _angle_base_summary = pd.DataFrame([result_rows[-1]])
+        _angle_completeness = _build_physics_data_completeness(
+            _angle_completeness_detail, [(float(angle), t, az)], _angle_base_summary
+        )
+        if _angle_completeness is not None and not _angle_completeness.empty:
+            physics_completeness_frames.append(_angle_completeness)
+        del _angle_completeness_detail, _angle_base_summary, _angle_completeness
+
+        _angle_progress(candidate_index, 0.985, f"{label}：大型矩陣移至本機暫存並釋放 RAM…")
+        # R5.7.24 reliability: spool *all* sizable per-angle evidence families,
+        # including atmospheric/spectral tables.  Their compact readiness audit
+        # has already been computed above, so no full frame must survive merely
+        # for the final completeness pass.
+        _spool_t0 = perf_counter()
+        _spool_bytes = 0
+        _spool_frames = {
             "forecast_voxels": forecast_voxels,
             "reconstructed_voxels": reconstructed_voxels,
             "reconstructed_columns": reconstructed_columns,
@@ -2067,7 +2137,6 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "profile_columns": profile_columns,
             "native_voxels": native_voxels,
             "native_columns": native_columns,
-            "native_provider_metadata": native_meta,
             "optical_voxels": optical_voxels,
             "optical_columns": optical_columns,
             "native_optical_voxels": native_optical_voxels,
@@ -2075,14 +2144,66 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "spectral_voxels": spectral_voxels,
             "spectral_columns": spectral_columns,
             "gas_profile": gas_profile,
-            "hitran_backend_status": hitran_backend_status(),
             "aerosol_spectral_snapshot": aerosol_spectral_snap,
             "cams_native_aerosol_snapshot": cams_aerosol_snap,
+        }
+        for _spool_key, _spool_df in _spool_frames.items():
+            _spool_bytes += _angle_frame_spool.put(_spool_key, float(angle), _spool_df)
+        performance_rows.append({
+            "time": t, "solar_altitude_deg": float(angle),
+            "stage": "ANGLE_HEAVY_EVIDENCE_SPOOL",
+            "elapsed_seconds": perf_counter() - _spool_t0,
+            "cache_status": "LOCAL_TMP_SPOOL",
+            "detail": f"frames={int(sum(1 for _v in _spool_frames.values() if isinstance(_v, pd.DataFrame) and not _v.empty))};bytes={int(_spool_bytes)}",
+        })
+
+        # UI only needs five route/cloud-cover columns for the legacy vertical
+        # cross-section.  Keeping the full interpolated provider snapshot for
+        # all 13 angles retained hundreds of unused columns and was a major
+        # angle-to-angle RSS growth source.  Preserve only the exact UI contract.
+        _snapshot_ui_cols = [c for c in (
+            "direction_offset_deg", "distance_km",
+            "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
+        ) if c in snap.columns]
+        _snapshot_ui = snap.loc[:, _snapshot_ui_cols].copy() if _snapshot_ui_cols else pd.DataFrame()
+        details[angle] = {
+            "snapshot": _snapshot_ui,
+            "twilight_phase": phase,
+            "core_score_eligible": is_core,
+            "late_glow_diagnostic": is_late,
+            "native_provider_metadata": native_meta,
+            "hitran_backend_status": _hitran_status,
             "cams_native_aerosol_metadata": cams_aerosol_meta,
             **ev,
         }
+        # Break local references before the next angle.  ``malloc_trim`` is a
+        # best-effort Linux/glibc reliability measure: Pandas/NumPy may free a
+        # block while libc keeps the arena mapped, so gc.collect alone does not
+        # necessarily reduce RSS visible to the hosting platform.
+        _spool_frames.clear()
+        del forecast_voxels, reconstructed_voxels, reconstructed_columns
+        del profile_voxels, profile_columns, native_voxels, native_columns
+        del optical_voxels, optical_columns, native_optical_voxels, native_optical_columns
+        del spectral_voxels, spectral_columns, gas_profile
+        del aerosol_spectral_snap, cams_aerosol_snap, _snapshot_ui
+        _trim_diag = collect_and_trim()
+        performance_rows.append({
+            "time": t, "solar_altitude_deg": float(angle),
+            "stage": "ANGLE_MEMORY_TRIM", "elapsed_seconds": 0.0,
+            "cache_status": "ENGINEERING_ONLY",
+            "detail": f"gc={_trim_diag.get('gc_collected', 0)};malloc_trim={_trim_diag.get('malloc_trim_result')}",
+        })
+        _record_runtime_resource("ANGLE_HEAVY_EVIDENCE_SPOOLED", angle)
+        _angle_progress(candidate_index, 0.995, f"{label}：完成")
 
     performance_rows.append({"stage": "ALL_ANGLES_PHYSICS_TOTAL", "elapsed_seconds": perf_counter()-_angles_t0, "cache_status": "COMPUTED"})
+    _route_snapshot_spool.cleanup()
+    _secondary_surface_anchor_cache.clear()
+    native_cache.clear()
+    cams_native_cache.clear()
+    secondary_optics_cache.clear()
+    collect_and_trim()
+    _record_runtime_resource("POST_ANGLE_PROVIDER_CACHE_RELEASE", None)
     _progress(0.93, "彙整民用曙暮光時間軸與矩陣…")
     _aggregate_t0 = perf_counter()
     summary = pd.DataFrame(result_rows).sort_values("time")
@@ -2095,11 +2216,14 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         ranked = valid.sort_values(["physics_score", "visual_magnitude", "data_completeness"], ascending=False)
         selected_angle = float(ranked.iloc[0]["solar_altitude_deg"])
 
-    # R5.7.23.2: build the completeness audit before draining heavyweight
-    # per-angle evidence from ``details``.  The audit needs only a few of those
-    # frames; after it is built, the large matrices can be moved (not copied)
-    # into their final aggregate tables and released progressively.
-    physics_data_completeness = _build_physics_data_completeness(details, candidates, summary)
+    # R5.7.24: completeness was computed per angle before atmospheric/spectral
+    # evidence was spooled.  Concatenating the compact rows here avoids keeping
+    # 13 full gas/aerosol/spectral DataFrames resident solely for this audit.
+    physics_data_completeness = (
+        pd.concat(physics_completeness_frames, ignore_index=True, copy=False)
+        if physics_completeness_frames else pd.DataFrame()
+    )
+    physics_completeness_frames.clear()
 
     _agg_step = 0
     _agg_total = 8
@@ -2122,10 +2246,24 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         for angle, t, _az in candidates:
             d = details.get(angle, {})
             df = d.pop(key, pd.DataFrame())
+            if (not isinstance(df, pd.DataFrame) or df.empty) and _angle_frame_spool.has(key, float(angle)):
+                df = _angle_frame_spool.pop(key, float(angle))
             if isinstance(df, pd.DataFrame) and not df.empty:
                 df["time"] = t
                 if ensure_angle and "solar_altitude_deg" not in df.columns:
                     df["solar_altitude_deg"] = float(angle)
+                frames.append(df)
+        if not frames:
+            return pd.DataFrame()
+        out = pd.concat(frames, ignore_index=True, copy=False)
+        frames.clear()
+        return out
+
+    def _drain_spool_matrix(key: str) -> pd.DataFrame:
+        frames = []
+        for angle, _t, _az in candidates:
+            df = _angle_frame_spool.pop(key, float(angle))
+            if isinstance(df, pd.DataFrame) and not df.empty:
                 frames.append(df)
         if not frames:
             return pd.DataFrame()
@@ -2147,21 +2285,21 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     reconstructed_voxel_matrix = _drain_detail_matrix("reconstructed_voxels")
     reconstructed_cloud_columns = _drain_detail_matrix("reconstructed_columns")
     _aggregation_checkpoint("基礎雲體矩陣完成", forecast_voxel_matrix=forecast_voxel_matrix, reconstructed_voxel_matrix=reconstructed_voxel_matrix)
-    gc.collect()
+    collect_and_trim()
 
     pressure_profile_voxel_matrix = _drain_detail_matrix("profile_voxels", ensure_angle=True)
     pressure_profile_cloud_columns = _drain_detail_matrix("profile_columns", ensure_angle=True)
     native_cloud_voxel_matrix = _drain_detail_matrix("native_voxels", ensure_angle=True)
     native_cloud_columns = _drain_detail_matrix("native_columns", ensure_angle=True)
     _aggregation_checkpoint("氣壓層與原生雲體矩陣完成", pressure_profile_voxel_matrix=pressure_profile_voxel_matrix, native_cloud_voxel_matrix=native_cloud_voxel_matrix)
-    gc.collect()
+    collect_and_trim()
 
     optical_blocking_voxel_matrix = _drain_detail_matrix("optical_voxels", ensure_angle=True)
     vertical_blocking_columns = _drain_detail_matrix("optical_columns", ensure_angle=True)
     native_optical_blocking_voxel_matrix = _drain_detail_matrix("native_optical_voxels", ensure_angle=True)
     native_optical_blocking_columns = _drain_detail_matrix("native_optical_columns", ensure_angle=True)
     _aggregation_checkpoint("雲光學阻擋矩陣完成", optical_blocking_voxel_matrix=optical_blocking_voxel_matrix, native_optical_blocking_voxel_matrix=native_optical_blocking_voxel_matrix)
-    gc.collect()
+    collect_and_trim()
 
     spectral_rt_voxel_matrix = _drain_detail_matrix("spectral_voxels", ensure_angle=True)
     spectral_rt_columns = _drain_detail_matrix("spectral_columns", ensure_angle=True)
@@ -2169,7 +2307,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     cams_native_aerosol_route_snapshots = _drain_detail_matrix("cams_native_aerosol_snapshot", ensure_angle=True)
     gas_profile_route_snapshots = _drain_detail_matrix("gas_profile", ensure_angle=True)
     _aggregation_checkpoint("光譜與大氣矩陣完成", spectral_rt_voxel_matrix=spectral_rt_voxel_matrix, gas_profile_route_snapshots=gas_profile_route_snapshots)
-    gc.collect()
+    # All local-temp heavyweight frame families have now been rehydrated into
+    # their final matrices.  Remove the spool directory immediately.
+    _angle_frame_spool.cleanup()
+    collect_and_trim()
 
     v1_cloud_layers = _concat_release(v1_cloud_layer_frames)
     v1_canvas_candidates = _concat_release(v1_canvas_frames, pd.DataFrame(columns=CANVAS_CANDIDATE_TABLE_COLUMNS))
@@ -2187,13 +2328,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_canvas_radiance = _concat_release(v1_canvas_radiance_frames)
     v1_formation = _concat_release(v1_formation_frames)
     _aggregation_checkpoint("V1 Formation 證據矩陣完成", v1_cloud_layers=v1_cloud_layers, v1_canvas_candidates=v1_canvas_candidates, v1_spectral_optical_paths=v1_spectral_optical_paths)
-    gc.collect()
+    collect_and_trim()
     # PhysicsCore V1.0-R5.7: projected-volume Cloud→Observer Viewing plus an
     # independent six-band viewing extinction branch. No Sun→CloudBase optical
     # quantity is reused here.
     v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
     v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry)
-    _view_route_snapshots = _concat_release(viewing_route_snapshot_frames)
+    _view_route_snapshots = _drain_spool_matrix("viewing_route_snapshot")
     _view_precip_frames=[]
     if not v1_viewing_path_geometry.empty and not _view_route_snapshots.empty:
         for (_vt,_va),_vg in v1_viewing_path_geometry.groupby(["time","solar_altitude_deg"],dropna=False,sort=False):

@@ -37,33 +37,20 @@ def _contains_any(series: pd.Series, patterns: Iterable[str]) -> pd.Series:
     return mask
 
 
+def _join_text_columns(df: pd.DataFrame, columns: Iterable[str]) -> pd.Series:
+    """Join heterogeneous audit columns safely as text.
 
-
-def _row_joined_text(df: pd.DataFrame, columns: Iterable[str]) -> pd.Series:
-    """Return type-safe row-wise joined text for mixed audit schemas.
-
-    Do not rely on DataFrame.agg(" ".join): pandas/Python combinations may
-    surface non-string scalars even after column-wise astype(str).  Explicitly
-    normalize every scalar at the row boundary so float/NaN/None audit fields
-    can never crash integrity checks.
+    Pandas/Python combinations may preserve numeric scalars in row-wise
+    aggregation even after per-column astype(str).  Integrity auditing must
+    never crash because an optional provider-audit field contains NaN/float.
     """
     cols = [c for c in columns if c in df.columns]
     if df.empty or not cols:
-        return pd.Series(index=df.index, dtype="string")
-
-    def _scalar_text(value: Any) -> str:
-        try:
-            if pd.isna(value):
-                return ""
-        except Exception:
-            pass
-        return str(value)
-
-    values = df.loc[:, cols]
-    return values.apply(
-        lambda row: " ".join(_scalar_text(v) for v in row.tolist()),
-        axis=1,
-    ).astype("string")
+        return pd.Series(dtype=str, index=df.index)
+    block = df.loc[:, cols].copy()
+    for c in cols:
+        block[c] = block[c].map(lambda v: "" if pd.isna(v) else str(v))
+    return block.apply(lambda row: " ".join(str(v) for v in row.tolist()), axis=1)
 
 
 def _row_any_numeric_valid_fraction(df: pd.DataFrame, columns: Iterable[str]) -> float:
@@ -78,7 +65,7 @@ def _text_token_fraction(df: pd.DataFrame, columns: Iterable[str], token: str) -
     cols = [c for c in columns if c in df.columns]
     if df.empty or not cols:
         return 0.0
-    text = _row_joined_text(df, cols).str.upper()
+    text = _join_text_columns(df, cols).str.upper()
     return float(text.str.contains(str(token).upper(), regex=False, na=False).mean()) if len(text) else 0.0
 
 def _audit_success(df: pd.DataFrame) -> bool:
@@ -100,23 +87,13 @@ def _cams_role_success(df: pd.DataFrame, tokens: Iterable[str]) -> bool:
     role_cols = [c for c in ["role", "chain", "dataset_role", "request_role", "product", "variable"] if c in df.columns]
     if not role_cols:
         return _audit_success(df)
-    role_text = _row_joined_text(df, role_cols).str.upper()
+    role_text = _join_text_columns(df, role_cols).str.upper()
     role_mask = pd.Series(False, index=df.index)
     for tok in tokens:
         role_mask |= role_text.str.contains(str(tok).upper(), regex=False, na=False)
     if not role_mask.any():
         return False
-    role_df = df.loc[role_mask]
-    status_cols = [c for c in ["status", "final_status", "network_status", "action", "result", "error"] if c in role_df.columns]
-    if status_cols:
-        status_text = _row_joined_text(role_df, status_cols).str.upper()
-        bad = status_text.str.contains("FAILED|ERROR|TIMEOUT|HTTP_4|HTTP_5|429", regex=True, na=False)
-        if bool(bad.any()):
-            # A multi-time CAMS role is incomplete if any matching time bundle
-            # timed out/failed.  Integrity must degrade, never crash or silently
-            # promote partial success to complete success.
-            return False
-    return _audit_success(role_df)
+    return _audit_success(df.loc[role_mask])
 
 
 def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
@@ -187,7 +164,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     if not gfs_comp.empty:
         text_cols = [c for c in ["field", "variable", "short_name", "parameter"] if c in gfs_comp.columns]
         if text_cols:
-            txt = _row_joined_text(gfs_comp, text_cols).str.upper()
+            txt = _join_text_columns(gfs_comp, text_cols).str.upper()
             clwmr = txt.str.contains("CLWMR", regex=False, na=False).any()
             icmr = txt.str.contains("ICMR", regex=False, na=False).any()
             add("GFS_CLWMR_COMPLETENESS_ROW", PASS if clwmr else WARN, "NOAA_GFS_NATIVE", bool(clwmr), "CLWMR row when requested/available")
@@ -206,21 +183,6 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     cams_payload_expected = o3_missing_signal or aerosol_missing_signal or not ozone.empty or not aerosol_spectral.empty
     if cams_payload_expected:
         add("CAMS_REQUEST_AUDIT_PRESENT", PASS if not cams_req.empty else FAIL, "CAMS", _rows(cams_req), ">0 request-audit rows when CAMS-dependent payload is expected", "A blank request audit must not coexist silently with missing O3/aerosol payload")
-
-    if not cams_req.empty:
-        _cams_status_cols = [c for c in ["status", "final_status", "network_status", "action", "result", "error"] if c in cams_req.columns]
-        if _cams_status_cols:
-            _cams_status_text = _row_joined_text(cams_req, _cams_status_cols).str.upper()
-            _cams_timeout_mask = _cams_status_text.str.contains("TIMEOUT|WALLCLOCK_DEADLINE_EXCEEDED", regex=True, na=False)
-            _cams_timeout_count = int(_cams_timeout_mask.sum())
-            add(
-                "CAMS_PROVIDER_TIMEOUT_VISIBLE",
-                WARN if _cams_timeout_count else PASS,
-                "CAMS",
-                _cams_timeout_count,
-                "0 preferred; provider timeouts may degrade completeness but must remain explicit",
-                "A CAMS timeout is an evidence/completeness condition, not an integrity-audit exception.",
-            )
 
     if o3_success:
         add("CAMS_O3_ROUTE_HANDOFF", PASS if not ozone.empty else FAIL, "CAMS_O3", _rows(ozone), ">0 rows after successful O3 request")

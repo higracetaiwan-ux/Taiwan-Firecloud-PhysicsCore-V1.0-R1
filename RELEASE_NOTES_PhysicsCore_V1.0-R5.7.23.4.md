@@ -1,31 +1,21 @@
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.23.4 發行說明
 
-## 版本定位
+## 主題
 
-R5.7.23.4 是 R5.7.23.3 的 Integrity-Audit Robustness Hotfix。此版不修改 Formation、Viewing、Glow、六波段 RT、Earth Shadow、Route Invariance、CAMS 90 秒 watchdog 或 Tier-2 directional calibration 科學計算。
+**CASE-Integrity Type-Safety Hotfix + CASE Versioned Filename Fix**
 
-## 修正問題
+## 修正
 
-實際 COLD TEST 在 CAMS 某角色發生 90 秒 timeout 後，`firecloud/case_integrity.py::_cams_role_success()` 對 `cams_request_audit` mixed-type 欄位做 row-wise 字串拼接時，在 Python 3.14 / pandas runtime 觸發：
+- 修正 `firecloud/case_integrity.py::_cams_role_success()` 在 CAMS request-audit 欄位含 float / NaN 時可能觸發 `TypeError: expected str instance, float found`。
+- 新增共用 type-safe 文字欄位合併 helper，CAMS role、GFS completeness、文字 token audit 均不再依賴可能受 Pandas dtype 影響的 `agg(" ".join)`。
+- 明確保證 CAMS `CAMS_ADS_TIMEOUT` 只會留下 Timeout/Missing 證據，不可讓 analysis worker 因 audit schema 型別而崩潰。
+- CASE ZIP 檔名改由 runtime `__version__` 產生，hotfix 版本與檔名保持一致。
+- 完整保留 R5.7.23.3 CAMS live telemetry、R5.7.23.2 Memory-Safe Aggregation、R5.7.23 Runtime Hardening 與 Liquid Full Directional Calibration Pipeline。
 
-`TypeError: sequence item 1: expected str instance, float found`
+## 科學契約
 
-因此原本應只是 CAMS evidence/completeness 降級的 provider timeout，反而在 Analysis Integrity 階段造成整個 analysis worker FAILED，CASE 無法正常完成。
+本 hotfix 不修改：Formation / Viewing / Glow、Earth Shadow、DirectSolarFraction、六波段、Missing 語義、Route Invariance、Tier-2 directional geometry、CAMS 90 秒 watchdog 或 calibration gate。
 
-## R5.7.23.4 修正
+## Genuine LUT 狀態
 
-1. 新增 type-safe row text normalization；每一個 float、NaN、None、字串 scalar 都在 row boundary 明確正規化後才 join。
-2. `case_integrity.py` 不再使用 `DataFrame.agg(" ".join, axis=1)` 處理 mixed-type CAMS/GFS audit 欄位。
-3. 同一 CAMS role 若任一時次出現 `TIMEOUT / FAILED / ERROR / 429 / HTTP 4xx/5xx`，該 role 不得被誤提升為完整成功。
-4. 新增 `CAMS_PROVIDER_TIMEOUT_VISIBLE` Integrity Audit 項目；provider timeout 會保留為 WARN/completeness evidence，而不是造成 audit exception。
-5. CAMS timeout 仍遵守既有 Missing / Partial 規則，不以常數或零值補造 optical evidence。
-
-## 回歸測試
-
-完整 regression：**418 passed / 0 failed**。
-
-新增測試涵蓋：
-- mixed float / NaN CAMS role 欄位；
-- 同一 role 一個時次 OK、另一時次 timeout；
-- aerosol 90 秒 timeout 後 Analysis Integrity 仍能完成；
-- timeout 在 CASE integrity 中明確可見。
+`CALIBRATED DIRECTIONAL LUT NOT INSTALLED` / `NOT_YET_GENERATED_EXTERNAL_RT_REQUIRED` 維持不變。

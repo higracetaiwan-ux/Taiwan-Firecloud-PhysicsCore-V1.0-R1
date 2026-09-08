@@ -42,6 +42,6 @@ def test_single_flight_callback_repaints_ui_immediately():
     assert '"CAMS_WORKER_STARTUP": "worker啟動"' in src
 
 
-def test_release_version_is_r57233():
+def test_release_version_is_r5724():
     import firecloud
-    assert firecloud.__version__ == "1.0.0-R5.7.23.4"
+    assert firecloud.__version__ == "1.0.0-R5.7.24"

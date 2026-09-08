@@ -133,9 +133,14 @@ def test_r57231_cams_post_worker_progress_is_explicit():
     assert '"CAMS_BUNDLE_POSTPROCESS": "時次後處理"' in model
 
 
-def test_r57231_streamlit_rerun_auto_reattaches_live_worker():
+def test_r5724_streamlit_rerun_auto_reattaches_live_worker_nonblocking():
     src = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
     assert "_active_detached_job" in src
     assert "已自動重新連線監看" in src
-    assert "resume_run = bool(_active_detached_job)" in src
-    assert '_reattach_request = dict(_old_job.get("request") or _request)' in src
+    # R5.7.24 no longer turns a page rerun into a synthetic Resume click.
+    # A still-live worker is monitored by the non-blocking fragment and the
+    # start/resume controls cannot launch a duplicate worker.
+    assert "_render_live_analysis_fragment" in src
+    assert "NONBLOCKING_FRAGMENT" in src
+    assert "disabled=bool(_active_detached_job)" in src
+    assert "resume_run = False" in src

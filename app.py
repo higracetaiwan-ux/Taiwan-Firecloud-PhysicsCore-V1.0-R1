@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from firecloud import PROGRAM_NAME, __version__, __baseline__
+CASE_FILENAME_PREFIX = "Taiwan-Firecloud-PhysicsCore-V1.0-R5."
 from firecloud.timezone_contract import AUTO_COORDINATE, USER_OVERRIDE, resolve_event_timezone
 from firecloud.hitran_readiness import hitran_backend_status, resolve_hitran_db_path, resolve_hitran_lut_path
 from firecloud.hitran_runtime import (
@@ -439,6 +440,27 @@ _bridge_streamlit_hitran_secrets()
 _STATE_DIR = Path(os.environ.get("FIRECLOUD_STATE_DIR", ".firecloud_state")).expanduser()
 _JOB_STATE_PATH = _STATE_DIR / "analysis_job_state.json"
 _RESULT_STATE_PATH = _STATE_DIR / "last_analysis_result.pkl"
+_RECOVERY_ERROR_PATH = _STATE_DIR / "recovery_journal_error.log"
+_APP_RUNTIME_PATH = _STATE_DIR / "app_runtime_identity.json"
+
+
+def _runtime_identity() -> dict:
+    """Best-effort identity for the current Streamlit server/container process.
+
+    This is diagnostic only.  It lets a later page load distinguish a normal
+    Streamlit rerun from a server/container-process restart when the local
+    state directory itself survives.
+    """
+    boot_id = ""
+    try:
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return {
+        "pid": os.getpid(),
+        "boot_id": boot_id,
+        "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -449,11 +471,80 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 
 def _load_analysis_job_state() -> dict:
+    """Load the master journal, falling back to per-job durable journals.
+
+    R5.7.24 reliability contract: a missing/corrupt master journal must not
+    erase recovery when the per-job directory still exists.
+    """
     try:
         raw = json.loads(_JOB_STATE_PATH.read_text(encoding="utf-8"))
-        return raw if isinstance(raw, dict) else {}
+        if isinstance(raw, dict) and raw:
+            return raw
     except Exception:
-        return {}
+        pass
+
+    candidates = []
+    jobs_root = _STATE_DIR / "analysis_jobs"
+    try:
+        for path in jobs_root.glob("*/job_state.json"):
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(raw, dict) or not raw:
+                    continue
+                ts = path.stat().st_mtime
+                candidates.append((ts, raw))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    if candidates:
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        return candidates[0][1]
+
+    # Last-resort reconstruction from progress files.  This preserves the
+    # failure/completion evidence even if both journal copies were interrupted.
+    progress_candidates = []
+    try:
+        _progress_paths = list(jobs_root.glob("*/attempts/attempt_*/progress.json")) + list(jobs_root.glob("*/progress.json"))
+        for path in _progress_paths:
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(raw, dict) or not raw:
+                    continue
+                if "attempts" in path.parts:
+                    inferred_job_id = path.parents[2].name
+                else:
+                    inferred_job_id = path.parent.name
+                job_id = str(raw.get("job_id") or inferred_job_id)
+                progress_candidates.append((path.stat().st_mtime, path, raw, job_id))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    if progress_candidates:
+        progress_candidates.sort(key=lambda x: x[0], reverse=True)
+        _, path, progress, job_id = progress_candidates[0]
+        job_dir = _STATE_DIR / "analysis_jobs" / job_id
+        request = _read_json_file(job_dir / "request.json") if (job_dir / "request.json").exists() else {}
+        attempt_dir = path.parent
+        result_candidate = attempt_dir / "result.pkl"
+        return {
+            "job_id": job_id,
+            "status": str(progress.get("status", "INTERRUPTED")),
+            "worker_status": str(progress.get("status", "INTERRUPTED")),
+            "worker_pid": progress.get("worker_pid"),
+            "worker_progress_path": str(path),
+            "worker_result_path": str(result_candidate),
+            "worker_stdout_path": str(attempt_dir / "worker.stdout.log"),
+            "worker_stderr_path": str(attempt_dir / "worker.stderr.log"),
+            "request": request,
+            "last_message": str(progress.get("last_message", "從 per-job progress 重建 recovery")),
+            "worker_last_heartbeat_at_utc": progress.get("updated_at_utc", ""),
+            "worker_elapsed_seconds": progress.get("elapsed_seconds", 0.0),
+            "worker_exit_code": progress.get("exit_code"),
+            "reconstructed_from_progress": True,
+        }
+    return {}
 
 
 def _load_cams_worker_checkpoint() -> dict:
@@ -489,14 +580,40 @@ def _load_all_cams_worker_checkpoints() -> dict:
     return out
 
 
+def _record_recovery_journal_error(where: str, exc: Exception) -> None:
+    try:
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+        line = (
+            f"{datetime.now(timezone.utc).isoformat()}\t{where}\t"
+            f"{type(exc).__name__}: {exc}\n"
+        )
+        with _RECOVERY_ERROR_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+    except Exception:
+        pass
+
+
 def _save_analysis_job_state(state: dict) -> None:
+    """Persist redundant master + per-job journals.
+
+    Journal failure must not crash physics, but it must no longer fail silently.
+    """
     payload = dict(state)
     payload["updated_at_utc"] = datetime.now(timezone.utc).isoformat()
+    errors = []
     try:
         _atomic_write_text(_JOB_STATE_PATH, json.dumps(payload, ensure_ascii=False, indent=2, default=str))
-    except Exception:
-        # Recovery is best-effort and must never block the physics run.
-        pass
+    except Exception as exc:
+        errors.append(("master", exc))
+    job_id = str(payload.get("job_id", "") or "").strip()
+    if job_id:
+        try:
+            job_state_path = _STATE_DIR / "analysis_jobs" / job_id / "job_state.json"
+            _atomic_write_text(job_state_path, json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+        except Exception as exc:
+            errors.append(("per_job", exc))
+    for where, exc in errors:
+        _record_recovery_journal_error(where, exc)
 
 
 def _save_completed_analysis_result(result: dict) -> bool:
@@ -526,16 +643,36 @@ def _load_completed_analysis_result():
         return None
 
 
-def _job_paths(job_id: str) -> dict[str, Path]:
+def _job_paths(job_id: str, attempt_no: int | None = None) -> dict[str, Path]:
     job_dir = _STATE_DIR / "analysis_jobs" / str(job_id)
+    if attempt_no is None:
+        attempt_no = 1
+    attempt_dir = job_dir / "attempts" / f"attempt_{int(attempt_no):03d}"
     return {
         "dir": job_dir,
+        "attempt_dir": attempt_dir,
         "request": job_dir / "request.json",
-        "result": job_dir / "result.pkl",
-        "progress": job_dir / "progress.json",
-        "stdout": job_dir / "worker.stdout.log",
-        "stderr": job_dir / "worker.stderr.log",
+        "attempt_request": attempt_dir / "request.json",
+        "result": attempt_dir / "result.pkl",
+        "progress": attempt_dir / "progress.json",
+        "stdout": attempt_dir / "worker.stdout.log",
+        "stderr": attempt_dir / "worker.stderr.log",
+        "job_state": job_dir / "job_state.json",
     }
+
+
+def _next_attempt_no(job_id: str) -> int:
+    root = _STATE_DIR / "analysis_jobs" / str(job_id) / "attempts"
+    highest = 0
+    try:
+        for p in root.glob("attempt_*"):
+            try:
+                highest = max(highest, int(p.name.split("_")[-1]))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return highest + 1
 
 
 def _read_json_file(path: Path) -> dict:
@@ -555,9 +692,13 @@ def _pid_alive(pid) -> bool:
 
 
 def _launch_analysis_worker(request: dict, job_state: dict):
-    paths = _job_paths(job_state["job_id"])
+    attempt_no = _next_attempt_no(str(job_state["job_id"]))
+    paths = _job_paths(job_state["job_id"], attempt_no=attempt_no)
     paths["dir"].mkdir(parents=True, exist_ok=True)
-    paths["request"].write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
+    paths["attempt_dir"].mkdir(parents=True, exist_ok=True)
+    request_text = json.dumps(request, ensure_ascii=False, indent=2)
+    _atomic_write_text(paths["request"], request_text)
+    _atomic_write_text(paths["attempt_request"], request_text)
     _atomic_write_text(paths["progress"], json.dumps({
         "status": "STARTING", "progress_fraction": 0.0,
         "last_message": "背景分析 worker 啟動中",
@@ -567,6 +708,12 @@ def _launch_analysis_worker(request: dict, job_state: dict):
            str(paths["request"]), str(paths["result"]), str(paths["progress"])]
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
+    # R5.7.24 reliability: constrain glibc allocator fragmentation inside the
+    # detached long-running analysis worker.  The worker is exec'd as a fresh
+    # process, so these settings take effect before Pandas/NumPy allocate their
+    # large per-angle buffers.  They change memory scheduling only.
+    env.setdefault("MALLOC_ARENA_MAX", "2")
+    env.setdefault("MALLOC_TRIM_THRESHOLD_", "131072")
     env["FIRECLOUD_STATE_DIR"] = str(_STATE_DIR.resolve())
     env["FIRECLOUD_JOB_ID"] = str(job_state.get("job_id", ""))
     env["FIRECLOUD_ANALYSIS_RUN_MODE"] = str(job_state.get("analysis_run_mode", "WARM_PRODUCTION"))
@@ -587,11 +734,30 @@ def _launch_analysis_worker(request: dict, job_state: dict):
         job_state["provider_cache_namespace"] = str(_provider_root)
     else:
         job_state["provider_cache_namespace"] = "SHARED_PROVIDER_DEFAULTS"
+    previous_attempt = {
+        "attempt_no": job_state.get("attempt_no"),
+        "status": job_state.get("worker_status") or job_state.get("status"),
+        "worker_pid": job_state.get("worker_pid"),
+        "worker_exit_code": job_state.get("worker_exit_code"),
+        "worker_progress_path": job_state.get("worker_progress_path"),
+        "worker_stderr_path": job_state.get("worker_stderr_path"),
+        "last_message": job_state.get("last_message"),
+        "stderr_tail": job_state.get("current_worker_stderr_tail") or job_state.get("worker_stderr_tail", ""),
+        "updated_at_utc": job_state.get("updated_at_utc"),
+    }
+    attempt_history = list(job_state.get("attempt_history") or [])
+    if previous_attempt.get("attempt_no") is not None:
+        attempt_history.append(previous_attempt)
+
     job_state.update({
-        "execution_mode": "EXTERNAL_ANALYSIS_WORKER",
+        "execution_mode": "EXTERNAL_ANALYSIS_WORKER_NONBLOCKING_UI",
+        "attempt_no": attempt_no,
+        "attempt_history": attempt_history[-20:],
         "worker_status": "STARTING",
         "worker_pid": None,
         "worker_request_path": str(paths["request"]),
+        "worker_attempt_request_path": str(paths["attempt_request"]),
+        "worker_attempt_dir": str(paths["attempt_dir"]),
         "worker_result_path": str(paths["result"]),
         "worker_progress_path": str(paths["progress"]),
         "worker_stdout_path": str(paths["stdout"]),
@@ -599,6 +765,10 @@ def _launch_analysis_worker(request: dict, job_state: dict):
         "worker_last_heartbeat_at_utc": datetime.now(timezone.utc).isoformat(),
         "worker_elapsed_seconds": 0.0,
         "last_message": "背景分析 worker 啟動中",
+        "current_worker_stderr_tail": "",
+        "worker_stderr_tail": "",
+        "worker_traceback": "",
+        "error": "",
     })
     # Save the paths before Popen.  If the Streamlit parent is interrupted in
     # the narrow launch window, the next run can still find the request/logs.
@@ -617,6 +787,7 @@ def _launch_analysis_worker(request: dict, job_state: dict):
             "status": "FAILED", "worker_status": "FAILED", "worker_exit_code": None,
             "error": f"ANALYSIS_WORKER_START_FAILED: {type(exc).__name__}: {exc}",
             "last_message": f"ANALYSIS_WORKER_START_FAILED: {type(exc).__name__}: {exc}",
+            "current_worker_stderr_tail": _tail_text(paths["stderr"], 8000),
             "worker_stderr_tail": _tail_text(paths["stderr"], 8000),
         })
         _save_analysis_job_state(job_state)
@@ -656,6 +827,9 @@ def _reconcile_persisted_analysis_job(state: dict) -> dict:
     progress_status = str(progress.get("status", "")).upper()
     result_path = Path(str(state.get("worker_result_path", ""))) if state.get("worker_result_path") else None
     if progress_status == "COMPLETED" and result_path is not None and result_path.is_file():
+        _completed_result = _load_worker_result(result_path)
+        if _completed_result is not None:
+            _save_completed_analysis_result(_completed_result)
         state.update({
             "status": "COMPLETED",
             "worker_status": "COMPLETED",
@@ -665,6 +839,7 @@ def _reconcile_persisted_analysis_job(state: dict) -> dict:
             "worker_last_heartbeat_at_utc": progress.get("updated_at_utc", state.get("worker_last_heartbeat_at_utc", "")),
             "worker_elapsed_seconds": progress.get("elapsed_seconds", state.get("worker_elapsed_seconds", 0.0)),
             "worker_exit_code": progress.get("exit_code", state.get("worker_exit_code", 0)),
+            "current_worker_stderr_tail": _tail_text(Path(str(state.get("worker_stderr_path", ""))), 8000),
             "worker_stderr_tail": _tail_text(Path(str(state.get("worker_stderr_path", ""))), 8000),
         })
         _save_analysis_job_state(state)
@@ -675,10 +850,116 @@ def _reconcile_persisted_analysis_job(state: dict) -> dict:
             "last_message": str(progress.get("last_message") or progress.get("error") or "背景分析 worker 失敗"),
             "error": str(progress.get("error") or progress.get("last_message") or "背景分析 worker 失敗"),
             "worker_exit_code": progress.get("exit_code", state.get("worker_exit_code")),
+            "current_worker_stderr_tail": _tail_text(Path(str(state.get("worker_stderr_path", ""))), 8000),
             "worker_stderr_tail": _tail_text(Path(str(state.get("worker_stderr_path", ""))), 8000),
         })
         _save_analysis_job_state(state)
     return state
+
+
+def _poll_analysis_worker_once(job_state: dict, proc=None) -> dict:
+    """Read one worker snapshot without blocking the Streamlit script run.
+
+    Returns a dict with ``status``, ``display_message``, ``result`` and ``error``.
+    R5.7.24 uses this from an auto-refreshing fragment so the app script never
+    sits in a 10-15 minute polling loop.
+    """
+    progress_path = Path(str(job_state.get("worker_progress_path", "")))
+    result_path = Path(str(job_state.get("worker_result_path", "")))
+    pstate = _read_json_file(progress_path) if progress_path else {}
+    if not pstate:
+        pstate = {
+            "status": job_state.get("worker_status", job_state.get("status", "RUNNING")),
+            "progress_fraction": job_state.get("progress_fraction", 0.0),
+            "last_message": job_state.get("last_message", "背景分析進行中"),
+            "worker_pid": job_state.get("worker_pid"),
+            "updated_at_utc": job_state.get("worker_last_heartbeat_at_utc", ""),
+            "elapsed_seconds": job_state.get("worker_elapsed_seconds", 0.0),
+            "exit_code": job_state.get("worker_exit_code"),
+        }
+    try:
+        frac = max(0.0, min(1.0, float(pstate.get("progress_fraction", 0.0) or 0.0)))
+    except (TypeError, ValueError):
+        frac = 0.0
+    message = str(pstate.get("last_message", "背景分析進行中"))
+    try:
+        stage_elapsed = float(pstate.get("stage_elapsed_seconds", 0.0) or 0.0)
+    except Exception:
+        stage_elapsed = 0.0
+    try:
+        rss = float(pstate.get("rss_mb")) if pstate.get("rss_mb") is not None else None
+    except Exception:
+        rss = None
+    diag_suffix = f"｜階段 {stage_elapsed:.0f}s"
+    if rss is not None:
+        diag_suffix += f"｜RSS {rss:.0f} MB"
+    display_message = message + diag_suffix
+
+    worker_exit = pstate.get("exit_code")
+    if worker_exit is None and proc is not None and proc.poll() is not None:
+        worker_exit = proc.poll()
+    job_state.update({
+        "status": str(pstate.get("status", "RUNNING")),
+        "worker_status": str(pstate.get("status", "RUNNING")),
+        "worker_pid": pstate.get("worker_pid", job_state.get("worker_pid")),
+        "progress_fraction": frac,
+        "last_message": message,
+        "worker_last_heartbeat_at_utc": pstate.get("updated_at_utc", ""),
+        "worker_elapsed_seconds": pstate.get("elapsed_seconds", 0.0),
+        "worker_exit_code": worker_exit,
+        "current_worker_stderr_tail": _tail_text(Path(str(job_state.get("worker_stderr_path", ""))), 8000),
+    })
+    if pstate.get("traceback"):
+        job_state["worker_traceback"] = str(pstate["traceback"])[-12000:]
+    _save_analysis_job_state(job_state)
+
+    status = str(pstate.get("status", "RUNNING")).upper()
+    if status == "COMPLETED" and result_path.is_file():
+        result = _load_worker_result(result_path)
+        if result is not None:
+            _save_completed_analysis_result(result)
+            job_state.update({
+                "status": "COMPLETED", "worker_status": "COMPLETED",
+                "progress_fraction": 1.0, "last_message": "分析完成",
+                "worker_exit_code": worker_exit if worker_exit is not None else 0,
+                "current_worker_stderr_tail": _tail_text(Path(str(job_state.get("worker_stderr_path", ""))), 8000),
+            })
+            _save_analysis_job_state(job_state)
+            return {"status": "COMPLETED", "fraction": 1.0, "display_message": "分析完成", "result": result, "error": ""}
+
+    if status == "FAILED":
+        error = str(pstate.get("error") or pstate.get("last_message") or "背景分析 worker 失敗")
+        job_state.update({
+            "status": "FAILED", "worker_status": "FAILED", "error": error,
+            "last_message": error, "worker_exit_code": worker_exit,
+            "current_worker_stderr_tail": _tail_text(Path(str(job_state.get("worker_stderr_path", ""))), 8000),
+        })
+        _save_analysis_job_state(job_state)
+        return {"status": "FAILED", "fraction": frac, "display_message": display_message, "result": None, "error": error}
+
+    alive = proc.poll() is None if proc is not None else _pid_alive(job_state.get("worker_pid"))
+    if not alive:
+        if result_path.is_file():
+            result = _load_worker_result(result_path)
+            if result is not None:
+                _save_completed_analysis_result(result)
+                job_state.update({
+                    "status": "COMPLETED", "worker_status": "COMPLETED",
+                    "progress_fraction": 1.0, "last_message": "分析完成",
+                    "worker_exit_code": worker_exit,
+                })
+                _save_analysis_job_state(job_state)
+                return {"status": "COMPLETED", "fraction": 1.0, "display_message": "分析完成", "result": result, "error": ""}
+        error = f"背景分析 worker 已結束但沒有結果（PID {job_state.get('worker_pid')}）"
+        job_state.update({
+            "status": "FAILED", "worker_status": "FAILED", "error": error,
+            "last_message": error, "worker_exit_code": worker_exit,
+            "current_worker_stderr_tail": _tail_text(Path(str(job_state.get("worker_stderr_path", ""))), 8000),
+        })
+        _save_analysis_job_state(job_state)
+        return {"status": "FAILED", "fraction": frac, "display_message": error, "result": None, "error": error}
+
+    return {"status": "RUNNING", "fraction": frac, "display_message": display_message, "result": None, "error": ""}
 
 
 def _monitor_analysis_worker(job_state: dict, progress, status_box, proc=None):
@@ -778,12 +1059,35 @@ def _monitor_analysis_worker(job_state: dict, progress, status_box, proc=None):
         time.sleep(0.5)
 
 
+def _record_app_runtime_identity() -> dict:
+    current = _runtime_identity()
+    previous = _read_json_file(_APP_RUNTIME_PATH)
+    restarted = False
+    if previous:
+        prev_pid = previous.get("pid")
+        prev_boot = str(previous.get("boot_id", "") or "")
+        cur_boot = str(current.get("boot_id", "") or "")
+        restarted = bool(prev_pid not in (None, current.get("pid")) or (prev_boot and cur_boot and prev_boot != cur_boot))
+    payload = {
+        **current,
+        "previous_pid": previous.get("pid") if previous else None,
+        "previous_boot_id": previous.get("boot_id", "") if previous else "",
+        "runtime_restart_detected": restarted,
+    }
+    try:
+        _atomic_write_text(_APP_RUNTIME_PATH, json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+    except Exception as exc:
+        _record_recovery_journal_error("app_runtime_identity", exc)
+    return payload
+
+
+_app_runtime_identity = _record_app_runtime_identity()
 _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.23.4 Integrity-Audit Robustness Hotfix + R5.7.23.3 CAMS Live-Telemetry Hotfix + R5.7.23.2 Memory-Safe Aggregation Hotfix + R5.7.23 Runtime Hardening + Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.24 Runtime Reliability / Completion Guarantee + Memory Containment + R5.7.23.4 CASE-Integrity Type-Safety + R5.7.23 Runtime Hardening + Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -859,6 +1163,40 @@ if not st.session_state.recovery_loaded:
     st.session_state.recovery_loaded = True
 
 _recovery_req = (_persisted_job.get("request") or {}) if isinstance(_persisted_job, dict) else {}
+
+
+@st.fragment(run_every="1s")
+def _render_live_analysis_fragment(job_id: str) -> None:
+    """Non-blocking live monitor for a detached analysis worker.
+
+    The fragment reruns independently; the main Streamlit script is not held in
+    a long polling loop.  This is a reliability feature, not a performance
+    shortcut: the detached worker continues the same full PhysicsCore analysis.
+    """
+    state = _reconcile_persisted_analysis_job(_load_analysis_job_state())
+    if not state or str(state.get("job_id", "")) != str(job_id):
+        st.warning("找不到目前背景分析的 durable job journal；請勿重新啟動分析，先重新整理頁面。")
+        return
+    snap = _poll_analysis_worker_once(state)
+    frac = float(snap.get("fraction", 0.0) or 0.0)
+    display = str(snap.get("display_message", "背景分析進行中"))
+    st.progress(int(round(max(0.0, min(1.0, frac)) * 100)), text=display)
+    st.caption(
+        f"背景分析 Job {job_id}｜attempt {state.get('attempt_no', '')}｜"
+        f"PID {state.get('worker_pid', '')}｜前端採非阻塞監看；可安全切換頁面或重新整理。"
+    )
+    status = str(snap.get("status", "RUNNING")).upper()
+    if status == "COMPLETED" and isinstance(snap.get("result"), dict):
+        result = snap["result"]
+        st.session_state.analysis_result = result
+        st.session_state.analysis_request = state.get("request") or {}
+        st.success("分析完成，正在載入結果…")
+        st.rerun()
+    elif status == "FAILED":
+        st.error(f"背景分析未完成：{snap.get('error') or display}")
+        st.rerun()
+
+
 try:
     _default_lat = float(_recovery_req.get("lat", 24.2500))
 except Exception:
@@ -1141,12 +1479,12 @@ with st.sidebar:
     )
     _can_resume = _persisted_status in {"RUNNING", "INTERRUPTED", "FAILED"} and bool(_recovery_req)
     # A Streamlit rerun/reload must not relabel a still-running detached worker
-    # as an interrupted analysis.  Automatically reattach to its progress/result
-    # files instead of offering to launch a duplicate job against the same ADS/cache.
-    resume_run = bool(_active_detached_job)
+    # as an interrupted analysis.  R5.7.24 monitors it with an auto-refreshing
+    # fragment and does NOT block the main Streamlit script in a while-loop.
+    resume_run = False
     if _active_detached_job:
         st.info(
-            "偵測到背景分析仍在執行，已自動重新連線監看；不會啟動第二個 analysis worker。"
+            "偵測到背景分析仍在執行；已自動重新連線監看。前端將以非阻塞方式持續監看，不會啟動第二個 analysis worker。"
             f"｜PID {_persisted_pid}｜狀態 {_persisted_worker_status}"
         )
     if _can_resume and not _active_detached_job:
@@ -1212,7 +1550,16 @@ with st.sidebar:
                 _worker_diag += f"\nstderr（尾端）：{_worker_checkpoint.get('stderr_tail')}"
         st.warning("偵測到上一次分析未正常完成。已保留事件設定與最後進度；可從既有 provider 快取重新接續。" + (f"\n\n最後進度：{_last_message}" if _last_message else "") + _analysis_diag + _worker_diag)
         resume_run = st.button("繼續上次未完成分析", type="primary", use_container_width=True, key="resume_interrupted_analysis")
-    run = st.button("開始分析", type="primary", use_container_width=True) or resume_run
+    start_run = st.button(
+        "開始分析", type="primary", use_container_width=True,
+        disabled=bool(_active_detached_job),
+        help="已有背景分析執行中時會停用，避免重複啟動 worker。",
+    )
+    run = bool(start_run or resume_run)
+
+if _active_detached_job:
+    st.subheader("背景分析執行中")
+    _render_live_analysis_fragment(str(_persisted_job.get("job_id", "")))
 
 st.markdown(
     """
@@ -1290,42 +1637,15 @@ if run or st.session_state.analysis_result is not None:
             }
             _save_analysis_job_state(_job_state)
             _analysis_proc, _analysis_paths = _launch_analysis_worker(_request, _job_state)
-        try:
-            result = _monitor_analysis_worker(_job_state, progress, status_box, proc=_analysis_proc)
-            st.session_state.analysis_result = result
-            st.session_state.analysis_request = {
-                "lat": float(lat),
-                "lon": float(lon),
-                "day": day,
-                "event": str(event),
-            }
-            _saved = _save_completed_analysis_result(result)
-            _job_state.update({
-                "status": "COMPLETED",
-                "worker_status": "COMPLETED",
-                "progress_fraction": 1.0,
-                "last_message": "分析完成",
-                "result_persisted": bool(_saved),
-            })
-            _save_analysis_job_state(_job_state)
-        except Exception as e:
-            _job_state.update({
-                "status": "FAILED",
-                "worker_status": "FAILED",
-                "last_message": f"{type(e).__name__}: {e}",
-                "error_type": type(e).__name__,
-                "error": str(e),
-                "worker_exit_code": _analysis_proc.poll() if _analysis_proc is not None else _job_state.get("worker_exit_code"),
-                "worker_stderr_tail": _tail_text(Path(str(_job_state.get("worker_stderr_path", ""))), 8000),
-            })
-            _save_analysis_job_state(_job_state)
-            progress.empty()
-            status_box.empty()
-            st.error("分析未完成。事件設定與最後進度已寫入持久化恢復檔；重新載入頁面後可直接繼續上一次分析。")
-            st.exception(e)
-            st.stop()
-        progress.progress(100, text="分析完成。")
-        status_box.success("分析完成")
+        # R5.7.24 reliability contract: never hold the main Streamlit script
+        # inside a long polling loop.  The detached worker owns the full analysis;
+        # after launch/reattach the page reruns and the fragment above polls one
+        # snapshot at a time.
+        _job_state["ui_monitor_mode"] = "NONBLOCKING_FRAGMENT"
+        _save_analysis_job_state(_job_state)
+        progress.progress(1, text="背景分析已啟動；切換為非阻塞監看…")
+        status_box.info("分析在背景 worker 執行；前端不再長時間阻塞。")
+        st.rerun()
     else:
         result = st.session_state.analysis_result
         req = st.session_state.analysis_request or {}
@@ -2049,7 +2369,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.23_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"{CASE_FILENAME_PREFIX}{__version__.removeprefix('1.0.0-R5.')}_{archive_day}_{archive_event}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",
@@ -2057,6 +2377,6 @@ if run or st.session_state.analysis_result is not None:
 
 st.divider()
 st.caption(
-    "重要：此版本為獨立的 PhysicsCore 參考實作。在尚未與目前正式生產分支完成合併與回歸測試前，"
-    "不宣稱可直接取代現行正式版本。"
+    "R5.7.24 為完整替換部署版本；本版優先處理長時間分析可靠性與記憶體收斂。"
+    "Genuine calibrated liquid-cloud directional LUT 仍須外部 libRadtran/MYSTIC 計算後才可安裝。"
 )
