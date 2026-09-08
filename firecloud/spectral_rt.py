@@ -91,8 +91,33 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     _emit(0.02, "準備 550–750 nm 六波段光譜狀態")
     out = native_optical_voxels.copy()
     m = twilight_slant_factor(solar_altitude_deg)
-    cloud_tau = pd.to_numeric(out.get("slant_cloud_optical_depth_estimate", np.nan), errors="coerce")
+    # R5.7.25: a finite native slant tau is not automatically a complete
+    # Sun→CloudBase cloud path.  Production cloud transmission is exposed only
+    # when the native condensate ray was actually checked and its sampled path
+    # is complete.  Partial tau remains available as a lower-bound diagnostic.
+    raw_cloud_tau = pd.to_numeric(out.get("slant_cloud_optical_depth_estimate", np.nan), errors="coerce")
+    if "native_ray_path_completeness" in out.columns or "upstream_path_state" in out.columns:
+        cloud_comp = pd.to_numeric(out.get("native_ray_path_completeness", pd.Series(np.nan, index=out.index)), errors="coerce")
+        cloud_checked = out.get("upstream_path_checked", pd.Series(False, index=out.index)).fillna(False).astype(bool)
+        cloud_state = out.get("upstream_path_state", pd.Series("", index=out.index)).astype(str)
+        cloud_path_ready = raw_cloud_tau.notna() & cloud_checked & (cloud_comp >= 0.999) & cloud_state.eq("UPSTREAM_PATH_CHECKED")
+    else:
+        # Legacy/minimal fixtures predate the explicit cloud-path completeness
+        # columns.  Preserve their test/ingestion semantics without weakening new
+        # production output, which always carries the explicit fields.
+        cloud_comp = pd.Series(np.where(raw_cloud_tau.notna(), 1.0, 0.0), index=out.index, dtype=float)
+        cloud_state = pd.Series(np.where(raw_cloud_tau.notna(), "LEGACY_FINITE_TAU", "MISSING"), index=out.index, dtype=str)
+        cloud_path_ready = raw_cloud_tau.notna()
+    cloud_tau = raw_cloud_tau.where(cloud_path_ready, np.nan)
     cloud_t = np.exp(-cloud_tau)
+    out["cloud_rt_native_known_tau_lower_bound"] = raw_cloud_tau
+    out["cloud_rt_native_path_completeness"] = cloud_comp
+    out["cloud_rt_native_path_complete"] = cloud_path_ready
+    out["cloud_rt_native_path_quality"] = np.where(
+        cloud_path_ready,
+        "NATIVE_CONDENSATE_SUN_TO_CANVAS_PATH_COMPLETE",
+        "NATIVE_CONDENSATE_SUN_TO_CANVAS_PATH_MISSING_OR_PARTIAL",
+    )
     out["spectral_airmass_factor"] = m  # retained for Rayleigh diagnostic only
 
     if prepared_route_spectral_aod is not None:
@@ -128,7 +153,17 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     # fallback for all 6480 voxels even when native CAMS 3-D aerosol already
     # covered every direct-solar target. Compute that fallback only where it may
     # actually be needed; no optical value is changed when native data are full.
-    applicable=pd.to_numeric(out.get("geometric_illuminated_fraction",pd.Series(1.0,index=out.index)),errors="coerce").fillna(0.0)>0.0
+    if "v1_direct_solar_fraction" in out.columns:
+        # R5.7.25: Formation applicability belongs to the V1 Canvas base, not
+        # the centre of the nearest native sampling voxel.  This matters in the
+        # penumbra, where the Canvas base can still see part of the solar disk
+        # while the selected voxel centre is geometrically shadowed.
+        applicable = pd.to_numeric(out["v1_direct_solar_fraction"], errors="coerce").fillna(0.0) > 0.0
+    else:
+        applicable = pd.to_numeric(
+            out.get("geometric_illuminated_fraction", pd.Series(1.0, index=out.index)),
+            errors="coerce",
+        ).fillna(0.0) > 0.0
     native_finite=pd.Series(True,index=out.index,dtype=bool)
     for wl in wavelengths:
         native_finite &= pd.to_numeric(
@@ -210,11 +245,17 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     )
     base_q = out["spectral_rt_quality"].astype(str).str.replace(";GAS_MISSING", "", regex=False)
     out["spectral_rt_quality"] = np.where(gas_ok, base_q + ";GAS_RT_AVAILABLE", base_q + ";GAS_MISSING")
+    out["spectral_rt_quality"] = np.where(
+        cloud_path_ready,
+        out["spectral_rt_quality"].astype(str) + ";CLOUD_NATIVE_PATH_COMPLETE",
+        out["spectral_rt_quality"].astype(str) + ";CLOUD_NATIVE_PATH_MISSING_OR_PARTIAL",
+    )
     gas_failure = out.get("gas_rt_failure_cause", pd.Series("", index=out.index)).fillna("").astype(str)
     aerosol_missing = applicable & (~aerosol_path_ready)
+    cloud_missing = applicable & (~cloud_path_ready)
     out["spectral_rt_missing_cause"] = np.select(
-        [applicable & gas_failure.ne(""), aerosol_missing],
-        ["GAS_" + gas_failure, "AEROSOL_SPECTRAL_PATH_MISSING"],
+        [applicable & gas_failure.ne(""), aerosol_missing, cloud_missing],
+        ["GAS_" + gas_failure, "AEROSOL_SPECTRAL_PATH_MISSING", "CLOUD_NATIVE_PATH_MISSING_OR_PARTIAL"],
         default="",
     )
     clipped = out.get("gas_rt_boundary_clipped", pd.Series(False, index=out.index)).fillna(False).astype(bool)
@@ -230,7 +271,12 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     # large pandas PerformanceWarnings in every angle. This changes storage
     # mechanics only; equations and band values are unchanged.
     band_cols = {}
-    geom=pd.to_numeric(out.get("geometric_illuminated_fraction",np.nan),errors="coerce")
+    if "v1_direct_solar_fraction" in out.columns:
+        # Keep this legacy/diagnostic illumination product aligned with the same
+        # finite-solar-disk authority used by Formation.
+        geom = pd.to_numeric(out["v1_direct_solar_fraction"], errors="coerce")
+    else:
+        geom = pd.to_numeric(out.get("geometric_illuminated_fraction", np.nan), errors="coerce")
     cf=pd.to_numeric(out.get("cloud_fraction_used",out.get("cloud_fraction",np.nan)),errors="coerce")
     gas_quality = out.get("gas_rt_quality", pd.Series("HITRAN_GAS_MISSING", index=out.index))
     for wl in wavelengths:

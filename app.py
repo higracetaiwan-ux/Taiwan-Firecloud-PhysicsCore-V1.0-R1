@@ -1087,7 +1087,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Completion Guarantee + Memory Containment + R5.7.23.4 CASE-Integrity Type-Safety + R5.7.23 Runtime Hardening + Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + Penumbra RT Applicability + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1749,7 +1749,8 @@ if run or st.session_state.analysis_result is not None:
     _r3_illum = result.get("v1_cloud_base_illumination", pd.DataFrame())
     _r3_hit = result.get("v1_ray_cloud_intersections", pd.DataFrame())
     if not _r3_path.empty:
-        st.markdown("#### R3 六波段 Sun→CloudBase 光學路徑")
+        st.markdown("#### R3 Formation：六波段 Sun→CloudBase 紅光照射路徑")
+        st.caption("本區的 Cloud Path、Spectral RT、OpticalPathResult 都屬於 Formation：判斷太陽紅橘光是否能沿 Sun→CloudBase 抵達目標雲底。它不是觀測者可見路徑；Viewing 另由 Cloud→Observer 分支獨立判定。")
         _pshow = _r3_path[pd.to_numeric(_r3_path["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
         st.caption("transmission 只有完整四成分（gas/aerosol/cloud/precip）證據時才可成為正式總傳輸；known_component_transmission 是 R3 部分證據診斷，不冒充 Full RT。")
         st.dataframe(localized_df(_pshow), use_container_width=True, hide_index=True)
@@ -1789,19 +1790,19 @@ if run or st.session_state.analysis_result is not None:
     audit = result.get("physics_data_completeness", pd.DataFrame())
     perf = result.get("performance_diagnostics", pd.DataFrame())
     if not audit.empty:
-        st.subheader("Legacy V8 完整率診斷（R2 僅相容／除錯）")
-        st.caption("Missing ≠ Zero ≠ Blocked。各物理層獨立判定；Full Spectral RT 只有所有必要輸入成立時才會 READY。")
+        st.subheader("Physics Data Completeness 診斷")
+        st.caption("Missing ≠ Zero ≠ Blocked ≠ Not Applicable。SPECTRAL_AEROSOL_PATH、SPECTRAL_CLOUD_PATH 與 Full Spectral RT 都屬於 Formation 的 Sun→CloudBase 紅光照射路徑；觀測者是否看得到由獨立 Cloud→Observer Viewing 判定。")
         aa = audit[audit["solar_altitude_deg"] == diagnostic_angle].copy()
-        layer_zh={"FORECAST_CLOUD":"基礎預報／雲場","NATIVE_AEROSOL":"Native Aerosol","O3_PROFILE":"Real O₃ Profile","GAS_PROFILE":"Gas Profile","HITRAN_SPECTROSCOPY":"HITRAN Spectroscopy","FULL_SPECTRAL_RT":"Full Spectral RT"}
+        layer_zh={"FORECAST_CLOUD":"基礎預報／雲場","NATIVE_AEROSOL":"Native Aerosol","O3_PROFILE":"Real O₃ Profile","GAS_PROFILE":"Gas Profile","HITRAN_SPECTROSCOPY":"HITRAN Spectroscopy","GAS_VERTICAL_DOMAIN":"Gas Vertical Domain","SPECTRAL_AEROSOL_PATH":"Formation 氣膠路徑（Sun→CloudBase）","SPECTRAL_CLOUD_PATH":"Formation 上游雲阻光路徑（Sun→CloudBase）","FULL_SPECTRAL_RT":"Formation Full Six-Band RT（Sun→CloudBase）","FULL_SPECTRAL_RT_ALL_ROUTE_DIAGNOSTIC":"全路徑 RT 診斷"}
         aa["診斷層"] = aa["layer"].map(layer_zh).fillna(aa["layer"])
         aa["完整率 (%)"] = (pd.to_numeric(aa["completeness"],errors="coerce")*100).round(1)
         aa=aa.rename(columns={"status":"狀態","provider":"資料來源","missing_reason":"缺失／原因"})
         st.dataframe(aa[["診斷層","狀態","完整率 (%)","資料來源","缺失／原因"]], use_container_width=True, hide_index=True)
-        fr=aa[aa["診斷層"]=="Full Spectral RT"]
+        fr=aa[aa["診斷層"]=="Formation Full Six-Band RT（Sun→CloudBase）"]
         if not fr.empty:
             fs=str(fr.iloc[0]["狀態"]); fc=float(fr.iloc[0]["完整率 (%)"]); reason=str(fr.iloc[0]["缺失／原因"] or "")
-            if fs=="READY": st.success(f"Full Spectral RT：READY｜完整率 {fc:.1f}%")
-            else: st.warning(f"Full Spectral RT：{fs}｜完整率 {fc:.1f}%" + (f"｜{reason}" if reason else ""))
+            if fs=="READY": st.success(f"Formation Full Six-Band RT（Sun→CloudBase）：READY｜完整率 {fc:.1f}%")
+            else: st.warning(f"Formation Full Six-Band RT（Sun→CloudBase）：{fs}｜完整率 {fc:.1f}%" + (f"｜{reason}" if reason else ""))
 
     if not perf.empty:
         with st.expander("效能診斷（各太陽高度角／3D 階段）", expanded=False):
@@ -2377,7 +2378,7 @@ if run or st.session_state.analysis_result is not None:
 
 st.divider()
 st.caption(
-    "R5.7.24.3 為完整替換部署版本；本版凍結單次分析的 Provider Cycle Resolution，避免長時間 CAMS/DWD 等待跨過 availability boundary 後，per-angle lookup 跳到不同 GFS/CAMS cycle 而遺失已預取證據。"
-    "同時保留 R5.7.24.1 CAMS Availability Guard 與 R5.7.24 Runtime Reliability / Memory Containment。"
+    "R5.7.25 為完整替換部署版本；本版統一 Formation Sun→CloudBase 的 Cloud Optical Path 完整性判定，修正 finite native tau 在 path incomplete 時被誤當完整 transmission，以及 penumbra 中 Canvas-base DirectSolarFraction 被 native voxel-centre illumination 錯誤否決的問題。"
+    "Cloud Path / Full Spectral RT 在本版均明確屬於 Formation（紅光照射到雲）；Viewing 仍由獨立 Cloud→Observer 分支判定觀測者是否看得到。並完整保留 R5.7.24.x Runtime Reliability / Provider Cycle Freeze。"
     "Genuine calibrated liquid-cloud directional LUT 仍須外部 libRadtran/MYSTIC 計算後才可安裝。"
 )

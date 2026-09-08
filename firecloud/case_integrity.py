@@ -126,6 +126,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
     spectral = _df(result.get("v1_spectral_optical_paths"))
+    completeness = _df(result.get("physics_data_completeness"))
 
     add("ROUTE_POINTS_PRESENT", PASS if not route.empty else FAIL, "ROUTE", _rows(route), ">0 rows")
     if not route_ref.empty:
@@ -225,6 +226,31 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add("TARGET_DEPENDENT_SPECTRAL_EMPTY", ALLOWED_EMPTY if spectral.empty else PASS, "FORMATION_RT", _rows(spectral), "empty allowed when no canvas candidates", "No-canvas is a physical outcome; an empty target-dependent RT table is not CASE corruption")
     else:
         add("TARGET_DEPENDENT_SPECTRAL_EVIDENCE", PASS if not spectral.empty else WARN, "FORMATION_RT", _rows(spectral), ">0 rows when canvas candidates exist", "May remain partial/missing optically, but evidence table should normally exist")
+
+    # R5.7.25: the exported FULL_SPECTRAL_RT readiness must agree with the
+    # Canvas-specific V1 Sun→CloudBase OpticalPathResult.  This detects the
+    # regression where lower-level spectral voxels reported 100% Full RT while
+    # upstream cloud blockers remained conflict/unknown in the V1 path table.
+    if (not spectral.empty and not completeness.empty
+            and {"solar_altitude_deg","direct_solar_fraction","critical_path_status"}.issubset(spectral.columns)
+            and {"solar_altitude_deg","layer","completeness"}.issubset(completeness.columns)):
+        diffs=[]; checked=0
+        for angle,g in spectral.groupby("solar_altitude_deg",dropna=False):
+            fs=pd.to_numeric(g["direct_solar_fraction"],errors="coerce").fillna(0.0)
+            req=fs>0.0
+            if not req.any():
+                continue
+            expected=float(g.loc[req,"critical_path_status"].astype(str).eq("FULL_RT").mean())
+            cg=completeness[(pd.to_numeric(completeness["solar_altitude_deg"],errors="coerce")-float(angle)).abs()<=1e-9]
+            cg=cg[cg["layer"].astype(str).eq("FULL_SPECTRAL_RT")]
+            if cg.empty:
+                diffs.append(1.0); continue
+            observed=float(pd.to_numeric(cg["completeness"],errors="coerce").iloc[0])
+            diffs.append(abs(observed-expected)); checked += 1
+        maxdiff=max(diffs) if diffs else 0.0
+        add("FULL_RT_COMPLETENESS_V1_PATH_CONSISTENCY", PASS if maxdiff<=1e-9 else FAIL, "FORMATION_RT", round(float(maxdiff),9), "<=1e-9 completeness difference", f"checked_angles={checked}; V1 OpticalPathResult is authoritative")
+    else:
+        add("FULL_RT_COMPLETENESS_V1_PATH_CONSISTENCY", WARN, "FORMATION_RT", "SCHEMA_NOT_AVAILABLE", "R5.7.25+ V1 path/completeness schema", "Legacy/minimal CASE may omit the required columns")
 
     hard_fail = any(r["status"] == FAIL for r in rows)
     rows.append({

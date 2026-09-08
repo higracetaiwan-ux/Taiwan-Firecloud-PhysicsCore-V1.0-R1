@@ -215,6 +215,29 @@ def _native_horizontal_support(scene: CloudScene, path_view: Optional[dict[str,d
             out[layer.layer_id]=rec
     return out
 
+def _classify_unresolved_cloud_intersection(layer, path_view: dict, support: dict) -> tuple[str, str]:
+    """Classify an unresolved upstream cloud blocker without inventing opacity.
+
+    The classification preserves the frozen distinction between Missing and
+    direct evidence conflict.  Cloud fraction may establish occupancy geometry,
+    but it may never fabricate COT when native condensate is zero/missing.
+    """
+    consistency = str(getattr(layer, "evidence_consistency", "") or "").upper()
+    if consistency in {"CF_CLOUD_CONDENSATE_ZERO", "CONDENSATE_CLOUD_CF_LOW"}:
+        return "DIRECT_EVIDENCE_CONFLICT", consistency
+    path_status = str((path_view or {}).get("path_optical_status", "") or "")
+    support_source = str((support or {}).get("support_source", "") or "")
+    if path_status == "SECONDARY_NATIVE_OPTICS_PARTIAL_VERTICAL_COVERAGE_UNRESOLVED":
+        return "PARTIAL_OPTICS", "SECONDARY_NATIVE_OPTICS_PARTIAL_VERTICAL_COVERAGE"
+    if support_source == "ROUTE_EDGE_SUPPORT_UNRESOLVED":
+        return "PARTIAL_OPTICS", "ROUTE_EDGE_OPTICAL_SUPPORT_UNRESOLVED"
+    if path_status.startswith("RESOLVED_") and not bool((support or {}).get("horizontal_support_resolved")):
+        return "PARTIAL_OPTICS", "RESOLVED_VERTICAL_OPTICS_HORIZONTAL_SUPPORT_UNRESOLVED"
+    if path_status == "UNRESOLVED_PATH_CLOUD_OPTICS":
+        return "MISSING", "CLOUD_OPTICS_MISSING"
+    return "MISSING", "CLOUD_OPTICS_OR_HORIZONTAL_SUPPORT_UNRESOLVED"
+
+
 def _slant_intersection_through_supported_layer(canvas, layer, support: dict, solar_altitude_deg: float, earth_radius_km: float, vertical_cot: Optional[float] = None) -> tuple[bool, Optional[float], Optional[float]]:
     """Return (hit, slant_path_km, slant_tau) for a supported cloud prism."""
     if not support.get("horizontal_support_resolved"):
@@ -294,6 +317,7 @@ def build_ray_cloud_intersections(
                     "path_optical_vertical_coverage_fraction": pv.get("path_vertical_coverage_fraction",0.0),
                     "path_secondary_record_count": pv.get("path_secondary_record_count",0),
                     "layer_phase": layer.phase, "effective_radius_um": layer.effective_radius_um,
+                    "evidence_consistency": getattr(layer, "evidence_consistency", None),
                     "geometry_source": layer.geometry_source,
                     **support,
                 }
@@ -301,7 +325,9 @@ def build_ray_cloud_intersections(
                     rows.append({**base_row, "intersection_role":"TARGET_CANVAS",
                         "ray_altitude_km":canvas.cloud_base_altitude_km, "intersects":True,
                         "slant_path_km":None, "slant_cloud_optical_depth":None,
-                        "slant_optics_status":"TARGET_CLOUD_RESPONSE_NOT_PATH_BLOCKER"})
+                        "slant_optics_status":"TARGET_CLOUD_RESPONSE_NOT_PATH_BLOCKER",
+                        "cloud_blocker_evidence_state":"NOT_APPLICABLE",
+                        "cloud_blocker_unresolved_reason":"TARGET_CLOUD_RESPONSE_NOT_PATH_BLOCKER"})
                     continue
                 if support.get("horizontal_support_resolved"):
                     hit,path,tau=_slant_intersection_through_supported_layer(
@@ -311,14 +337,17 @@ def build_ray_cloud_intersections(
                     if hit:
                         mid=0.5*(float(support["support_start_km"])+float(support["support_end_km"]))
                         z=ray_altitude_km_at_surface_distance(canvas.distance_km,canvas.cloud_base_altitude_km,mid,solar_altitude_deg,earth_radius_km)
+                        _resolved_status = (
+                            "RESOLVED_SECONDARY_NATIVE_FORECAST_SLANT_RT"
+                            if tau is not None and str(pv.get("path_optical_status","")).startswith("RESOLVED_SECONDARY")
+                            else ("RESOLVED_NATIVE_CONDENSATE_SLANT_RT" if tau is not None else "SLANT_GEOMETRY_RESOLVED_OPTICS_UNKNOWN")
+                        )
                         rows.append({**base_row, "intersection_role":"UPSTREAM_CLOUD_INTERSECTION",
                             "ray_altitude_km":z, "intersects":True, "slant_path_km":path,
                             "slant_cloud_optical_depth":tau,
-                            "slant_optics_status":(
-                                "RESOLVED_SECONDARY_NATIVE_FORECAST_SLANT_RT"
-                                if tau is not None and str(pv.get("path_optical_status","")).startswith("RESOLVED_SECONDARY")
-                                else ("RESOLVED_NATIVE_CONDENSATE_SLANT_RT" if tau is not None else "SLANT_GEOMETRY_RESOLVED_OPTICS_UNKNOWN")
-                            )})
+                            "slant_optics_status":_resolved_status,
+                            "cloud_blocker_evidence_state":("FULL" if tau is not None else "MISSING"),
+                            "cloud_blocker_unresolved_reason":("" if tau is not None else "SLANT_GEOMETRY_RESOLVED_OPTICS_UNKNOWN")})
                     continue
                 # No horizontal optical support: retain centre-point geometry hit only
                 # as an uncertainty flag; do not fabricate slant path/tau. Cache the
@@ -330,9 +359,12 @@ def build_ray_cloud_intersections(
                 z=centre_ray_altitude_cache[d]
                 hit=bool(z is not None and _finite(z) and float(layer.z_base_km)-1e-9 <= float(z) <= float(layer.z_top_km)+1e-9)
                 if hit:
+                    _ev_state, _unresolved_reason = _classify_unresolved_cloud_intersection(layer, pv, support)
                     rows.append({**base_row, "intersection_role":"UPSTREAM_CLOUD_INTERSECTION",
                         "ray_altitude_km":float(z), "intersects":True, "slant_path_km":None,
-                        "slant_cloud_optical_depth":None, "slant_optics_status":"POTENTIAL_BLOCKER_HORIZONTAL_SUPPORT_UNKNOWN"})
+                        "slant_cloud_optical_depth":None, "slant_optics_status":"POTENTIAL_BLOCKER_HORIZONTAL_SUPPORT_UNKNOWN",
+                        "cloud_blocker_evidence_state":_ev_state,
+                        "cloud_blocker_unresolved_reason":_unresolved_reason})
     return pd.DataFrame(rows)
 
 
@@ -351,6 +383,8 @@ def build_native_condensate_support_diagnostics(
     resolved_layers = [x for x in layers if support.get(x.layer_id,{}).get("horizontal_support_resolved")]
     inter = intersections if intersections is not None else pd.DataFrame()
     status = inter.get("slant_optics_status", pd.Series(dtype=str)).astype(str) if not inter.empty else pd.Series(dtype=str)
+    blocker_state = inter.get("cloud_blocker_evidence_state", pd.Series(dtype=str)).astype(str) if not inter.empty else pd.Series(dtype=str)
+    blocker_reason = inter.get("cloud_blocker_unresolved_reason", pd.Series(dtype=str)).astype(str) if not inter.empty else pd.Series(dtype=str)
     return pd.DataFrame([{
         "cloud_layer_count": len(layers),
         "native_optical_layer_count": len(optical_layers),
@@ -359,7 +393,10 @@ def build_native_condensate_support_diagnostics(
         "resolved_native_condensate_slant_intersection_count": int(status.eq("RESOLVED_NATIVE_CONDENSATE_SLANT_RT").sum()),
         "resolved_secondary_native_slant_intersection_count": int(status.eq("RESOLVED_SECONDARY_NATIVE_FORECAST_SLANT_RT").sum()),
         "unknown_horizontal_support_intersection_count": int(status.eq("POTENTIAL_BLOCKER_HORIZONTAL_SUPPORT_UNKNOWN").sum()),
-        "support_contract": "MULTICOLUMN_FORECAST_NATIVE_OPTICS_CONTINUITY_R5_5_2",
+        "direct_evidence_conflict_intersection_count": int(blocker_state.eq("DIRECT_EVIDENCE_CONFLICT").sum()),
+        "optical_support_unresolved_intersection_count": int(blocker_reason.str.contains("SUPPORT", regex=False, na=False).sum()),
+        "cloud_optics_missing_intersection_count": int(blocker_reason.str.contains("CLOUD_OPTICS_MISSING", regex=False, na=False).sum()),
+        "support_contract": "MULTICOLUMN_FORECAST_NATIVE_OPTICS_CONTINUITY_R5_7_25",
         "sampling_step_is_cloud_width": False,
     }])
 
@@ -492,16 +529,37 @@ def build_r3_optical_tables(
         unknown_cloud_intersections = False
         resolved_upstream_cloud_tau = 0.0
         resolved_upstream_count = 0
+        cloud_conflict_count = 0
+        cloud_support_unresolved_count = 0
+        cloud_missing_count = 0
+        cloud_path_intersection_completeness = 1.0 if canvas_inter.empty and scene.geometry_completeness == 1.0 else 0.0
+        cloud_path_evidence_state = "NO_UPSTREAM_CLOUD" if canvas_inter.empty else "MISSING"
+        cloud_missing_token = None
         if not canvas_inter.empty:
             status = canvas_inter.get("slant_optics_status", pd.Series("", index=canvas_inter.index)).astype(str)
             tauvals = pd.to_numeric(canvas_inter.get("slant_cloud_optical_depth", pd.Series(np.nan, index=canvas_inter.index)), errors="coerce")
             resolved_mask = status.str.match(r"^RESOLVED_.*_SLANT_RT$") & tauvals.notna()
             resolved_upstream_count = int(resolved_mask.sum())
             resolved_upstream_cloud_tau = float(tauvals[resolved_mask].sum()) if resolved_upstream_count else 0.0
-            # Any geometric blocker whose horizontal/optical support is unresolved
-            # keeps the total cloud-path optical depth Unknown. PARTIAL optical
-            # evidence may still be usable when its slant tau was resolved.
-            unknown_cloud_intersections = bool((~resolved_mask).any())
+            unresolved_mask = ~resolved_mask
+            unresolved_state = canvas_inter.get("cloud_blocker_evidence_state", pd.Series("MISSING", index=canvas_inter.index)).astype(str)
+            unresolved_reason = canvas_inter.get("cloud_blocker_unresolved_reason", pd.Series("", index=canvas_inter.index)).astype(str)
+            cloud_conflict_count = int((unresolved_mask & unresolved_state.eq("DIRECT_EVIDENCE_CONFLICT")).sum())
+            cloud_support_unresolved_count = int((unresolved_mask & unresolved_reason.str.contains("SUPPORT", regex=False, na=False)).sum())
+            cloud_missing_count = int(unresolved_mask.sum()) - cloud_conflict_count - cloud_support_unresolved_count
+            unknown_cloud_intersections = bool(unresolved_mask.any())
+            cloud_path_intersection_completeness = float(resolved_upstream_count / len(canvas_inter)) if len(canvas_inter) else 1.0
+            if not unknown_cloud_intersections:
+                cloud_path_evidence_state = "FULL"
+            elif cloud_conflict_count > 0:
+                cloud_path_evidence_state = "DIRECT_EVIDENCE_CONFLICT"
+                cloud_missing_token = "CLOUD_EVIDENCE_CONFLICT"
+            elif cloud_support_unresolved_count > 0:
+                cloud_path_evidence_state = "PARTIAL" if resolved_upstream_count > 0 else "MISSING"
+                cloud_missing_token = "CLOUD_HORIZONTAL_SUPPORT_UNRESOLVED"
+            else:
+                cloud_path_evidence_state = "PARTIAL" if resolved_upstream_count > 0 else "MISSING"
+                cloud_missing_token = "CLOUD_OPTICS_MISSING"
 
         known_trans: dict[int, Optional[float]] = {}
         relative_illum: dict[int, Optional[float]] = {}
@@ -541,7 +599,8 @@ def build_r3_optical_tables(
             missing_parts = []
             if tau_g is None: missing_parts.append("GAS")
             if tau_a is None: missing_parts.append("AEROSOL")
-            if tau_c is None or unknown_cloud_intersections: missing_parts.append("CLOUD")
+            if tau_c is None or unknown_cloud_intersections:
+                missing_parts.append(cloud_missing_token or "CLOUD_OPTICS_MISSING")
             if tau_p is None: missing_parts.append(precip_status)
 
             if not missing_parts:
@@ -595,13 +654,21 @@ def build_r3_optical_tables(
                 "bound_level": int(bl.value),
                 "missing_components": ";".join(str(x) for x in missing_parts),
                 "critical_path_status": (
-                    "POTENTIAL_BLOCKER_OPTICS_UNKNOWN" if unknown_cloud_intersections
-                    else ("UNCERTAIN_OPTICS" if ev != EvidenceState.FULL else "FULL_RT")
+                    "DIRECT_CLOUD_EVIDENCE_CONFLICT" if cloud_conflict_count > 0
+                    else ("CLOUD_HORIZONTAL_SUPPORT_UNRESOLVED" if unknown_cloud_intersections and cloud_support_unresolved_count > 0
+                    else ("CLOUD_OPTICS_MISSING" if unknown_cloud_intersections
+                    else ("UNCERTAIN_OPTICS" if ev != EvidenceState.FULL else "FULL_RT")))
                 ),
                 "rt_evidence_source": "LEGACY_RT_EVIDENCE_BRIDGE_R3" if rtrow is not None else "NO_RT_EVIDENCE",
                 "upstream_cloud_intersection_count": int(len(canvas_inter)),
                 "resolved_upstream_cloud_intersection_count": int(resolved_upstream_count),
                 "resolved_upstream_cloud_tau": float(resolved_upstream_cloud_tau),
+                "tau_cloud_lower_bound": float(resolved_upstream_cloud_tau) if (len(canvas_inter) or scene.geometry_completeness == 1.0) else None,
+                "cloud_path_intersection_completeness": float(cloud_path_intersection_completeness),
+                "cloud_path_evidence_state": cloud_path_evidence_state,
+                "cloud_conflict_intersection_count": int(cloud_conflict_count),
+                "cloud_support_unresolved_intersection_count": int(cloud_support_unresolved_count),
+                "cloud_missing_intersection_count": int(max(0, cloud_missing_count)),
                 "unknown_upstream_cloud_optics": bool(unknown_cloud_intersections),
                 "optical_bottleneck_segment_id": None,
             })
@@ -683,9 +750,9 @@ def build_r3_optical_tables(
 
     support_cols = [c for c in [
         "time","solar_altitude_deg","cloud_layer_id","direction_offset_deg","distance_km",
-        "layer_base_km","layer_top_km","optical_evidence","layer_vertical_cot",
+        "layer_base_km","layer_top_km","optical_evidence","layer_vertical_cot","evidence_consistency",
         "horizontal_support_resolved","support_start_km","support_end_km",
-        "support_source","support_confidence"
+        "support_source","support_confidence","cloud_blocker_evidence_state","cloud_blocker_unresolved_reason"
     ] if c in inter.columns]
     cloud_support = (inter[support_cols].drop_duplicates(subset=[c for c in ["time","solar_altitude_deg","cloud_layer_id"] if c in support_cols])
                      if support_cols else pd.DataFrame())

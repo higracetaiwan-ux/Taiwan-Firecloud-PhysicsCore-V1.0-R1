@@ -1164,8 +1164,35 @@ def _select_v1_canvas_rt_targets(native_optical_voxels: pd.DataFrame, canvases, 
     if not selected:
         return native_optical_voxels.iloc[0:0].copy()
     out=pd.concat(selected,ignore_index=True)
-    subset=[c for c in ("direction_offset_deg","distance_km","voxel_center_km") if c in out.columns]
+    subset=[c for c in ("v1_canvas_id","direction_offset_deg","distance_km","voxel_center_km") if c in out.columns]
     return out.drop_duplicates(subset=subset,keep="first").reset_index(drop=True) if subset else out.reset_index(drop=True)
+
+
+def _bind_v1_direct_solar_to_rt_targets(rt_targets: pd.DataFrame, direct_solar: pd.DataFrame) -> pd.DataFrame:
+    """Attach authoritative V1 Canvas-base solar-disk visibility to RT targets.
+
+    The native voxel selected for profile/optics sampling is not the authority for
+    finite-solar-disk visibility at the actual CloudBase.  Keeping this binding
+    explicit prevents penumbra targets from being skipped when voxel-centre
+    geometric illumination is already zero.
+    """
+    out = rt_targets.copy() if isinstance(rt_targets, pd.DataFrame) else pd.DataFrame()
+    if (
+        out.empty
+        or not isinstance(direct_solar, pd.DataFrame)
+        or direct_solar.empty
+        or "v1_canvas_id" not in out.columns
+        or not {"canvas_id", "direct_solar_fraction"}.issubset(direct_solar.columns)
+    ):
+        return out
+    ds = direct_solar.drop_duplicates("canvas_id", keep="last").set_index("canvas_id")
+    cid = out["v1_canvas_id"].astype(str)
+    out["v1_direct_solar_fraction"] = cid.map(pd.to_numeric(ds["direct_solar_fraction"], errors="coerce"))
+    if "solar_disk_visible_fraction" in ds.columns:
+        out["v1_solar_disk_visible_fraction"] = cid.map(
+            pd.to_numeric(ds["solar_disk_visible_fraction"], errors="coerce")
+        )
+    return out
 
 
 def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | None = None,
@@ -1896,6 +1923,14 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             _angle_progress(candidate_index, 0.61 + 0.25*max(0.0,min(1.0,float(_frac))), f"{label}：光譜 RT｜{_msg}")
         _rt_filter_t0 = perf_counter()
         rt_target_voxels = _select_v1_canvas_rt_targets(native_optical_voxels, _v1.get("canvas_objects", ()), _v1.get("scene"))
+        # R5.7.25: V1 Canvas-base DirectSolarFraction is the authoritative
+        # Formation RT applicability signal.  The nearest native optical voxel
+        # is only a sampling carrier and its voxel-centre illumination can
+        # legitimately differ at the penumbra boundary.  Bind the Canvas value
+        # explicitly so gas/aerosol RT cannot be skipped merely because the
+        # selected native voxel centre is already in shadow.
+        _v1_direct = _v1.get("direct_solar", pd.DataFrame())
+        rt_target_voxels = _bind_v1_direct_solar_to_rt_targets(rt_target_voxels, _v1_direct)
         _mode = rt_target_voxels.get("v1_rt_target_mode", pd.Series(["NONE"])).iloc[0] if not rt_target_voxels.empty else "NONE"
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "V1_RT_CANDIDATE_FILTER", "elapsed_seconds": perf_counter()-_rt_filter_t0, "cache_status": "FILTERED", "detail": f"targets={len(rt_target_voxels)}; source_voxels={len(native_optical_voxels)}; mode={_mode}"})
         spectral_voxels = build_spectral_rt(
@@ -2112,6 +2147,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 "gas_profile": gas_profile,
                 "hitran_backend_status": _hitran_status,
                 "spectral_voxels": spectral_voxels,
+                # R5.7.25: V1 Canvas-specific Sun→CloudBase OpticalPathResult is
+                # the authority for cloud-path and final Full-RT completeness.
+                # The lower-level spectral voxel table remains the gas/aerosol
+                # transport diagnostic but may not override an upstream cloud
+                # evidence conflict or unresolved horizontal support.
+                "v1_spectral_optical_paths": _r3.get("spectral_optical_paths", pd.DataFrame()),
                 # R5.7.24.2: distinguish a genuinely missing RT solve from a
                 # physically non-applicable one.  No Canvas geometry, or Canvas
                 # geometry with zero direct-solar fraction, must not be rewritten
@@ -2448,7 +2489,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # longer coexist with summary data_completeness == 1.0.
     mandatory_layers = ["FORECAST_CLOUD", "NATIVE_AEROSOL", "O3_PROFILE",
                         "GAS_PROFILE", "HITRAN_SPECTROSCOPY", "GAS_VERTICAL_DOMAIN",
-                        "SPECTRAL_AEROSOL_PATH", "FULL_SPECTRAL_RT"]
+                        "SPECTRAL_AEROSOL_PATH", "SPECTRAL_CLOUD_PATH", "FULL_SPECTRAL_RT"]
     operational_rows=[]
     if not physics_data_completeness.empty:
         for angle,g in physics_data_completeness.groupby("solar_altitude_deg", dropna=False):
@@ -2456,7 +2497,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             vals=pd.to_numeric(mg["completeness"],errors="coerce").dropna()
             overall=float(vals.min()) if len(vals) else 0.0
             failed=mg[mg["status"].astype(str).isin(["FAILED","MISSING","NOT_CONFIGURED"])]
-            partial=mg[mg["status"].astype(str).eq("PARTIAL")]
+            partial=mg[mg["status"].astype(str).isin(["PARTIAL","CONFLICT"])]
             if not failed.empty: status="MISSING"; reason=";".join(failed["layer"].astype(str).tolist())+"_UNAVAILABLE"
             elif not partial.empty or overall < 0.999: status="PARTIAL"; reason="MANDATORY_PHYSICS_INPUTS_PARTIAL"
             else: status="READY"; reason=""
@@ -2481,12 +2522,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         _dep = physics_data_completeness[physics_data_completeness["layer"].ne("OVERALL_OPERATIONAL_INPUTS")].copy()
         if not _dep.empty:
             _dep["dependency"] = _dep["layer"].astype(str)
-            _status_map = {"READY":"FULL", "PARTIAL":"PARTIAL_OPTICS", "MISSING":"MISSING", "FAILED":"MISSING", "NOT_CONFIGURED":"MISSING", "NOT_APPLICABLE":"NOT_APPLICABLE"}
+            _status_map = {"READY":"FULL", "PARTIAL":"PARTIAL_OPTICS", "CONFLICT":"PARTIAL_OPTICS", "MISSING":"MISSING", "FAILED":"MISSING", "NOT_CONFIGURED":"MISSING", "NOT_APPLICABLE":"NOT_APPLICABLE"}
             _dep["evidence_state"] = _dep["status"].astype(str).map(_status_map).fillna("MISSING")
             _dep["criticality"] = _dep["dependency"].map({
                 "FORECAST_CLOUD":"HIGH", "NATIVE_AEROSOL":"MEDIUM", "O3_PROFILE":"MEDIUM",
                 "GAS_PROFILE":"HIGH", "HITRAN_SPECTROSCOPY":"HIGH", "GAS_VERTICAL_DOMAIN":"HIGH",
-                "SPECTRAL_AEROSOL_PATH":"MEDIUM", "FULL_SPECTRAL_RT":"HIGH",
+                "SPECTRAL_AEROSOL_PATH":"MEDIUM", "SPECTRAL_CLOUD_PATH":"HIGH", "FULL_SPECTRAL_RT":"HIGH",
             }).fillna("MEDIUM")
             _dep["affected_outputs"] = _dep["dependency"].map({
                 "FORECAST_CLOUD":"CloudScene,CanvasCandidate,OpticalPath",
@@ -2496,6 +2537,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 "HITRAN_SPECTROSCOPY":"SpectralOpticalPath,Formation",
                 "GAS_VERTICAL_DOMAIN":"SpectralOpticalPath,Formation",
                 "SPECTRAL_AEROSOL_PATH":"SpectralOpticalPath,Formation",
+                "SPECTRAL_CLOUD_PATH":"SpectralOpticalPath,CloudBaseIllumination,Formation",
                 "FULL_SPECTRAL_RT":"Formation",
             }).fillna("DIAGNOSTIC")
             _dep = _dep[[c for c in ["time","solar_altitude_deg","dependency","status","evidence_state","completeness","criticality","affected_outputs","provider","missing_reason"] if c in _dep.columns]]
@@ -2864,6 +2906,7 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
 
         hs=d.get("hitran_backend_status", {}) or {}
         spectral=d.get("spectral_voxels", pd.DataFrame())
+        v1_paths=d.get("v1_spectral_optical_paths", pd.DataFrame())
         qualities=set(spectral.get("gas_rt_quality",pd.Series(dtype=str)).dropna().astype(str).unique()) if spectral is not None and not spectral.empty else set()
         if hs.get("runtime_spectroscopy_ready",False):
             hit_status="READY"; hit_c=1.0; hit_reason=""
@@ -2883,6 +2926,7 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
         full_cols=[f"full_spectral_transmission_{wl}nm" for wl in wavelengths]
         diagnostic_full_c=0.0
         spectral_aerosol_c=0.0; spectral_aerosol_status="MISSING"; spectral_aerosol_reason="SPECTRAL_AEROSOL_RT_INPUT_MISSING"
+        spectral_cloud_c=0.0; spectral_cloud_status="MISSING"; spectral_cloud_reason="CLOUD_PATH_OPTICAL_EVIDENCE_MISSING"
         rt_req_meta=d.get("spectral_rt_requirement", {}) or {}
         rt_req_known=bool(rt_req_meta)
         canvas_count=int(rt_req_meta.get("canvas_count", 0) or 0) if rt_req_known else None
@@ -2901,7 +2945,19 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
             # direct-sunlit Canvas (0–100 km). Finite transmission numbers alone
             # are NOT sufficient: gas and aerosol path-domain integrity must also
             # be complete, otherwise a partial tau could masquerade as full RT.
-            if "geometric_illuminated_fraction" in spectral.columns and "distance_km" in spectral.columns:
+            # R5.7.25: operational RT requirement follows the V1 Canvas base
+            # DirectSolarFraction, not the nearest native-voxel centre's geometric
+            # illuminated fraction.  Near the penumbra boundary those are not
+            # equivalent; the latter previously mislabeled a real sunlit Canvas
+            # (e.g. -2 deg) as NOT_APPLICABLE.
+            if (v1_paths is not None and not v1_paths.empty and "v1_canvas_id" in spectral.columns
+                    and {"canvas_id","direct_solar_fraction"}.issubset(v1_paths.columns)):
+                _sunlit_ids=set(v1_paths.loc[
+                    pd.to_numeric(v1_paths["direct_solar_fraction"],errors="coerce").fillna(0.0)>0.0,
+                    "canvas_id",
+                ].astype(str))
+                req=spectral["v1_canvas_id"].astype(str).isin(_sunlit_ids)
+            elif "geometric_illuminated_fraction" in spectral.columns and "distance_km" in spectral.columns:
                 geom=pd.to_numeric(spectral["geometric_illuminated_fraction"],errors="coerce").fillna(0.0)
                 dist=pd.to_numeric(spectral["distance_km"],errors="coerce")
                 req=(geom>0.0)&(dist<=100.0+1e-9)
@@ -2977,6 +3033,60 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
                 else:
                     full_status="MISSING"; full_reason="FULL_RT_REQUIRES_COMPLETE_CLOUD_AEROSOL_GAS_AND_HITRAN_PATHS"
 
+        # R5.7.25 Cloud Optical Blocking closure.  The V1 Canvas-specific
+        # OpticalPathResult is authoritative for Formation Full RT because it
+        # preserves CloudScene occupancy-vs-condensate conflicts and horizontal
+        # support uncertainty that the lower-level native spectral voxel alone
+        # cannot see.  This prevents a finite native slant tau from being reported
+        # as 100% Full RT while an upstream geometric cloud blocker remains
+        # optically unresolved.
+        if v1_paths is not None and not v1_paths.empty:
+            _v1_fsun=pd.to_numeric(v1_paths.get("direct_solar_fraction",pd.Series(np.nan,index=v1_paths.index)),errors="coerce").fillna(0.0)
+            _v1_req=_v1_fsun>0.0
+            if not _v1_req.any():
+                _na_reason = "NO_TARGET_CLOUD_GEOMETRY" if (rt_req_known and canvas_count <= 0) else "NO_DIRECT_SUNLIT_CANVAS_RT_REQUIRED"
+                spectral_cloud_c=1.0; spectral_cloud_status="NOT_APPLICABLE"; spectral_cloud_reason=_na_reason
+                full_c=1.0; full_status="NOT_APPLICABLE"; full_reason=_na_reason
+            else:
+                _v1_cloud_tau=pd.to_numeric(v1_paths.get("tau_cloud",pd.Series(np.nan,index=v1_paths.index)),errors="coerce")
+                _v1_cloud_unknown=v1_paths.get("unknown_upstream_cloud_optics",pd.Series(True,index=v1_paths.index)).fillna(True).astype(bool)
+                _v1_cloud_valid=_v1_cloud_tau.notna() & (~_v1_cloud_unknown)
+                spectral_cloud_c=float(_v1_cloud_valid.loc[_v1_req].mean())
+                _crit=v1_paths.get("critical_path_status",pd.Series("",index=v1_paths.index)).astype(str)
+                _req_crit=_crit.loc[_v1_req]
+                if spectral_cloud_c>=0.999:
+                    spectral_cloud_status="READY"; spectral_cloud_reason=""
+                elif spectral_cloud_c>0:
+                    spectral_cloud_status="PARTIAL"
+                    if _req_crit.eq("DIRECT_CLOUD_EVIDENCE_CONFLICT").any():
+                        spectral_cloud_reason="DIRECT_CLOUD_EVIDENCE_CONFLICT"
+                    elif _req_crit.eq("CLOUD_HORIZONTAL_SUPPORT_UNRESOLVED").any():
+                        spectral_cloud_reason="CLOUD_HORIZONTAL_SUPPORT_UNRESOLVED"
+                    else:
+                        spectral_cloud_reason="CLOUD_PATH_OPTICS_PARTIAL"
+                else:
+                    if _req_crit.eq("DIRECT_CLOUD_EVIDENCE_CONFLICT").any():
+                        spectral_cloud_status="CONFLICT"; spectral_cloud_reason="DIRECT_CLOUD_EVIDENCE_CONFLICT"
+                    elif _req_crit.eq("CLOUD_HORIZONTAL_SUPPORT_UNRESOLVED").any():
+                        spectral_cloud_status="PARTIAL"; spectral_cloud_reason="CLOUD_HORIZONTAL_SUPPORT_UNRESOLVED"
+                    else:
+                        spectral_cloud_status="MISSING"; spectral_cloud_reason="CLOUD_PATH_OPTICS_MISSING"
+
+                _v1_trans=pd.to_numeric(v1_paths.get("transmission",pd.Series(np.nan,index=v1_paths.index)),errors="coerce")
+                _v1_ev=v1_paths.get("evidence_state",pd.Series("",index=v1_paths.index)).astype(str)
+                _v1_full=_crit.eq("FULL_RT") & _v1_trans.notna() & _v1_ev.eq("FULL")
+                full_c=float(_v1_full.loc[_v1_req].mean())
+                if full_c>=0.999:
+                    full_status="READY"; full_reason="MODEL_DOMAIN_COMPLETE;V1_SUN_TO_CLOUDBASE_OPTICAL_PATH_COMPLETE"
+                elif full_c>0:
+                    full_status="PARTIAL"; full_reason="V1_FULL_SPECTRAL_RT_PARTIAL;" + spectral_cloud_reason
+                elif spectral_cloud_status == "CONFLICT":
+                    full_status="CONFLICT"; full_reason="V1_FULL_RT_BLOCKED_BY_DIRECT_CLOUD_EVIDENCE_CONFLICT"
+                elif spectral_cloud_status == "PARTIAL":
+                    full_status="PARTIAL"; full_reason="V1_FULL_RT_BLOCKED_BY_PARTIAL_CLOUD_PATH_EVIDENCE"
+                else:
+                    full_status="MISSING"; full_reason="V1_FULL_RT_BLOCKED;" + spectral_cloud_reason
+
         # Explicit vertical-domain audit: current Open-Meteo/CAMS gas profile tops
         # are real pressure-level data and are not extrapolated upward.
         if gp is None or gp.empty:
@@ -3002,7 +3112,8 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
             ("HITRAN_SPECTROSCOPY",hit_status,hit_c,hit_reason,"Local HITRAN/HAPI"),
             ("GAS_VERTICAL_DOMAIN",gas_vertical_status,gas_vertical_c,gas_vertical_reason,"Real pressure-level profile; no extrapolation"),
             ("SPECTRAL_AEROSOL_PATH",spectral_aerosol_status,spectral_aerosol_c,spectral_aerosol_reason,"CAMS native 3-D aerosol + real multi-wavelength AOD path"),
-            ("FULL_SPECTRAL_RT",full_status,full_c,full_reason,"PhysicsCore direct-sunlit Canvas model domain"),
+            ("SPECTRAL_CLOUD_PATH",spectral_cloud_status,spectral_cloud_c,spectral_cloud_reason,"V1 Sun→CloudBase native/secondary cloud optical blocking evidence"),
+            ("FULL_SPECTRAL_RT",full_status,full_c,full_reason,"V1 Canvas-specific Sun→CloudBase optical path"),
             ("FULL_SPECTRAL_RT_ALL_ROUTE_DIAGNOSTIC",diagnostic_status,diagnostic_full_c,diagnostic_reason,"PhysicsCore all-route diagnostic"),
         ]:
             rows.append({"time":t,"solar_altitude_deg":float(angle),"layer":layer,"status":status,"completeness":comp,"provider":prov,"missing_reason":reason})

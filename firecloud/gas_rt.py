@@ -456,10 +456,16 @@ def integrate_gas_sun_to_targets(targets:pd.DataFrame, gas_profile:pd.DataFrame,
     out["gas_profile_top_km"]=np.nan
     out["gas_rt_boundary_clipped"]=False
     out["gas_rt_expected_termination"]=""
-    out["rt_applicable_direct_solar"]=True
-    if "geometric_illuminated_fraction" in out.columns:
-        gf=pd.to_numeric(out["geometric_illuminated_fraction"],errors="coerce")
-        out["rt_applicable_direct_solar"]=(gf.fillna(0.0)>0.0)
+    out["rt_applicable_direct_solar"] = True
+    if "v1_direct_solar_fraction" in out.columns:
+        # R5.7.25: the V1 CloudBase finite-solar-disk result is authoritative
+        # for Formation RT applicability.  Do not let the nearest native voxel
+        # centre override a penumbra-sunlit Canvas base.
+        gf = pd.to_numeric(out["v1_direct_solar_fraction"], errors="coerce")
+        out["rt_applicable_direct_solar"] = gf.fillna(0.0) > 0.0
+    elif "geometric_illuminated_fraction" in out.columns:
+        gf = pd.to_numeric(out["geometric_illuminated_fraction"], errors="coerce")
+        out["rt_applicable_direct_solar"] = gf.fillna(0.0) > 0.0
     if not ctx.valid:
         out["gas_rt_quality"]=ctx.failure_cause or "HITRAN_LOCAL_BAND_TABLE_MISSING"
         out["gas_rt_failure_cause"]=ctx.failure_cause or "HITRAN_LOCAL_BAND_TABLE_MISSING"

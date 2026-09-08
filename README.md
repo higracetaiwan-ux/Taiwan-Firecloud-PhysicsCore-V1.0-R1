@@ -1,6 +1,24 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.24.3
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.25
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+## R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness
+
+本版專門收斂 **Formation 的紅光照射路徑**。請注意：本版的 `Cloud Path`、`SPECTRAL_CLOUD_PATH`、`OpticalPathResult`、`FULL_SPECTRAL_RT` 都是 **Sun→CloudBase**，回答「紅橘光能不能照到目標雲底」；它們不是 Viewing。觀測者能否看見已形成的火燒雲，仍由獨立的 **Cloud→Observer Viewing** 分支判定。
+
+R5.7.25 修正：
+
+- V1 Canvas-specific `Sun→CloudBase OpticalPathResult` 成為 Formation Full RT completeness 的權威判定，不再讓底層 finite native slant tau 越級宣告 Full RT。
+- native cloud slant tau 只有在 `upstream_path_checked=True`、`native_ray_path_completeness>=0.999` 且 path state 完整時，才可公開為 production cloud transmission；partial tau 僅保留為 lower-bound diagnostic。
+- Cloud Fraction 顯示有雲但 native condensate 為 0／不支持時，明確標為 `DIRECT_EVIDENCE_CONFLICT`，不再混成一般 Missing，也不假設 Clear。
+- 已解析垂直 COT 但 horizontal support 不完整時，保持 `CLOUD_HORIZONTAL_SUPPORT_UNRESOLVED / PARTIAL`，不得升級為完整 upstream cloud RT。
+- Formation RT applicability 以 **CloudBase `DirectSolarFraction`** 為權威。Penumbra 中即使最近 native voxel centre 已落入陰影，只要目標 CloudBase 仍看得到部分太陽盤，Gas/Aerosol/Cloud Formation RT 仍屬 required。
+- `physics_data_completeness.csv` 新增／統一 `SPECTRAL_CLOUD_PATH`，且 `FULL_SPECTRAL_RT` 必須與 V1 Sun→CloudBase OpticalPathResult 一致；Integrity 會檢查兩者是否分歧。
+
+本版不改 Viewing、Photography Decision、Target Canvas COT truth、Tier-2 LUT 權重或任何 Forecast/Observation 分離規則。
+
+驗收：Working tree **445 passed / 0 failed**；FULL-CLEAN ZIP 解壓後 **445 passed / 0 failed**。
+
 
 ## R5.7.24.3 Provider Cycle Freeze / Prefetch-Handoff Reliability
 
