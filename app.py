@@ -783,7 +783,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.23 Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.23.1 Runtime Hotfix + R5.7.23 Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1131,9 +1131,25 @@ with st.sidebar:
     )
 
     _persisted_status = str(_persisted_job.get("status", "")).upper()
+    _persisted_progress = _read_json_file(Path(str(_persisted_job.get("worker_progress_path")))) if _persisted_job.get("worker_progress_path") else {}
+    _persisted_pid = _persisted_progress.get("worker_pid", _persisted_job.get("worker_pid"))
+    _persisted_worker_status = str(_persisted_progress.get("status", _persisted_status)).upper()
+    _persisted_worker_alive = _pid_alive(_persisted_pid) if _persisted_pid else False
+    _active_detached_job = bool(
+        _recovery_req and _persisted_worker_alive and
+        _persisted_worker_status in {"STARTING", "RUNNING"}
+    )
     _can_resume = _persisted_status in {"RUNNING", "INTERRUPTED", "FAILED"} and bool(_recovery_req)
-    resume_run = False
-    if _can_resume:
+    # A Streamlit rerun/reload must not relabel a still-running detached worker
+    # as an interrupted analysis.  Automatically reattach to its progress/result
+    # files instead of offering to launch a duplicate job against the same ADS/cache.
+    resume_run = bool(_active_detached_job)
+    if _active_detached_job:
+        st.info(
+            "偵測到背景分析仍在執行，已自動重新連線監看；不會啟動第二個 analysis worker。"
+            f"｜PID {_persisted_pid}｜狀態 {_persisted_worker_status}"
+        )
+    if _can_resume and not _active_detached_job:
         _analysis_progress_state = {}
         _progress_path = _persisted_job.get("worker_progress_path")
         if _progress_path:
@@ -1243,8 +1259,9 @@ if run or st.session_state.analysis_result is not None:
             # Reattach to the already detached worker.  Starting a second
             # analysis for the same recovery job would duplicate ADS requests.
             _job_state = _old_job
+            _reattach_request = dict(_old_job.get("request") or _request)
             _job_state.update({
-                "status": "RUNNING", "request": _request, "version": __version__, "recovery_mode": True,
+                "status": "RUNNING", "request": _reattach_request, "version": __version__, "recovery_mode": True,
                 "analysis_run_mode": str(_old_job.get("analysis_run_mode", "RESUME_SAME_JOB")),
                 "execution_intent": "RESUME_INTERRUPTED_ANALYSIS",
             })

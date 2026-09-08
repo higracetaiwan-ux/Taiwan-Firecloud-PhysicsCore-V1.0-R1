@@ -1439,6 +1439,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 "O3_PRESSURE_LEVEL_RETRY": "O₃重試",
                 "SPECTRAL_COLUMN_AOD": "光譜AOD",
                 "SPECTRAL_COLUMN_AOD_RETRY": "光譜AOD重試",
+                "DECODED_ROUTE_CACHE_WRITE": "解碼快取落盤",
+                "CAMS_BUNDLE_POSTPROCESS": "時次後處理",
             }.get(_role, _role)
             _status_u = str(_status).upper()
             with _cams_progress_lock:

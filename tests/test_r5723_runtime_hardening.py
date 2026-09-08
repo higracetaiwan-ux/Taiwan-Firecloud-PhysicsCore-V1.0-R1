@@ -111,3 +111,31 @@ def test_app_exposes_isolated_cache_namespace_and_runtime_case_evidence():
         "runtime_resource_telemetry.csv",
     ):
         assert token in src
+
+
+def test_r57231_cold_cams_skips_decoded_route_cache_write(tmp_path, monkeypatch):
+    from firecloud.providers import cams_native
+    monkeypatch.setenv("FIRECLOUD_ANALYSIS_RUN_MODE", "COLD_ISOLATED_TEST")
+    pts=[{"point_id":"p0","lat":23.5,"lon":121.0,"distance_km":0.0,"direction_offset_deg":0.0}]
+    t=datetime(2026,9,8,9,tzinfo=timezone.utc)
+    result={"status":"OK","df":pd.DataFrame([{"point_id":"p0","cams_ozone_kgkg_500":1e-6}]),"meta":{}}
+    audit=cams_native._save_decoded_role_cache("O3_PRESSURE_LEVEL",pts,t,result,tmp_path)
+    assert audit["status"] == "SKIPPED_COLD_ISOLATED_TEST"
+    assert not list(tmp_path.rglob("cams_decoded_*.pkl"))
+
+
+def test_r57231_cams_post_worker_progress_is_explicit():
+    src = (Path(__file__).resolve().parents[1] / "firecloud" / "providers" / "cams_native.py").read_text(encoding="utf-8")
+    assert 'heartbeat_callback("DECODED_ROUTE_CACHE_WRITE", "RUNNING"' in src
+    assert 'progress_callback("CAMS_BUNDLE_POSTPROCESS", "RUNNING"' in src
+    model = (Path(__file__).resolve().parents[1] / "firecloud" / "model.py").read_text(encoding="utf-8")
+    assert '"DECODED_ROUTE_CACHE_WRITE": "解碼快取落盤"' in model
+    assert '"CAMS_BUNDLE_POSTPROCESS": "時次後處理"' in model
+
+
+def test_r57231_streamlit_rerun_auto_reattaches_live_worker():
+    src = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+    assert "_active_detached_job" in src
+    assert "已自動重新連線監看" in src
+    assert "resume_run = bool(_active_detached_job)" in src
+    assert '_reattach_request = dict(_old_job.get("request") or _request)' in src

@@ -31,7 +31,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from ..runtime_hardening import stamp_cache_artifact, cache_provenance
+from ..runtime_hardening import stamp_cache_artifact, cache_provenance, runtime_cache_mode, CACHE_MODE_COLD
 
 DATASET = "cams-global-atmospheric-composition-forecasts"
 PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_3D_AEROSOL_EXTINCTION_532NM"
@@ -303,13 +303,27 @@ def _load_decoded_role_cache(role: str, points: list[dict], valid_time: datetime
     except Exception:
         return None
 
-def _save_decoded_role_cache(role: str, points: list[dict], valid_time: datetime, result: dict, cache_dir: str | Path | None = None) -> None:
+def _save_decoded_role_cache(role: str, points: list[dict], valid_time: datetime, result: dict, cache_dir: str | Path | None = None) -> dict:
+    """Best-effort decoded-route cache commit.
+
+    R5.7.23.1: decoded-route cache is an optimization only.  A cold isolated
+    TEST intentionally skips this second pickle write because the namespace is
+    disposable and the raw CAMS GRIB is already atomically persisted.  This
+    avoids a second synchronous fsync on hosted/mounted filesystems after the
+    external CAMS worker has already completed.  Warm/Resume modes still keep
+    the decoded cache, but durability fsync is opt-in; atomic rename remains
+    the app-crash integrity boundary.
+    """
+    started = time.monotonic()
+    tmp = None
     try:
+        if runtime_cache_mode() == CACHE_MODE_COLD:
+            return {"status":"SKIPPED_COLD_ISOLATED_TEST", "elapsed_seconds":time.monotonic()-started}
         if str((result or {}).get("status","")).upper() not in {"OK","CACHE_HIT"}:
-            return
+            return {"status":"SKIPPED_RESULT_NOT_OK", "elapsed_seconds":time.monotonic()-started}
         df = (result or {}).get("df")
         if not isinstance(df, pd.DataFrame) or df.empty:
-            return
+            return {"status":"SKIPPED_EMPTY_DF", "elapsed_seconds":time.monotonic()-started}
         p = _decoded_role_cache_path(role, points, valid_time, cache_dir)
         payload = {k:v for k,v in dict(result).items() if k not in {"elapsed_seconds","ipc_mode","worker_mode"}}
         meta = dict(payload.get("meta") or {})
@@ -320,12 +334,19 @@ def _save_decoded_role_cache(role: str, points: list[dict], valid_time: datetime
         with tmp.open("wb") as fh:
             pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
             fh.flush()
-            try: os.fsync(fh.fileno())
-            except Exception: pass
+            if str(os.getenv("FIRECLOUD_CAMS_DECODED_CACHE_FSYNC", "0")).strip().lower() in {"1","true","yes","on"}:
+                try: os.fsync(fh.fileno())
+                except Exception: pass
         os.replace(tmp, p)
+        tmp = None
         stamp_cache_artifact(p, provider="CAMS_ADS", role=str(role), schema=CAMS_DECODED_CACHE_SCHEMA_VERSION, qc_state="CACHE_READY")
-    except Exception:
-        pass
+        return {"status":"CACHE_READY", "elapsed_seconds":time.monotonic()-started, "path":str(p)}
+    except Exception as exc:
+        return {"status":"CACHE_WRITE_FAILED", "elapsed_seconds":time.monotonic()-started, "error":f"{type(exc).__name__}: {exc}"}
+    finally:
+        if tmp is not None and tmp.exists():
+            try: tmp.unlink()
+            except Exception: pass
 
 def _request_cache_path(prefix: str, meta: dict, points: list[dict], cache_dir: str | Path | None = None) -> Path:
     cache = Path(cache_dir).expanduser() if cache_dir else _default_cache_dir()
@@ -1206,7 +1227,15 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
     res["elapsed_seconds"]=time.monotonic()-started
     res["ipc_mode"]="EXTERNAL_SUBPROCESS_FILE_BACKED_ATOMIC_PICKLE"
     res["worker_mode"]="PYTHON_MODULE_SUBPROCESS_NO_STREAMLIT_SPAWN"
-    _save_decoded_role_cache(role, points, valid_time, res, cache_dir)
+    if heartbeat_callback:
+        try: heartbeat_callback("DECODED_ROUTE_CACHE_WRITE", "RUNNING", 0.0)
+        except Exception: pass
+    _cache_write = _save_decoded_role_cache(role, points, valid_time, res, cache_dir)
+    res["decoded_route_cache_write_status"] = str((_cache_write or {}).get("status", "UNKNOWN"))
+    res["decoded_route_cache_write_elapsed_seconds"] = float((_cache_write or {}).get("elapsed_seconds", 0.0) or 0.0)
+    if heartbeat_callback:
+        try: heartbeat_callback("DECODED_ROUTE_CACHE_WRITE", res["decoded_route_cache_write_status"], res["decoded_route_cache_write_elapsed_seconds"])
+        except Exception: pass
     return res
 
 def _is_retryable_cams_failure(res: dict) -> bool:
@@ -1588,6 +1617,10 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
         role_statuses[role]=status
         planner_rows.append({"request_role":role,"status":status,"route_point_completeness":cov,**stats})
 
+    if progress_callback:
+        try: progress_callback("CAMS_BUNDLE_POSTPROCESS", "RUNNING", 0.0)
+        except Exception: pass
+    _bundle_post_t0 = time.monotonic()
     meta={**native_aerosol_provider_status(),
           "cams_prefetch_policy":"WHOLE_ROUTE_FIRST_ADAPTIVE_SUBTILING+PERSISTENT_CACHE+EXTERNAL_WORKER",
           "cams_scheduler_mode":"WHOLE_ROUTE_FIRST_ADAPTIVE_SUBTILING",
@@ -1626,4 +1659,7 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
     meta["cams_route_requested_points"]=len(requested_ids)
     meta["cams_route_returned_points"]=len(returned_ids & requested_ids)
     meta["cams_route_point_completeness"]=(len(returned_ids & requested_ids)/len(requested_ids)) if requested_ids else 0.0
+    if progress_callback:
+        try: progress_callback("CAMS_BUNDLE_POSTPROCESS", "OK", time.monotonic()-_bundle_post_t0)
+        except Exception: pass
     return merged,meta

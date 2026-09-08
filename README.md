@@ -1,6 +1,17 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.23
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.23.1
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+## R5.7.23.1 Runtime Hotfix
+
+本 hotfix 針對 Cold Test 實測中「CAMS 時次 1/2 三鏈已完成，但時次 2/2 長時間維持等待」以及 Streamlit rerun 誤把仍存活的背景分析 worker 標成未正常完成兩項問題。
+
+- CAMS 外部 worker 完成後，新增 `DECODED_ROUTE_CACHE_WRITE` 與 `CAMS_BUNDLE_POSTPROCESS` 進度狀態，避免 UI 停在舊訊息而無法知道父程序真正所在階段。
+- `COLD_ISOLATED_TEST` 不再同步寫第二份 decoded-route pickle cache；raw CAMS GRIB 仍維持 atomic/QC cache，因此不改科學資料。
+- Warm/Resume decoded-route cache 仍保留，但其額外 `fsync` 改為 opt-in，避免 mounted filesystem 上的非必要同步落盤拖住 analysis worker。
+- Streamlit rerun/reload 若偵測 detached analysis worker PID 仍存活，會自動重新連線監看，不再誤標為「上一次分析未正常完成」，也不會啟動第二個 analysis worker。
+- 不修改 Formation、Viewing、Glow、六波段、Route Invariance 或 Tier-2 calibration 科學契約。
+
 
 R5.7.23 同時完成兩條工程主線：
 
