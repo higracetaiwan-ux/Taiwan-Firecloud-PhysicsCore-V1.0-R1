@@ -126,7 +126,14 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
         route = derive_route_spectral_aod(aerosol_snapshot, targets=wavelengths) if aerosol_snapshot is not None and not aerosol_snapshot.empty else pd.DataFrame()
     _emit(0.12, "建立路徑光譜 AOD 狀態")
     if not route.empty and "point_id" in out.columns:
-        attach_cols=[c for c in ["point_id","aod550","aod645","aod670","aod800","angstrom_550_800","spectral_aod_quality","aerosol_provider"] if c in route.columns]
+        attach_cols=[c for c in [
+            "point_id","aod550","aod645","aod670","aod800",
+            "angstrom_550_800","spectral_aod_quality","aerosol_provider",
+            "spectral_aod_temporal_evidence_state",
+            "spectral_aod_source_valid_time_utc",
+            "spectral_aod_time_offset_hours",
+            "spectral_aod_temporal_bound_hours",
+        ] if c in route.columns]
         if attach_cols:
             out=out.merge(route[attach_cols].drop_duplicates("point_id"), on="point_id", how="left")
     else:
@@ -210,6 +217,10 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     )
     aerosol_path_ready=native_path_ready | fallback_path_ready
     out["aerosol_rt_path_complete"] = aerosol_path_ready
+    out["aerosol_rt_temporal_evidence_state"] = out.get(
+        "spectral_aod_temporal_evidence_state",
+        pd.Series("MISSING", index=out.index),
+    ).fillna("MISSING").astype(str)
     out["aerosol_rt_path_source"] = np.select(
         [native_path_ready, fallback_path_ready],
         ["CAMS_NATIVE_3D_EXT532+REAL_SPECTRAL_AOD", "REAL_MULTI_WAVELENGTH_AOD_EXPONENTIAL_SUN_TO_CANVAS"],

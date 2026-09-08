@@ -217,6 +217,29 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     if not aerosol_spectral.empty:
         aerosol_valid_fraction = _row_any_numeric_valid_fraction(aerosol_spectral, ["aod550", "aod575", "aod600", "aod645", "aod650", "aod670", "aod700", "aod750", "aod800"])
         add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", PASS if aerosol_valid_fraction >= 0.95 else (FAIL if aerosol_valid_fraction <= 0.0 else WARN), "CAMS_AEROSOL", round(aerosol_valid_fraction, 6), ">=0.95 rows with numeric spectral AOD payload")
+        if "spectral_aod_temporal_evidence_state" in aerosol_spectral.columns:
+            temporal = aerosol_spectral["spectral_aod_temporal_evidence_state"].fillna("MISSING").astype(str)
+            fallback = temporal.eq("REAL_ONE_SIDED_TEMPORAL_FALLBACK")
+            exact = temporal.eq("EXACT_VALID_TIME")
+            offsets = pd.to_numeric(
+                aerosol_spectral.get("spectral_aod_time_offset_hours", pd.Series(float("nan"), index=aerosol_spectral.index)),
+                errors="coerce",
+            )
+            bounds = pd.to_numeric(
+                aerosol_spectral.get("spectral_aod_temporal_bound_hours", pd.Series(float("nan"), index=aerosol_spectral.index)),
+                errors="coerce",
+            )
+            fallback_valid = (~fallback) | (offsets.notna() & bounds.notna() & (offsets.abs() <= bounds + 1e-9))
+            provenance_ready = exact | fallback
+            status = FAIL if not bool(fallback_valid.all()) else (PASS if float(provenance_ready.mean()) >= 0.95 else WARN)
+            add(
+                "CAMS_AEROSOL_SPECTRAL_TEMPORAL_PROVENANCE",
+                status,
+                "CAMS_AEROSOL",
+                f"exact={float(exact.mean()):.6f};real_bounded_fallback={float(fallback.mean()):.6f};missing={float((~provenance_ready).mean()):.6f}",
+                "spectral rows are exact-time or real adjacent-time evidence within their exported bound",
+                "R5.7.28 permits only real CAMS one-sided support within one native 3-hour forecast interval; no fixed Angstrom/artificial AOD",
+            )
     elif not canvas.empty and aerosol_missing_signal:
         add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", FAIL, "CAMS_AEROSOL", 0.0, "spectral aerosol payload or explicit provider failure", "Canvas spectral paths report AEROSOL missing while aerosol route payload is empty")
     else:
@@ -267,6 +290,26 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     # R5.7.26 Red-Light Availability / no-Canvas semantic closure.
     if not red_sum.empty:
         add("RED_LIGHT_REFERENCE_EVIDENCE_PRESENT", PASS if not red_ref.empty else FAIL, "RED_LIGHT_AVAILABILITY", _rows(red_ref), ">0 virtual reference-receiver rows", "Reference receivers are not Canvas and must not create Formation")
+        separated_reference = {
+            "red_light_cloud_evidence_state",
+            "red_light_aerosol_evidence_state",
+            "red_light_gas_evidence_state",
+            "red_light_precipitation_evidence_state",
+        }.issubset(red_ref.columns)
+        separated_summary = {
+            "primary_red_light_cloud_evidence_state",
+            "extended_red_light_cloud_evidence_state",
+            "primary_red_light_aerosol_evidence_state",
+            "extended_red_light_aerosol_evidence_state",
+        }.issubset(red_sum.columns)
+        add(
+            "RED_LIGHT_COMPONENT_EVIDENCE_SEPARATION",
+            PASS if separated_reference and separated_summary else WARN,
+            "RED_LIGHT_AVAILABILITY",
+            f"reference={separated_reference};summary={separated_summary}",
+            "cloud/aerosol/gas/precipitation evidence exported separately",
+            "Cloud conflict must not hide aerosol temporal Missing, and aerosol Missing must not be mislabeled as cloud conflict",
+        )
         if {"solar_altitude_deg","primary_canvas_count","extended_canvas_count","formation_context_state"}.issubset(red_sum.columns):
             no_canvas = red_sum[(pd.to_numeric(red_sum["primary_canvas_count"],errors="coerce").fillna(0)==0) & (pd.to_numeric(red_sum["extended_canvas_count"],errors="coerce").fillna(0)==0)]
             if not no_canvas.empty and not completeness.empty and {"solar_altitude_deg","layer","status"}.issubset(completeness.columns):

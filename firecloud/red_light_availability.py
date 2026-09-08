@@ -243,6 +243,32 @@ def build_red_light_reference_evidence(
         out[f"red_light_availability_{int(wl)}nm"] = (fsun * t).where(valid, np.nan)
 
     evidence_ready = gas_ready & aerosol_ready & cloud_ready & precip_ready & total_band_ready
+    aerosol_temporal = out.get(
+        "aerosol_rt_temporal_evidence_state",
+        pd.Series("MISSING", index=out.index),
+    ).fillna("MISSING").astype(str)
+    out["red_light_cloud_evidence_state"] = cloud_state
+    out["red_light_aerosol_evidence_state"] = np.select(
+        [
+            ~aerosol_ready,
+            aerosol_temporal.eq("REAL_ONE_SIDED_TEMPORAL_FALLBACK"),
+            aerosol_temporal.eq("EXACT_VALID_TIME"),
+        ],
+        [
+            "MISSING_OR_PARTIAL",
+            "FULL_REAL_ONE_SIDED_TEMPORAL_FALLBACK",
+            "FULL_EXACT_VALID_TIME",
+        ],
+        default="FULL_UNCLASSIFIED_REAL_EVIDENCE",
+    )
+    out["red_light_gas_evidence_state"] = np.where(gas_ready, "FULL", "MISSING_OR_PARTIAL")
+    out["red_light_precipitation_evidence_state"] = np.where(precip_ready, "FULL", "MISSING_OR_PARTIAL")
+    out["red_light_component_completeness"] = (
+        gas_ready.astype(float)
+        + aerosol_ready.astype(float)
+        + cloud_ready.astype(float)
+        + precip_ready.astype(float)
+    ) / 4.0
     no_resolved_blocker = cloud_hits.eq(0) & precip_hits.eq(0)
     cloud_conflict = cloud_state.eq("DIRECT_EVIDENCE_CONFLICT")
     path_state = np.select(
@@ -305,6 +331,34 @@ def summarize_red_light_availability(
             else:
                 dstate = "RED_LIGHT_PATH_UNKNOWN"
             avail = pd.to_numeric(sun.get("red_band_mean_availability", pd.Series(dtype=float)), errors="coerce")
+            cloud_ev = sun.get(
+                "red_light_cloud_evidence_state", pd.Series("MISSING", index=sun.index)
+            ).astype(str)
+            aerosol_ev = sun.get(
+                "red_light_aerosol_evidence_state", pd.Series("MISSING_OR_PARTIAL", index=sun.index)
+            ).astype(str)
+            evidence_complete = sun.get(
+                "red_light_path_evidence_complete", pd.Series(False, index=sun.index)
+            ).fillna(False).astype(bool)
+            if sun.empty:
+                cloud_summary = aerosol_summary = "NOT_APPLICABLE_NO_DIRECT_RED_ACCESS"
+                evidence_completeness = float("nan")
+            else:
+                if cloud_ev.eq("DIRECT_EVIDENCE_CONFLICT").any():
+                    cloud_summary = "DIRECT_EVIDENCE_CONFLICT"
+                elif cloud_ev.eq("FULL").all():
+                    cloud_summary = "FULL"
+                else:
+                    cloud_summary = "MISSING_OR_PARTIAL"
+                if aerosol_ev.eq("MISSING_OR_PARTIAL").any():
+                    aerosol_summary = "MISSING_OR_PARTIAL"
+                elif aerosol_ev.eq("FULL_REAL_ONE_SIDED_TEMPORAL_FALLBACK").any():
+                    aerosol_summary = "FULL_REAL_ONE_SIDED_TEMPORAL_FALLBACK"
+                elif aerosol_ev.eq("FULL_EXACT_VALID_TIME").all():
+                    aerosol_summary = "FULL_EXACT_VALID_TIME"
+                else:
+                    aerosol_summary = "FULL_UNCLASSIFIED_REAL_EVIDENCE"
+                evidence_completeness = float(evidence_complete.mean())
             domain_rows[domain] = {
                 "state": dstate,
                 "reference_count": int(len(g)),
@@ -314,6 +368,12 @@ def summarize_red_light_availability(
                 "unknown_reference_count": int(st.isin(["RED_LIGHT_PATH_UNKNOWN","RED_LIGHT_PATH_CONFLICT"]).sum()),
                 "mean_availability": float(avail.mean()) if avail.notna().any() else float("nan"),
                 "max_availability": float(avail.max()) if avail.notna().any() else float("nan"),
+                "cloud_evidence_state": cloud_summary,
+                "aerosol_evidence_state": aerosol_summary,
+                "evidence_completeness": evidence_completeness,
+                "cloud_conflict_reference_count": int(cloud_ev.eq("DIRECT_EVIDENCE_CONFLICT").sum()),
+                "aerosol_temporal_fallback_reference_count": int(aerosol_ev.eq("FULL_REAL_ONE_SIDED_TEMPORAL_FALLBACK").sum()),
+                "aerosol_missing_reference_count": int(aerosol_ev.eq("MISSING_OR_PARTIAL").sum()),
             }
 
         ps = domain_rows["PRIMARY_CANVAS_0_40"]["state"]
@@ -392,6 +452,18 @@ def summarize_red_light_availability(
             "extended_sunlit_reference_count": eav["sunlit_reference_count"],
             "red_light_availability_mean": float(np.mean(vals)) if vals else float("nan"),
             "red_light_availability_max": float(np.max(vmax)) if vmax else float("nan"),
+            "primary_red_light_cloud_evidence_state": pav["cloud_evidence_state"],
+            "extended_red_light_cloud_evidence_state": eav["cloud_evidence_state"],
+            "primary_red_light_aerosol_evidence_state": pav["aerosol_evidence_state"],
+            "extended_red_light_aerosol_evidence_state": eav["aerosol_evidence_state"],
+            "primary_red_light_evidence_completeness": pav["evidence_completeness"],
+            "extended_red_light_evidence_completeness": eav["evidence_completeness"],
+            "primary_cloud_conflict_reference_count": pav["cloud_conflict_reference_count"],
+            "extended_cloud_conflict_reference_count": eav["cloud_conflict_reference_count"],
+            "primary_aerosol_temporal_fallback_reference_count": pav["aerosol_temporal_fallback_reference_count"],
+            "extended_aerosol_temporal_fallback_reference_count": eav["aerosol_temporal_fallback_reference_count"],
+            "primary_aerosol_missing_reference_count": pav["aerosol_missing_reference_count"],
+            "extended_aerosol_missing_reference_count": eav["aerosol_missing_reference_count"],
             "unused_red_light_potential_applicable": bool(no_canvas and len(vals) > 0),
             "unused_red_light_potential": float(np.mean(vals)) if no_canvas and vals else float("nan"),
             "potential_scale_status": "CONTINUOUS_UNCALIBRATED_DIAGNOSTIC",

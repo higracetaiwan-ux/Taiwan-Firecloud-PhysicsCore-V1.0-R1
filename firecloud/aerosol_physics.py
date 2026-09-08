@@ -108,7 +108,135 @@ def derive_route_spectral_aod(snapshot: pd.DataFrame, targets=TARGET_WAVELENGTHS
     out["angstrom_550_800"] = out.apply(lambda r: angstrom_from_pair(r.get("aod550", np.nan), 550, r.get("aod800", np.nan), 800), axis=1)
     valid_count = out[[c for c in src_cols.values() if c in out.columns]].notna().sum(axis=1) if any(c in out.columns for c in src_cols.values()) else 0
     out["spectral_aod_quality"] = np.where(np.asarray(valid_count) >= 2, "REAL_MULTI_WAVELENGTH_COLUMN_AOD", "SPECTRAL_AOD_MISSING")
+    temporal_state = out.get(
+        "spectral_aod_temporal_evidence_state",
+        pd.Series("", index=out.index, dtype=str),
+    ).astype(str)
+    temporal_fallback = temporal_state.eq("REAL_ONE_SIDED_TEMPORAL_FALLBACK")
+    out.loc[
+        temporal_fallback & out["spectral_aod_quality"].eq("REAL_MULTI_WAVELENGTH_COLUMN_AOD"),
+        "spectral_aod_quality",
+    ] = "REAL_MULTI_WAVELENGTH_COLUMN_AOD;REAL_ONE_SIDED_TEMPORAL_FALLBACK"
     return out
+
+
+def apply_real_temporal_spectral_aod_fallback(
+    target_snapshot: pd.DataFrame,
+    *,
+    target_valid_time,
+    candidate_snapshots,
+    max_offset_hours: float = 3.0,
+) -> tuple[pd.DataFrame, dict]:
+    """Fill a missing CAMS spectrum from one real adjacent forecast time.
+
+    This is deliberately narrower than generic time interpolation.  It copies
+    only the provider-native multi-wavelength column-AOD fields from the nearest
+    already-fetched CAMS snapshot on the same route lattice.  Native 3-D aerosol,
+    O3, cloud, gas and all geometry remain bound to the exact target time.
+
+    The fallback is allowed only inside one native CAMS three-hour forecast
+    interval and is exported as temporally bounded evidence.  No fixed
+    Angstrom exponent, synthetic AOD, endpoint extrapolation beyond the bound,
+    or second provider request is introduced.
+    """
+    out = target_snapshot.copy() if isinstance(target_snapshot, pd.DataFrame) else pd.DataFrame()
+    meta = {
+        "state": "MISSING",
+        "source_valid_time_utc": "",
+        "time_offset_hours": float("nan"),
+        "temporal_bound_hours": float(max_offset_hours),
+        "filled_row_count": 0,
+    }
+    if out.empty or "point_id" not in out.columns:
+        return out, meta
+
+    target_time = pd.Timestamp(target_valid_time)
+    if target_time.tzinfo is None:
+        target_time = target_time.tz_localize("UTC")
+    else:
+        target_time = target_time.tz_convert("UTC")
+    source_cols = [f"aod{wl}" for wl in SPECTRAL_SOURCE_WAVELENGTHS_NM]
+    for col in source_cols:
+        if col not in out.columns:
+            out[col] = np.nan
+    target_numeric = pd.concat(
+        [pd.to_numeric(out[col], errors="coerce").rename(col) for col in source_cols],
+        axis=1,
+    )
+    exact_ready = target_numeric.notna().sum(axis=1) >= 2
+    out["spectral_aod_temporal_evidence_state"] = np.where(
+        exact_ready, "EXACT_VALID_TIME", "MISSING"
+    )
+    out["spectral_aod_source_valid_time_utc"] = np.where(
+        exact_ready, target_time.isoformat(), ""
+    )
+    out["spectral_aod_time_offset_hours"] = np.where(exact_ready, 0.0, np.nan)
+    out["spectral_aod_temporal_bound_hours"] = float(max_offset_hours)
+    if bool(exact_ready.all()):
+        meta.update({
+            "state": "EXACT_VALID_TIME",
+            "source_valid_time_utc": target_time.isoformat(),
+            "time_offset_hours": 0.0,
+        })
+        return out, meta
+
+    eligible = []
+    for source_valid_time, frame in candidate_snapshots:
+        if not isinstance(frame, pd.DataFrame) or frame.empty or "point_id" not in frame.columns:
+            continue
+        source_time = pd.Timestamp(source_valid_time)
+        if source_time.tzinfo is None:
+            source_time = source_time.tz_localize("UTC")
+        else:
+            source_time = source_time.tz_convert("UTC")
+        offset_hours = (source_time - target_time).total_seconds() / 3600.0
+        if abs(offset_hours) <= 1e-12 or abs(offset_hours) > float(max_offset_hours) + 1e-9:
+            continue
+        cols = [c for c in source_cols if c in frame.columns]
+        if len(cols) < 2:
+            continue
+        numeric = pd.concat(
+            [pd.to_numeric(frame[c], errors="coerce").rename(c) for c in cols],
+            axis=1,
+        )
+        if not bool((numeric.notna().sum(axis=1) >= 2).any()):
+            continue
+        # A tie selects the earlier forecast time deterministically.
+        eligible.append((abs(offset_hours), source_time.value, offset_hours, source_time, frame))
+    if not eligible:
+        return out, meta
+
+    _, _, offset_hours, source_time, source = sorted(eligible, key=lambda x: (x[0], x[1]))[0]
+    source_block = source[["point_id", *[c for c in source_cols if c in source.columns]]].copy()
+    source_block = source_block.drop_duplicates(subset=["point_id"], keep="first").set_index("point_id")
+    target_ids = out["point_id"].astype(str)
+    source_block.index = source_block.index.astype(str)
+    replacement = source_block.reindex(target_ids)
+    replacement.index = out.index
+    replacement_numeric = pd.concat(
+        [
+            pd.to_numeric(replacement[c], errors="coerce").rename(c)
+            if c in replacement.columns else pd.Series(np.nan, index=out.index, name=c)
+            for c in source_cols
+        ],
+        axis=1,
+    )
+    fallback_ready = (~exact_ready) & (replacement_numeric.notna().sum(axis=1) >= 2)
+    for col in source_cols:
+        out.loc[fallback_ready, col] = replacement_numeric.loc[fallback_ready, col]
+    out.loc[fallback_ready, "spectral_aod_temporal_evidence_state"] = "REAL_ONE_SIDED_TEMPORAL_FALLBACK"
+    out.loc[fallback_ready, "spectral_aod_source_valid_time_utc"] = source_time.isoformat()
+    out.loc[fallback_ready, "spectral_aod_time_offset_hours"] = float(offset_hours)
+    filled = int(fallback_ready.sum())
+    if filled:
+        state = "REAL_ONE_SIDED_TEMPORAL_FALLBACK" if filled == int((~exact_ready).sum()) else "PARTIAL_REAL_ONE_SIDED_TEMPORAL_FALLBACK"
+        meta.update({
+            "state": state,
+            "source_valid_time_utc": source_time.isoformat(),
+            "time_offset_hours": float(offset_hours),
+            "filled_row_count": filled,
+        })
+    return out, meta
 
 
 def integrate_route_aerosol_to_targets(voxels: pd.DataFrame, route_spectral: pd.DataFrame,
@@ -503,4 +631,3 @@ def integrate_native_cams_aerosol_sun_to_targets(
     out["native_cams_aerosol_domain_complete"] = dom_arr
     out["native_cams_aerosol_quality"] = qual_arr
     return out
-

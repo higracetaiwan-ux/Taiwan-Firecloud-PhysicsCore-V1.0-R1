@@ -53,7 +53,10 @@ from .providers.aerosol import fetch_route_aerosol, interpolate_route_aerosol_at
 from .providers.cams_native import (
     fetch_route_native_aerosol_bundle, fetch_route_native_aerosol_bundle_timed, native_aerosol_provider_status, native_ozone_provider_status, resolve_cams_run_and_lead,
 )
-from .aerosol_physics import derive_route_spectral_aod
+from .aerosol_physics import (
+    apply_real_temporal_spectral_aod_fallback,
+    derive_route_spectral_aod,
+)
 from .native_cloud import build_native_cloud_volume
 from .cloud_optics import add_native_optical_properties
 from .spectral_rt import build_spectral_rt, summarize_spectral_rt
@@ -1616,6 +1619,44 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     performance_rows.append({"stage": "CAMS_PREFETCH_SCHEDULER", "elapsed_seconds": perf_counter()-_prefetch_t0, "cache_status": "GLOBAL_ADS_SINGLE_FLIGHT" if _cams_parallel_workers == 1 else "BOUNDED_UNIQUE_TIME_PARALLEL_EXPERT_OPT_IN", "detail": f"workers={_cams_parallel_workers}; unique_times={len(_cams_items)}"})
     performance_rows.append({"stage": "CAMS_PREFETCH_TOTAL", "elapsed_seconds": perf_counter()-_prefetch_t0, "cache_status": "PREFETCH_PARALLEL" if _cams_parallel_workers > 1 else "PREFETCH"})
 
+    # R5.7.28: keep O3 and native 3-D aerosol bound to their exact CAMS time,
+    # while allowing only the already-fetched real multi-wavelength column AOD
+    # from one adjacent native three-hour forecast time to support a missing
+    # spectral request.  Provenance stays row-level and downstream-visible.
+    # This is not a fixed Angstrom or artificial aerosol fill.
+    cams_spectral_support_cache = {}
+    cams_spectral_support_meta = {}
+    _cams_valid_times = {
+        key: pd.Timestamp(key[0]) + pd.Timedelta(hours=int(key[1]))
+        for key in cams_requests
+    }
+    _cams_candidate_frames = [
+        (_cams_valid_times[key], cams_native_cache.get(key, (pd.DataFrame(), {}))[0])
+        for key in cams_requests
+    ]
+    for _key in cams_requests:
+        _exact_df = cams_native_cache.get(_key, (pd.DataFrame(), {}))[0]
+        _supported_df, _support_meta = apply_real_temporal_spectral_aod_fallback(
+            _exact_df,
+            target_valid_time=_cams_valid_times[_key],
+            candidate_snapshots=_cams_candidate_frames,
+            max_offset_hours=3.0,
+        )
+        cams_spectral_support_cache[_key] = _supported_df
+        cams_spectral_support_meta[_key] = _support_meta
+        performance_rows.append({
+            "stage": "CAMS_SPECTRAL_TEMPORAL_SUPPORT",
+            "elapsed_seconds": 0.0,
+            "cache_status": _support_meta.get("state", "MISSING"),
+            "cache_key": str(_key),
+            "detail": (
+                f"source_valid_time={_support_meta.get('source_valid_time_utc','')};"
+                f"offset_hours={_support_meta.get('time_offset_hours')};"
+                f"bound_hours={_support_meta.get('temporal_bound_hours')};"
+                f"filled_rows={_support_meta.get('filled_row_count',0)}"
+            ),
+        })
+
     # Fetch Open-Meteo Air Quality AOD only when CAMS native/spectral aerosol is
     # unavailable for at least one requested time. This is a fallback, not a
     # second mandatory aerosol request chain.
@@ -1883,14 +1924,16 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         # becomes clear sky; the V8.3.2 Open-Meteo AOD diagnostic remains separate.
         cams_aerosol_meta = {"native_aerosol_status": "UNAVAILABLE", "native_ozone_status": "UNAVAILABLE", **native_aerosol_provider_status()}
         cams_aerosol_snap = pd.DataFrame()
+        cams_key = None
         try:
             cams_run, cams_lead = resolve_cams_run_and_lead(t)
             cams_key = (cams_run.isoformat(), int(cams_lead))
             cams_aerosol_snap, cams_aerosol_meta = cams_native_cache.get(cams_key, (pd.DataFrame(), cams_aerosol_meta))
         except Exception as exc:
             cams_aerosol_meta = {**cams_aerosol_meta, "native_aerosol_status": "FAILED", "native_ozone_status": "FAILED", "native_aerosol_error": f"{type(exc).__name__}: {exc}", "native_ozone_error": f"{type(exc).__name__}: {exc}"}
-        spectral_source_snap = cams_aerosol_snap if not cams_aerosol_snap.empty else aerosol_snap
-        _spec_key = cams_key if 'cams_key' in locals() else cache_key
+        _supported_spectral_snap = cams_spectral_support_cache.get(cams_key, pd.DataFrame()) if cams_key is not None else pd.DataFrame()
+        spectral_source_snap = _supported_spectral_snap if not _supported_spectral_snap.empty else (cams_aerosol_snap if not cams_aerosol_snap.empty else aerosol_snap)
+        _spec_key = cams_key if cams_key is not None else cache_key
         if _spec_key is not None and _spec_key in aerosol_spectral_cache:
             aerosol_spectral_snap = aerosol_spectral_cache[_spec_key].copy()
             _aero_spec_status = "HIT"
@@ -1898,7 +1941,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             aerosol_spectral_snap = derive_route_spectral_aod(spectral_source_snap) if not spectral_source_snap.empty else pd.DataFrame()
             if _spec_key is not None:
                 aerosol_spectral_cache[_spec_key] = aerosol_spectral_snap.copy()
-            _aero_spec_status = "MISS"
+            _support_state = cams_spectral_support_meta.get(cams_key, {}).get("state", "") if cams_key is not None else ""
+            _aero_spec_status = "MISS_" + _support_state if _support_state else "MISS"
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "AEROSOL_SPECTRAL_DERIVATION", "elapsed_seconds": 0.0, "cache_status": _aero_spec_status, "cache_key": str(_spec_key)})
         _angle_progress(candidate_index, 0.58, f"{label}：建立氣體狀態…")
         _ts = perf_counter()

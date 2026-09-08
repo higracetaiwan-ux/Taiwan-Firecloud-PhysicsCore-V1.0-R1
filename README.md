@@ -1,4 +1,23 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.27.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.28
+
+## R5.7.28 Red-Light Evidence Robustness
+
+R5.7.28 根據 R5.7.27.1 真實 sunset CASE 收斂單一 CAMS
+`SPECTRAL_COLUMN_AOD` 時次 timeout。當某個 CAMS 原生三小時時次缺少光譜
+AOD、但同一分析已成功取得相鄰時次的真實 550/645/670/800 nm 欄位時，
+只允許在 **3 小時以內**依 `point_id` 搬移這四個 provider-native 欄位。
+O3、原生 3D aerosol、雲場、氣體與幾何仍綁定目標時次，不跨時次搬移。
+
+輸出新增 `spectral_aod_temporal_evidence_state`、來源 valid time、時間偏移與
+bound；六波段衍生品質明確標記
+`REAL_ONE_SIDED_TEMPORAL_FALLBACK`。超過 3 小時、路徑格點不對應或相鄰
+時次本身沒有至少兩個真實波段時，必須繼續保持 Missing。禁止固定
+Angstrom、固定 O3、人工 AOD 或無界 endpoint extrapolation。
+
+Red-Light reference 與 summary 現在分別輸出 cloud、aerosol、gas、
+precipitation evidence；cloud `DIRECT_EVIDENCE_CONFLICT` 不再遮蔽 aerosol
+temporal state。Formation、Viewing、Glow、13 angles、六波段、route
+resolution、物理權重與 Forecast／Observation 分離均未改動。
 
 ## R5.7.27.1 Photography Integrity Handoff Hotfix
 
