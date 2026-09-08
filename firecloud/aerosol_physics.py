@@ -2,9 +2,13 @@ from __future__ import annotations
 import math
 import numpy as np
 import pandas as pd
+from .contracts import SIX_BAND_WAVELENGTHS_NM
 
 SPECTRAL_SOURCE_WAVELENGTHS_NM = (550, 645, 670, 800)
-TARGET_WAVELENGTHS_NM = (600, 650, 700, 750)
+# PhysicsCore's production visible-spectrum contract is six-band end-to-end.
+# Keep the aerosol path on the same grid so the fallback can never silently
+# drop the 575-nm Chappuis-sensitive band.
+TARGET_WAVELENGTHS_NM = tuple(int(v) for v in SIX_BAND_WAVELENGTHS_NM)
 DEFAULT_AEROSOL_SCALE_HEIGHT_KM = 2.0
 
 
@@ -195,6 +199,190 @@ def integrate_route_aerosol_to_targets(voxels: pd.DataFrame, route_spectral: pd.
         out[f"route_aerosol_transmission_{wl}nm"] = np.exp(-results[wl])
     out["aerosol_vertical_profile_scale_height_km"] = float(scale_height_km)
     out["aerosol_path_quality"] = qualities
+    return out
+
+
+def integrate_route_aerosol_sun_to_targets(
+    voxels: pd.DataFrame,
+    route_spectral: pd.DataFrame,
+    solar_altitude_deg: float,
+    ray_altitude_func,
+    *,
+    earth_radius_km: float = 6371.0,
+    target_wavelengths=TARGET_WAVELENGTHS_NM,
+    scale_height_km: float = DEFAULT_AEROSOL_SCALE_HEIGHT_KM,
+    atmosphere_top_km: float = 30.0,
+) -> pd.DataFrame:
+    """Integrate real spectral column AOD on the incoming Sun→CloudBase ray.
+
+    This is the Formation-path fallback used only when native CAMS 3-D
+    extinction is unavailable or path/domain-incomplete.  It uses real
+    multi-wavelength column AOD at each route location and an explicitly
+    labelled normalized exponential vertical profile.  It never substitutes an
+    Observer→Target/viewing-path geometry for the incoming solar path.
+
+    A row is production-complete only when:
+      * every requested wavelength has real spectral AOD support on every
+        traversed segment; and
+      * the incoming ray reaches ``atmosphere_top_km`` inside the configured
+        route domain.
+
+    Otherwise the fallback remains fail-closed and its partial diagnostic tau is
+    not eligible to power Full Spectral RT.
+    """
+    if voxels is None or voxels.empty:
+        return pd.DataFrame()
+    out = voxels.copy()
+    for wl in target_wavelengths:
+        out[f"route_aerosol_tau_{wl}nm"] = np.nan
+        out[f"route_aerosol_transmission_{wl}nm"] = np.nan
+    out["route_aerosol_path_completeness"] = 0.0
+    out["route_aerosol_domain_complete"] = False
+    out["route_aerosol_quality"] = "AEROSOL_ROUTE_MISSING"
+    if route_spectral is None or route_spectral.empty:
+        return out
+
+    alt_col = "voxel_center_km" if "voxel_center_km" in out.columns else (
+        "altitude_km" if "altitude_km" in out.columns else None
+    )
+    if alt_col is None:
+        out["route_aerosol_quality"] = "VOXEL_ALTITUDE_MISSING"
+        return out
+
+    route = route_spectral.copy()
+    route["distance_km"] = pd.to_numeric(route["distance_km"], errors="coerce")
+    route["direction_offset_deg"] = pd.to_numeric(route["direction_offset_deg"], errors="coerce")
+
+    # Pre-index route distance + six-band AOD arrays once per direction.
+    route_index: dict[float, tuple[np.ndarray, dict[int, tuple[np.ndarray, np.ndarray]]]] = {}
+    for off, g in route.groupby("direction_offset_deg", sort=False):
+        g = g.sort_values("distance_km")
+        base_d = pd.to_numeric(g["distance_km"], errors="coerce").to_numpy(dtype=float)
+        spec: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        for wl in target_wavelengths:
+            col = f"aod{int(wl)}"
+            if col not in g.columns:
+                spec[int(wl)] = (np.array([], dtype=float), np.array([], dtype=float))
+                continue
+            vals = pd.to_numeric(g[col], errors="coerce").to_numpy(dtype=float)
+            m = np.isfinite(base_d) & np.isfinite(vals) & (vals >= 0.0)
+            spec[int(wl)] = (base_d[m], vals[m])
+        route_index[float(off)] = (base_d[np.isfinite(base_d)], spec)
+
+    n = len(out)
+    tau_arr = {int(wl): np.full(n, np.nan, dtype=float) for wl in target_wavelengths}
+    comp_arr = np.zeros(n, dtype=float)
+    dom_arr = np.zeros(n, dtype=bool)
+    qual_arr = np.empty(n, dtype=object)
+
+    offs = pd.to_numeric(out.get("direction_offset_deg", 0.0), errors="coerce").to_numpy(dtype=float)
+    dts = pd.to_numeric(out.get("distance_km", 0.0), errors="coerce").to_numpy(dtype=float)
+    zts = pd.to_numeric(out[alt_col], errors="coerce").to_numpy(dtype=float)
+    H = max(0.05, float(scale_height_km))
+
+    for i, (off, d_t, z_t) in enumerate(zip(offs, dts, zts)):
+        entry = route_index.get(float(off))
+        if entry is None or not np.isfinite(d_t) or not np.isfinite(z_t):
+            qual_arr[i] = "AEROSOL_ROUTE_MISSING"
+            continue
+
+        # A target at/above the aerosol atmosphere top has zero incoming
+        # aerosol optical depth by construction; this is a complete path, not
+        # Missing.
+        if float(z_t) >= float(atmosphere_top_km):
+            for wl in target_wavelengths:
+                tau_arr[int(wl)][i] = 0.0
+            comp_arr[i] = 1.0
+            dom_arr[i] = True
+            qual_arr[i] = "REAL_MULTI_WAVELENGTH_AOD_EXPONENTIAL_SUN_TO_CANVAS"
+            continue
+
+        base_d, spec = entry
+        # Incoming sunlight travels from the target outward away from the
+        # observer along the same route direction used by native CAMS 3-D.
+        downstream = base_d[base_d > float(d_t) + 1e-9]
+        if downstream.size == 0:
+            qual_arr[i] = "AEROSOL_ROUTE_DOMAIN_TRUNCATED"
+            continue
+
+        tau = {int(wl): 0.0 for wl in target_wavelengths}
+        known_len = 0.0
+        total_len = 0.0
+        prev_d = float(d_t)
+        reached_top = False
+        any_segment = False
+
+        for d_s in downstream:
+            d_s = float(d_s)
+            if d_s <= prev_d + 1e-9:
+                continue
+            mid = 0.5 * (prev_d + d_s)
+            ray_h = ray_altitude_func(
+                float(d_t), float(z_t), float(mid), float(solar_altitude_deg), float(earth_radius_km)
+            )
+            if ray_h is None or not np.isfinite(ray_h) or float(ray_h) < 0.0:
+                prev_d = d_s
+                continue
+            ray_h = float(ray_h)
+            if ray_h >= float(atmosphere_top_km):
+                reached_top = True
+                break
+
+            next_h = ray_altitude_func(
+                float(d_t), float(z_t), float(d_s), float(solar_altitude_deg), float(earth_radius_km)
+            )
+            if next_h is None or not np.isfinite(next_h):
+                prev_d = d_s
+                continue
+            next_h = float(next_h)
+            seg_len_km = math.hypot(d_s - prev_d, next_h - ray_h)
+            if seg_len_km <= 0.0:
+                prev_d = d_s
+                continue
+            any_segment = True
+            total_len += seg_len_km
+            dmid = 0.5 * (prev_d + d_s)
+
+            local_vals: dict[int, float] = {}
+            all_supported = True
+            for wl in target_wavelengths:
+                xd, xv = spec[int(wl)]
+                # Fail closed outside the real route-AOD support rather than
+                # letting np.interp silently hold the endpoint value forever.
+                if xd.size < 2 or dmid < float(xd.min()) - 1e-9 or dmid > float(xd.max()) + 1e-9:
+                    all_supported = False
+                    break
+                local_vals[int(wl)] = float(np.interp(dmid, xd, xv))
+            if all_supported:
+                known_len += seg_len_km
+                beta_shape_per_km = math.exp(-max(0.0, ray_h) / H) / H
+                for wl in target_wavelengths:
+                    tau[int(wl)] += max(0.0, local_vals[int(wl)]) * beta_shape_per_km * seg_len_km
+            prev_d = d_s
+
+        comp = known_len / total_len if total_len > 0.0 else 0.0
+        comp_arr[i] = float(comp)
+        dom_arr[i] = bool(reached_top)
+        if any_segment and known_len > 0.0:
+            for wl in target_wavelengths:
+                tau_arr[int(wl)][i] = tau[int(wl)]
+            quality = "REAL_MULTI_WAVELENGTH_AOD_EXPONENTIAL_SUN_TO_CANVAS"
+            if comp < 0.999:
+                quality += ";SPECTRAL_ROUTE_PARTIAL"
+            if not reached_top:
+                quality += ";ROUTE_DOMAIN_TRUNCATED"
+            qual_arr[i] = quality
+        else:
+            qual_arr[i] = "SPECTRAL_AOD_OR_ROUTE_SUPPORT_MISSING"
+
+    for wl in target_wavelengths:
+        vals = tau_arr[int(wl)]
+        out[f"route_aerosol_tau_{int(wl)}nm"] = vals
+        out[f"route_aerosol_transmission_{int(wl)}nm"] = np.exp(-vals)
+    out["route_aerosol_vertical_profile_scale_height_km"] = H
+    out["route_aerosol_path_completeness"] = comp_arr
+    out["route_aerosol_domain_complete"] = dom_arr
+    out["route_aerosol_quality"] = qual_arr
     return out
 
 def _cams_profile_at_row(row: pd.Series) -> tuple[np.ndarray, np.ndarray]:

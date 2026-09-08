@@ -210,7 +210,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add("GAS_PROFILE_ROUTE_HANDOFF", WARN, "GAS_PROFILE", 0, "gas evidence may be absent only with explicit upstream failure")
 
     if not aerosol_spectral.empty:
-        aerosol_valid_fraction = _row_any_numeric_valid_fraction(aerosol_spectral, ["aod550", "aod600", "aod645", "aod650", "aod670", "aod700", "aod750", "aod800"])
+        aerosol_valid_fraction = _row_any_numeric_valid_fraction(aerosol_spectral, ["aod550", "aod575", "aod600", "aod645", "aod650", "aod670", "aod700", "aod750", "aod800"])
         add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", PASS if aerosol_valid_fraction >= 0.95 else (FAIL if aerosol_valid_fraction <= 0.0 else WARN), "CAMS_AEROSOL", round(aerosol_valid_fraction, 6), ">=0.95 rows with numeric spectral AOD payload")
     elif not canvas.empty and aerosol_missing_signal:
         add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", FAIL, "CAMS_AEROSOL", 0.0, "spectral aerosol payload or explicit provider failure", "Canvas spectral paths report AEROSOL missing while aerosol route payload is empty")

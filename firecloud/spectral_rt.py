@@ -4,13 +4,14 @@ import numpy as np
 import pandas as pd
 from .aerosol_physics import (
     derive_route_spectral_aod, integrate_route_aerosol_to_targets,
+    integrate_route_aerosol_sun_to_targets,
     integrate_native_cams_aerosol_sun_to_targets,
 )
 from .geometry import ray_altitude_km_at_surface_distance
 from .gas_rt import integrate_gas_sun_to_targets, active_gas_wavelengths, _local_band_coefficients_from_csv, GasRTPreparedContext
 from .contracts import SIX_BAND_WAVELENGTHS_NM
 
-SPECTRAL_WAVELENGTHS_NM = (600, 650, 700, 750)
+SPECTRAL_WAVELENGTHS_NM = tuple(SIX_BAND_WAVELENGTHS_NM)
 DEFAULT_ANGSTROM_DIAGNOSTIC = 1.30  # only used when spectral AOD is not available; explicitly labelled
 
 
@@ -108,8 +109,10 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
         out["aerosol_provider"]="UNAVAILABLE"
 
     # V8.3.3 prefers native CAMS 3-D extinction on the physically relevant incoming
-    # Sun→Canvas path. V8.3.2 column-AOD/exponential-profile integration is retained
-    # only as a separately labelled fallback when native CAMS 3-D is unavailable.
+    # Sun→Canvas path.  R5.7.24.2 tightens "available": a finite partial native tau
+    # is not a production-complete path unless segment coverage and route-domain
+    # closure are both complete.  Real multi-wavelength column AOD may then be used
+    # as an explicitly labelled Sun→Canvas exponential-profile fallback.
     _emit(0.18, "積分 CAMS 3D 氣膠 Sun→Canvas 光路")
     native_cams = integrate_native_cams_aerosol_sun_to_targets(
         out, cams_native_aerosol_snapshot, solar_altitude_deg,
@@ -125,28 +128,65 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     # fallback for all 6480 voxels even when native CAMS 3-D aerosol already
     # covered every direct-solar target. Compute that fallback only where it may
     # actually be needed; no optical value is changed when native data are full.
-    native650=pd.to_numeric(out.get("native_cams_aerosol_tau_650nm",pd.Series(np.nan,index=out.index)),errors="coerce")
     applicable=pd.to_numeric(out.get("geometric_illuminated_fraction",pd.Series(1.0,index=out.index)),errors="coerce").fillna(0.0)>0.0
-    need_fallback=bool((applicable & native650.isna()).any())
+    native_finite=pd.Series(True,index=out.index,dtype=bool)
+    for wl in wavelengths:
+        native_finite &= pd.to_numeric(
+            out.get(f"native_cams_aerosol_tau_{wl}nm",pd.Series(np.nan,index=out.index)),
+            errors="coerce",
+        ).notna()
+    native_comp=pd.to_numeric(
+        out.get("native_cams_aerosol_path_completeness",pd.Series(np.nan,index=out.index)),
+        errors="coerce",
+    )
+    native_dom=out.get("native_cams_aerosol_domain_complete",pd.Series(False,index=out.index)).fillna(False).astype(bool)
+    native_path_ready=native_finite & (native_comp>=0.999) & native_dom
+    need_fallback=bool((applicable & ~native_path_ready).any())
     if need_fallback and not route.empty:
-        _emit(0.43, "積分多波段 AOD 備援光路")
-        out = integrate_route_aerosol_to_targets(out, route, target_wavelengths=wavelengths)
+        _emit(0.43, "積分多波段 AOD Sun→Canvas 備援光路")
+        out = integrate_route_aerosol_sun_to_targets(
+            out, route, solar_altitude_deg, ray_altitude_km_at_surface_distance,
+            earth_radius_km=earth_radius_km, target_wavelengths=wavelengths,
+        )
     else:
         for wl in wavelengths:
             out[f"route_aerosol_tau_{wl}nm"]=np.nan
             out[f"route_aerosol_transmission_{wl}nm"]=np.nan
         out["route_aerosol_path_completeness"]=1.0 if not need_fallback else 0.0
+        out["route_aerosol_domain_complete"]=bool(not need_fallback)
         out["route_aerosol_quality"]="FALLBACK_NOT_REQUIRED_NATIVE_CAMS_COMPLETE" if not need_fallback else "FALLBACK_UNAVAILABLE"
     out["spectral_aod550_source"] = out.get("aerosol_provider", "UNAVAILABLE")
     out["spectral_angstrom_exponent"] = pd.to_numeric(out.get("angstrom_550_800", np.nan), errors="coerce")
-    native_series = out["native_cams_aerosol_tau_650nm"] if "native_cams_aerosol_tau_650nm" in out.columns else pd.Series(np.nan, index=out.index)
-    native_ok = pd.to_numeric(native_series, errors="coerce").notna()
-    fallback_ok = pd.to_numeric(out.get("route_aerosol_tau_650nm", np.nan), errors="coerce").notna()
+    fallback_finite=pd.Series(True,index=out.index,dtype=bool)
+    for wl in wavelengths:
+        fallback_finite &= pd.to_numeric(
+            out.get(f"route_aerosol_tau_{wl}nm",pd.Series(np.nan,index=out.index)),
+            errors="coerce",
+        ).notna()
+    fallback_comp=pd.to_numeric(
+        out.get("route_aerosol_path_completeness",pd.Series(np.nan,index=out.index)),
+        errors="coerce",
+    )
+    fallback_dom=out.get("route_aerosol_domain_complete",pd.Series(False,index=out.index)).fillna(False).astype(bool)
+    fallback_q=out.get("route_aerosol_quality",pd.Series("",index=out.index)).astype(str)
+    fallback_path_ready=(
+        fallback_finite & (fallback_comp>=0.999) & fallback_dom
+        & fallback_q.str.startswith("REAL_MULTI_WAVELENGTH_AOD_EXPONENTIAL_SUN_TO_CANVAS")
+    )
+    aerosol_path_ready=native_path_ready | fallback_path_ready
+    out["aerosol_rt_path_complete"] = aerosol_path_ready
+    out["aerosol_rt_path_source"] = np.select(
+        [native_path_ready, fallback_path_ready],
+        ["CAMS_NATIVE_3D_EXT532+REAL_SPECTRAL_AOD", "REAL_MULTI_WAVELENGTH_AOD_EXPONENTIAL_SUN_TO_CANVAS"],
+        default="MISSING_OR_PARTIAL",
+    )
+    spectral_shape_ready = pd.to_numeric(out.get("spectral_angstrom_exponent", pd.Series(np.nan, index=out.index)), errors="coerce").notna()
     out["spectral_rt_quality"] = np.select(
-        [native_ok, fallback_ok],
+        [native_path_ready, fallback_path_ready, spectral_shape_ready],
         ["RAYLEIGH+CAMS_NATIVE_3D_AEROSOL_SUN_TO_CANVAS+CLOUD_NATIVE;GAS_MISSING",
-         "RAYLEIGH+REAL_MULTI_WAVELENGTH_AOD+EXPONENTIAL_PROFILE_FALLBACK+CLOUD_NATIVE;GAS_MISSING"],
-        default="RAYLEIGH+CLOUD_NATIVE;SPECTRAL_AEROSOL_MISSING;ANGSTROM_MISSING;GAS_MISSING",
+         "RAYLEIGH+REAL_MULTI_WAVELENGTH_AOD+EXPONENTIAL_SUN_TO_CANVAS_FALLBACK+CLOUD_NATIVE;GAS_MISSING",
+         "RAYLEIGH+CLOUD_NATIVE;SPECTRAL_AEROSOL_PATH_MISSING_OR_PARTIAL;GAS_MISSING"],
+        default="RAYLEIGH+CLOUD_NATIVE;SPECTRAL_AEROSOL_PATH_MISSING_OR_PARTIAL;ANGSTROM_MISSING;GAS_MISSING",
     )
 
     _emit(0.55, "開始 HITRAN/CAMS O₃ 氣體光路積分")
@@ -171,9 +211,9 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
     base_q = out["spectral_rt_quality"].astype(str).str.replace(";GAS_MISSING", "", regex=False)
     out["spectral_rt_quality"] = np.where(gas_ok, base_q + ";GAS_RT_AVAILABLE", base_q + ";GAS_MISSING")
     gas_failure = out.get("gas_rt_failure_cause", pd.Series("", index=out.index)).fillna("").astype(str)
-    aerosol_missing = (~native_ok) & (~fallback_ok)
+    aerosol_missing = applicable & (~aerosol_path_ready)
     out["spectral_rt_missing_cause"] = np.select(
-        [gas_failure.ne(""), aerosol_missing],
+        [applicable & gas_failure.ne(""), aerosol_missing],
         ["GAS_" + gas_failure, "AEROSOL_SPECTRAL_PATH_MISSING"],
         default="",
     )
@@ -198,8 +238,13 @@ def build_spectral_rt(native_optical_voxels: pd.DataFrame, solar_altitude_deg: f
         t_r = math.exp(-tau_r)
         native_tau = pd.to_numeric(out[f"native_cams_aerosol_tau_{wl}nm"] if f"native_cams_aerosol_tau_{wl}nm" in out.columns else pd.Series(np.nan,index=out.index), errors="coerce")
         native_t = pd.to_numeric(out[f"native_cams_aerosol_transmission_{wl}nm"] if f"native_cams_aerosol_transmission_{wl}nm" in out.columns else pd.Series(np.nan,index=out.index), errors="coerce")
-        route_tau = native_tau.where(native_tau.notna(), pd.to_numeric(out.get(f"route_aerosol_tau_{wl}nm", np.nan), errors="coerce"))
-        route_t = native_t.where(native_t.notna(), pd.to_numeric(out.get(f"route_aerosol_transmission_{wl}nm", np.nan), errors="coerce"))
+        fallback_tau = pd.to_numeric(out.get(f"route_aerosol_tau_{wl}nm", np.nan), errors="coerce")
+        fallback_t = pd.to_numeric(out.get(f"route_aerosol_transmission_{wl}nm", np.nan), errors="coerce")
+        # The public aerosol term is production-complete only.  Partial native
+        # tau remains visible in native_* diagnostic columns but may not
+        # masquerade as a complete Formation path.
+        route_tau = native_tau.where(native_path_ready, fallback_tau.where(fallback_path_ready, np.nan))
+        route_t = native_t.where(native_path_ready, fallback_t.where(fallback_path_ready, np.nan))
         if angstrom_exponent is not None:
             aod550_series = pd.to_numeric(out.get("aod550", np.nan), errors="coerce")
             legacy_tau = aod550_series.map(lambda x: aerosol_optical_depth(wl, x, angstrom_exponent) if pd.notna(x) else np.nan) * m

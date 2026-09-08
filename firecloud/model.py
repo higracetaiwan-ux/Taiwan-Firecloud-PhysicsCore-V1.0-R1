@@ -2112,6 +2112,18 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 "gas_profile": gas_profile,
                 "hitran_backend_status": _hitran_status,
                 "spectral_voxels": spectral_voxels,
+                # R5.7.24.2: distinguish a genuinely missing RT solve from a
+                # physically non-applicable one.  No Canvas geometry, or Canvas
+                # geometry with zero direct-solar fraction, must not be rewritten
+                # as Missing merely because the expensive spectral target table
+                # is empty.
+                "spectral_rt_requirement": {
+                    "canvas_count": int(len(_v1.get("canvases", pd.DataFrame()))) if isinstance(_v1.get("canvases", pd.DataFrame()), pd.DataFrame) else 0,
+                    "direct_sunlit_canvas_count": int((pd.to_numeric(
+                        _v1.get("direct_solar", pd.DataFrame()).get("direct_solar_fraction", pd.Series(dtype=float)),
+                        errors="coerce",
+                    ).fillna(0.0) > 0.0).sum()) if isinstance(_v1.get("direct_solar", pd.DataFrame()), pd.DataFrame) else 0,
+                },
             }
         }
         _angle_base_summary = pd.DataFrame([result_rows[-1]])
@@ -2469,7 +2481,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         _dep = physics_data_completeness[physics_data_completeness["layer"].ne("OVERALL_OPERATIONAL_INPUTS")].copy()
         if not _dep.empty:
             _dep["dependency"] = _dep["layer"].astype(str)
-            _status_map = {"READY":"FULL", "PARTIAL":"PARTIAL_OPTICS", "MISSING":"MISSING", "FAILED":"MISSING", "NOT_CONFIGURED":"MISSING"}
+            _status_map = {"READY":"FULL", "PARTIAL":"PARTIAL_OPTICS", "MISSING":"MISSING", "FAILED":"MISSING", "NOT_CONFIGURED":"MISSING", "NOT_APPLICABLE":"NOT_APPLICABLE"}
             _dep["evidence_state"] = _dep["status"].astype(str).map(_status_map).fillna("MISSING")
             _dep["criticality"] = _dep["dependency"].map({
                 "FORECAST_CLOUD":"HIGH", "NATIVE_AEROSOL":"MEDIUM", "O3_PROFILE":"MEDIUM",
@@ -2871,9 +2883,19 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
         full_cols=[f"full_spectral_transmission_{wl}nm" for wl in wavelengths]
         diagnostic_full_c=0.0
         spectral_aerosol_c=0.0; spectral_aerosol_status="MISSING"; spectral_aerosol_reason="SPECTRAL_AEROSOL_RT_INPUT_MISSING"
+        rt_req_meta=d.get("spectral_rt_requirement", {}) or {}
+        rt_req_known=bool(rt_req_meta)
+        canvas_count=int(rt_req_meta.get("canvas_count", 0) or 0) if rt_req_known else None
+        direct_sunlit_canvas_count=int(rt_req_meta.get("direct_sunlit_canvas_count", 0) or 0) if rt_req_known else None
         if spectral is None or spectral.empty:
-            full_c=0.0; full_status="MISSING"; full_reason="SPECTRAL_RT_INPUT_MISSING"
-            diagnostic_full_c=0.0; diagnostic_status="MISSING"; diagnostic_reason="SPECTRAL_RT_INPUT_MISSING"
+            if rt_req_known and direct_sunlit_canvas_count <= 0:
+                _na_reason = "NO_TARGET_CLOUD_GEOMETRY" if canvas_count <= 0 else "NO_DIRECT_SUNLIT_CANVAS_RT_REQUIRED"
+                spectral_aerosol_c=1.0; spectral_aerosol_status="NOT_APPLICABLE"; spectral_aerosol_reason=_na_reason
+                full_c=1.0; full_status="NOT_APPLICABLE"; full_reason=_na_reason
+                diagnostic_full_c=1.0; diagnostic_status="NOT_APPLICABLE"; diagnostic_reason="NO_SPECTRAL_RT_TARGET_ROWS"
+            else:
+                full_c=0.0; full_status="MISSING"; full_reason="SPECTRAL_RT_INPUT_MISSING"
+                diagnostic_full_c=0.0; diagnostic_status="MISSING"; diagnostic_reason="SPECTRAL_RT_INPUT_MISSING"
         else:
             # Operational FULL_SPECTRAL_RT is scoped to the physically relevant
             # direct-sunlit Canvas (0–100 km). Finite transmission numbers alone
@@ -2894,29 +2916,43 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
             diagnostic_req=~diagnostic_domain.eq("NOT_APPLICABLE")
             all_vals=[float(pd.to_numeric(spectral.get(c,pd.Series(np.nan,index=spectral.index)),errors="coerce").loc[diagnostic_req].notna().mean()) for c in full_cols] if diagnostic_req.any() else []
             diagnostic_full_c=float(np.mean(all_vals)) if all_vals else 1.0
-            diagnostic_status="READY" if (not all_vals or all(x>=0.999 for x in all_vals)) else ("PARTIAL" if any(x>0 for x in all_vals) else "MISSING")
-            diagnostic_reason="" if diagnostic_status=="READY" else "ALL_ROUTE_DIAGNOSTIC_RT_PARTIAL"
+            diagnostic_status=("NOT_APPLICABLE" if not diagnostic_req.any() else ("READY" if all(x>=0.999 for x in all_vals) else ("PARTIAL" if any(x>0 for x in all_vals) else "MISSING")))
+            diagnostic_reason=("NO_APPLICABLE_SPECTRAL_RT_ROWS" if diagnostic_status=="NOT_APPLICABLE" else ("" if diagnostic_status=="READY" else "ALL_ROUTE_DIAGNOSTIC_RT_PARTIAL"))
 
             # Native CAMS 3-D aerosol is only complete when every required path
             # segment has real spectral scaling and the ray reaches the configured
             # 30-km aerosol atmosphere top. The old code accepted any finite tau,
             # even when path completeness was 20–70%.
-            native_tau=pd.to_numeric(spectral.get("native_cams_aerosol_tau_650nm",pd.Series(np.nan,index=spectral.index)),errors="coerce")
-            native_comp=pd.to_numeric(spectral.get("native_cams_aerosol_path_completeness",pd.Series(np.nan,index=spectral.index)),errors="coerce")
-            native_dom=spectral.get("native_cams_aerosol_domain_complete",pd.Series(False,index=spectral.index)).fillna(False).astype(bool)
-            native_valid=native_tau.notna() & (native_comp>=0.999) & native_dom
+            if "aerosol_rt_path_complete" in spectral.columns:
+                aerosol_valid=spectral["aerosol_rt_path_complete"].fillna(False).astype(bool)
+            else:
+                # Backward-compatible reconstruction for older CASE/test frames.
+                native_tau=pd.to_numeric(spectral.get("native_cams_aerosol_tau_650nm",pd.Series(np.nan,index=spectral.index)),errors="coerce")
+                native_comp=pd.to_numeric(spectral.get("native_cams_aerosol_path_completeness",pd.Series(np.nan,index=spectral.index)),errors="coerce")
+                native_dom=spectral.get("native_cams_aerosol_domain_complete",pd.Series(False,index=spectral.index)).fillna(False).astype(bool)
+                native_valid=native_tau.notna() & (native_comp>=0.999) & native_dom
 
-            fallback_cols=[f"route_aerosol_transmission_{wl}nm" for wl in wavelengths]
-            fallback_finite=pd.Series(True,index=spectral.index,dtype=bool)
-            for c in fallback_cols:
-                fallback_finite &= pd.to_numeric(spectral.get(c,pd.Series(np.nan,index=spectral.index)),errors="coerce").notna()
-            fallback_q=spectral.get("aerosol_path_quality",pd.Series("",index=spectral.index)).astype(str)
-            fallback_valid=(~native_tau.notna()) & fallback_finite & fallback_q.eq("COLUMN_AOD_TO_EXPONENTIAL_3D_PROFILE")
-            aerosol_valid=native_valid | fallback_valid
+                fallback_cols=[f"route_aerosol_transmission_{wl}nm" for wl in wavelengths]
+                fallback_finite=pd.Series(True,index=spectral.index,dtype=bool)
+                for c in fallback_cols:
+                    fallback_finite &= pd.to_numeric(spectral.get(c,pd.Series(np.nan,index=spectral.index)),errors="coerce").notna()
+                fallback_comp=pd.to_numeric(spectral.get("route_aerosol_path_completeness",pd.Series(np.nan,index=spectral.index)),errors="coerce")
+                fallback_dom=spectral.get("route_aerosol_domain_complete",pd.Series(False,index=spectral.index)).fillna(False).astype(bool)
+                fallback_q=spectral.get("route_aerosol_quality",spectral.get("aerosol_path_quality",pd.Series("",index=spectral.index))).astype(str)
+                fallback_valid=(fallback_finite & (fallback_comp>=0.999) & fallback_dom
+                                & fallback_q.str.startswith("REAL_MULTI_WAVELENGTH_AOD_EXPONENTIAL_SUN_TO_CANVAS"))
+                # Legacy synthetic test frames used the older viewing-ray label
+                # and did not expose an explicit route-domain flag. Keep those
+                # test/ingestion frames readable; new production output never
+                # emits this legacy geometry as a Formation fallback.
+                if "route_aerosol_domain_complete" not in spectral.columns:
+                    fallback_valid |= fallback_finite & fallback_q.eq("COLUMN_AOD_TO_EXPONENTIAL_3D_PROFILE")
+                aerosol_valid=native_valid | fallback_valid
 
             if not req.any():
-                spectral_aerosol_c=1.0; spectral_aerosol_status="READY"; spectral_aerosol_reason="NO_DIRECT_SUNLIT_CANVAS_AEROSOL_RT_REQUIRED"
-                full_c=1.0; full_status="READY"; full_reason="NO_DIRECT_SUNLIT_CANVAS_RT_REQUIRED"
+                _na_reason = "NO_TARGET_CLOUD_GEOMETRY" if (rt_req_known and canvas_count <= 0) else "NO_DIRECT_SUNLIT_CANVAS_RT_REQUIRED"
+                spectral_aerosol_c=1.0; spectral_aerosol_status="NOT_APPLICABLE"; spectral_aerosol_reason=_na_reason
+                full_c=1.0; full_status="NOT_APPLICABLE"; full_reason=_na_reason
             else:
                 spectral_aerosol_c=float(aerosol_valid.loc[req].mean())
                 if spectral_aerosol_c>=0.999:

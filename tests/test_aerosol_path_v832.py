@@ -52,14 +52,18 @@ def test_route_integration_uses_real_multispectral_columns():
 
 def test_spectral_rt_activates_without_fixed_angstrom_when_multispectral_aod_exists():
     vox = pd.DataFrame([{
-        "point_id":"p1","solar_altitude_deg":-2.0,"direction_offset_deg":0.0,"distance_km":20.0,
+        "point_id":"p1","solar_altitude_deg":0.0,"direction_offset_deg":0.0,"distance_km":20.0,
         "voxel_center_km":4.0,"band":"0-40 km Primary Canvas","slant_cloud_optical_depth_estimate":0.2,
         "geometric_illuminated_fraction":1.0,"cloud_fraction_used":0.8
     }])
     aero = pd.DataFrame([
-        {"point_id":"p0","distance_km":0.0,"direction_offset_deg":0.0,"aod550":0.20,"aod645":0.16,"aod670":0.15,"aod800":0.12,"aerosol_provider":"TEST_MULTI"},
-        {"point_id":"p1","distance_km":20.0,"direction_offset_deg":0.0,"aod550":0.24,"aod645":0.19,"aod670":0.18,"aod800":0.14,"aerosol_provider":"TEST_MULTI"},
+        {"point_id":f"p{d}","distance_km":float(d),"direction_offset_deg":0.0,
+         "aod550":0.20,"aod645":0.16,"aod670":0.15,"aod800":0.12,
+         "aerosol_provider":"TEST_MULTI"}
+        for d in (0,20,100,200,400,600,800,1000,1180)
     ])
-    out = build_spectral_rt(vox,-2.0,aerosol_snapshot=aero,angstrom_exponent=None)
+    out = build_spectral_rt(vox,0.0,aerosol_snapshot=aero,angstrom_exponent=None)
+    assert pd.notna(out.loc[0,"aerosol_transmission_575nm"])
     assert pd.notna(out.loc[0,"aerosol_transmission_650nm"])
     assert "REAL_MULTI_WAVELENGTH_AOD" in out.loc[0,"spectral_rt_quality"]
+    assert "SUN_TO_CANVAS" in out.loc[0,"spectral_rt_quality"]

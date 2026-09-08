@@ -1,6 +1,21 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.24.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.24.2
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+## R5.7.24.2 Spectral Aerosol Formation-Path Contract
+
+R5.7.24.1 REAL CASE 顯示 CAMS native 3-D aerosol、Spectral AOD、O₃、gas profile 與 HITRAN 都可 READY，但 0°～−5°仍被標成 `SPECTRAL_AEROSOL_PATH=MISSING`。實際原因是這些角度沒有 Canvas target；−5.5°～−6°雖有 Canvas，但 DirectSolarFraction 全為 0、全部位於 Earth Shadow。舊完整性邏輯把「沒有需要計算的 spectral target」錯當成 Missing。
+
+R5.7.24.2 修正：
+
+- `NO_TARGET_CLOUD_GEOMETRY` 與 `NO_DIRECT_SUNLIT_CANVAS_RT_REQUIRED` 正式標為 `NOT_APPLICABLE`，不再假 Missing。
+- aerosol route spectrum 對齊六波段：**550 / 575 / 600 / 650 / 700 / 750 nm**。
+- native CAMS 3-D aerosol 只有在六波段 tau、path completeness 與 route domain 都完整時才可作 production path。
+- native path 有有限 tau 但不完整時，可嘗試 real multi-wavelength AOD 的 **Sun→CloudBase** exponential-profile fallback。
+- 舊 Observer→Target aerosol fallback 不再用於新的 Formation production path。
+- partial native tau 仍保留作診斷，但不得直接成為 public `aerosol_transmission_λ`。
+
+本修正不改 Formation / Viewing / Glow、Earth Shadow、DirectSolarFraction、Target Optical Truth、Route Invariance 或 Tier-2 directional geometry。
 
 
 ## R5.7.24.1 CAMS Availability Guard
