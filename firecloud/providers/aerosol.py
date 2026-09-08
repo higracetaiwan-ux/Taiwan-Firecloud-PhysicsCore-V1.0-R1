@@ -5,6 +5,8 @@ from pathlib import Path
 import requests
 import pandas as pd
 
+from ..runtime_hardening import atomic_write_json, stamp_cache_artifact, cache_provenance
+
 API_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 HOURLY_VARS = ["aerosol_optical_depth"]
 
@@ -42,7 +44,9 @@ def _load(k):
 def _save(k,data):
     try:
         d=_cache_dir(); d.mkdir(parents=True,exist_ok=True)
-        t=d/f".{k}.tmp"; t.write_text(json.dumps(data)); t.replace(d/f"{k}.json")
+        p=d/f"{k}.json"
+        atomic_write_json(p,data)
+        stamp_cache_artifact(p,provider="OPEN_METEO_AIR_QUALITY",role="CANONICAL_JSON",schema="OPEN_METEO_AQ_CACHE_V1",qc_state="CACHE_READY",include_sha256=True)
     except Exception: pass
 
 
@@ -81,9 +85,11 @@ def fetch_route_aerosol(points: list[dict], start: datetime, end: datetime, time
         k=_key(params); data=_load(k); cs="HIT" if data is not None else "MISS"
         if data is None:
             data=_get(session,params).json(); _save(k,data)
+        _prov=cache_provenance(_cache_dir()/f"{k}.json",provider="OPEN_METEO_AIR_QUALITY",role="AOD550_JSON",cache_status=cs)
         audit.append({"provider":"OPEN_METEO_AIR_QUALITY","batch_index":bi,"cache_status":cs,"cache_key":k,
                       "queried_unique_locations":len(batch),"logical_route_points":sum(len(g) for g in groups),
-                      "deduplicated_locations_saved":sum(len(g) for g in groups)-len(batch)})
+                      "deduplicated_locations_saved":sum(len(g) for g in groups)-len(batch),
+                      **{kk:vv for kk,vv in _prov.items() if kk.startswith("cache_") or kk in {"current_job_id","current_run_mode"}}})
         locs=data if isinstance(data,list) else [data]
         for group,loc in zip(groups,locs):
             hourly=loc.get("hourly",{}); times=hourly.get("time",[]); vals=hourly.get("aerosol_optical_depth")

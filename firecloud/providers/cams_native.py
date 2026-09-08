@@ -31,6 +31,8 @@ import re
 import numpy as np
 import pandas as pd
 
+from ..runtime_hardening import stamp_cache_artifact, cache_provenance
+
 DATASET = "cams-global-atmospheric-composition-forecasts"
 PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_3D_AEROSOL_EXTINCTION_532NM"
 OZONE_PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_3D_OZONE_PRESSURE_LEVELS"
@@ -289,9 +291,12 @@ def _load_decoded_role_cache(role: str, points: list[dict], valid_time: datetime
         meta = dict(out.get("meta") or {})
         audit = dict(meta.get("request_audit") or {})
         audit.update({"status":"CACHE_HIT", "cache_layer":"DECODED_ROUTE", "decoded_cache_file":p.name})
+        prov = cache_provenance(p, provider="CAMS_ADS", role=str(role), cache_status="CACHE_HIT")
+        audit.update({k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}})
         meta["request_audit"] = audit
         meta["decoded_route_cache_status"] = "HIT"
         meta["decoded_route_cache_file"] = p.name
+        meta["decoded_route_cache_provenance"] = prov
         out["meta"] = meta
         out["decoded_route_cache_status"] = "HIT"
         return out
@@ -314,7 +319,11 @@ def _save_decoded_role_cache(role: str, points: list[dict], valid_time: datetime
         tmp = p.with_name(f".{p.name}.{uuid.uuid4().hex}.tmp")
         with tmp.open("wb") as fh:
             pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
-        tmp.replace(p)
+            fh.flush()
+            try: os.fsync(fh.fileno())
+            except Exception: pass
+        os.replace(tmp, p)
+        stamp_cache_artifact(p, provider="CAMS_ADS", role=str(role), schema=CAMS_DECODED_CACHE_SCHEMA_VERSION, qc_state="CACHE_READY")
     except Exception:
         pass
 
@@ -357,10 +366,23 @@ def _retrieve_request(points: list[dict], valid_time: datetime, role: str, reque
     }
     try:
         if not out.exists() or out.stat().st_size < 1000:
-            _make_cdsapi_client().retrieve(DATASET, request, str(out))
+            out.parent.mkdir(parents=True, exist_ok=True)
+            tmp = out.with_name(f".{out.name}.{os.getpid()}.{uuid.uuid4().hex}.partial")
+            try:
+                _make_cdsapi_client().retrieve(DATASET, request, str(tmp))
+                if not tmp.exists() or tmp.stat().st_size < 1000:
+                    raise RuntimeError("CAMS ADS retrieval did not produce a valid temporary GRIB file")
+                os.replace(tmp, out)
+            finally:
+                if tmp.exists():
+                    try: tmp.unlink()
+                    except Exception: pass
             audit["status"] = "OK"
+            stamp_cache_artifact(out, provider="CAMS_ADS", role=str(role), schema="CAMS_RAW_GRIB_V1", qc_state="CACHE_READY")
         if not out.exists() or out.stat().st_size < 1000:
             raise RuntimeError("CAMS ADS retrieval did not produce a valid GRIB file")
+        prov = cache_provenance(out, provider="CAMS_ADS", role=str(role), cache_status=audit["status"])
+        audit.update({k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}})
     except Exception as exc:
         audit["status"] = "FAILED"
         audit["error"] = f"{type(exc).__name__}: {exc}"
@@ -876,9 +898,23 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
                    "area_nwse":str(request.get("area")),
                    "status":"CACHE_HIT" if out.exists() and out.stat().st_size>=1000 else "REQUESTING","error":""}
             if not out.exists() or out.stat().st_size < 1000:
-                _make_cdsapi_client().retrieve(DATASET, request, str(out)); audit["status"]="OK"
+                out.parent.mkdir(parents=True, exist_ok=True)
+                tmp=out.with_name(f".{out.name}.{os.getpid()}.{uuid.uuid4().hex}.partial")
+                try:
+                    _make_cdsapi_client().retrieve(DATASET, request, str(tmp))
+                    if not tmp.exists() or tmp.stat().st_size < 1000:
+                        raise RuntimeError("CAMS spectral AOD retrieval did not produce a valid temporary GRIB file")
+                    os.replace(tmp,out)
+                finally:
+                    if tmp.exists():
+                        try: tmp.unlink()
+                        except Exception: pass
+                audit["status"]="OK"
+                stamp_cache_artifact(out,provider="CAMS_ADS",role="SPECTRAL_COLUMN_AOD",schema="CAMS_RAW_GRIB_V1",qc_state="CACHE_READY")
             if not out.exists() or out.stat().st_size < 1000:
                 raise RuntimeError("CAMS spectral AOD retrieval did not produce a valid GRIB file")
+            prov=cache_provenance(out,provider="CAMS_ADS",role="SPECTRAL_COLUMN_AOD",cache_status=audit["status"])
+            audit.update({k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}})
             df=decode_grib_spectral_aod_to_route(out, points)
             have=[c for c in ("aod550","aod645","aod670","aod800") if c in df and df[c].notna().any()]
             inv=inspect_grib_message_inventory(out)

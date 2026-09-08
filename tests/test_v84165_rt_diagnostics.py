@@ -42,12 +42,15 @@ def test_expected_geometry_termination_is_separate_from_true_missing():
     assert row["dominant_missing_cause"] == "DYNAMIC_RT_DOMAIN_EXHAUSTED"
 
 
-def test_cams_prefetch_is_bounded_unique_time_parallelism():
+def test_cams_prefetch_is_global_ads_single_flight_by_default_with_explicit_parallel_opt_in():
     src = open("firecloud/model.py", encoding="utf-8").read()
     assert "ThreadPoolExecutor" in src
     assert 'FIRECLOUD_CAMS_PREFETCH_WORKERS' in src
-    assert 'min(_cams_parallel_workers, 2' in src
-    assert 'PREFETCH_PARALLEL' in src
+    assert 'FIRECLOUD_CAMS_ALLOW_PARALLEL_TIME_BUNDLES' in src
+    assert 'GLOBAL_ADS_SINGLE_FLIGHT' in src
+    assert 'PREFETCH_GLOBAL_ADS_SINGLE_FLIGHT' in src
+    # R5.7.23 runtime hardening: production default must be one remote ADS time bundle at once.
+    assert 'os.getenv("FIRECLOUD_CAMS_PREFETCH_WORKERS", "1")' in src
 
 
 def test_cams_checkpoint_keeps_role_specific_files_for_parallel_workers():

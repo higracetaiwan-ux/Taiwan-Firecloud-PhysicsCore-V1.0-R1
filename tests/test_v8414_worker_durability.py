@@ -8,8 +8,8 @@ def test_analysis_worker_is_external_and_reports_elapsed_exit_stderr():
     worker = (ROOT / "firecloud" / "analysis_worker.py").read_text(encoding="utf-8")
     app = (ROOT / "app.py").read_text(encoding="utf-8")
     assert "elapsed_seconds" in worker
-    assert '"exit_code": 0' in worker
-    assert '"exit_code": 1' in worker
+    assert '_progress_payload(status="COMPLETED", exit_code=0' in worker
+    assert '_progress_payload(status="FAILED", error=error, exit_code=1' in worker
     assert "worker_stderr_tail" in app
     assert "worker_last_heartbeat_at_utc" in app
     assert "_monitor_analysis_worker" in app

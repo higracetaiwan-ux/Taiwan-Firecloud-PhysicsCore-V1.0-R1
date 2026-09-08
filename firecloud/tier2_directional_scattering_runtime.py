@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""R5.7.22 production runtime for full-directional Tier-2 cloud-scattering LUTs."""
+"""R5.7.23 V3 production runtime for genuine full-directional Tier-2 cloud-scattering LUTs."""
 
 import hashlib
 import io
@@ -30,7 +30,12 @@ MANIFEST_REQUIRED_FIELDS = [
     "solver_family", "solver_version", "cloud_optics_source", "phase_function_source",
     "multiple_scattering_enabled", "response_definition", "response_units",
     "geometry_convention", "directional_hemisphere_support", "interpolation_axes",
-    "validation_reference",
+    "validation_reference", "solver_adapter_contract", "incident_irradiance_reference",
+    "atmospheric_coupling", "surface_boundary", "reference_cloud_base_km",
+    "reference_cloud_top_km", "cloud_vertical_sensitivity_validation_reference",
+    "geometry_mapping_validation_reference", "minimum_photon_count",
+    "maximum_mc_relative_error", "maximum_mc_absolute_error", "calibration_scope",
+    "domain_spec_sha256",
 ]
 
 
@@ -136,6 +141,17 @@ def validate_directional_lut_bytes(csv_bytes: bytes, manifest_bytes: bytes | Non
         "response_units": str(manifest.get("response_units", "")),
         "directional_hemisphere_support": str(manifest.get("directional_hemisphere_support", "")),
         "validation_reference": str(manifest.get("validation_reference", "")),
+        "solver_adapter_contract": str(manifest.get("solver_adapter_contract", "")),
+        "incident_irradiance_reference": str(manifest.get("incident_irradiance_reference", "")),
+        "atmospheric_coupling": str(manifest.get("atmospheric_coupling", "")),
+        "surface_boundary": str(manifest.get("surface_boundary", "")),
+        "reference_cloud_base_km": manifest.get("reference_cloud_base_km"),
+        "reference_cloud_top_km": manifest.get("reference_cloud_top_km"),
+        "minimum_photon_count": manifest.get("minimum_photon_count"),
+        "maximum_mc_relative_error": manifest.get("maximum_mc_relative_error"),
+        "maximum_mc_absolute_error": manifest.get("maximum_mc_absolute_error"),
+        "calibration_scope": str(manifest.get("calibration_scope", "")),
+        "domain_spec_sha256": str(manifest.get("domain_spec_sha256", "")),
         "interpolation_axes": "/".join(str(x) for x in manifest.get("interpolation_axes", [])),
         "scattering_angle_role": str(manifest.get("scattering_angle_role", "DERIVED_DIAGNOSTIC_NOT_INTERPOLATION_AXIS")),
         "cloud_thickness_role": str(manifest.get("cloud_thickness_role", "TARGET_GEOMETRY_EVIDENCE_NOT_LUT_INTERPOLATION_AXIS")),
@@ -157,7 +173,7 @@ def load_installed_directional_scattering_lut() -> tuple[pd.DataFrame | None, di
         if legacy_csv.exists() and legacy_manifest.exists():
             return None, {
                 "ok": False, "state": "LEGACY_SCATTERING_ANGLE_LUT_DETECTED_NOT_PRODUCTION_ELIGIBLE",
-                "errors": ["R5.7.22_REQUIRES_FULL_DIRECTIONAL_THETA0_THETAV_DELTAPHI_LUT"],
+                "errors": ["R5.7.23_V3_REQUIRES_GENUINE_FULL_DIRECTIONAL_THETA0_THETAV_DELTAPHI_LUT"],
                 "warnings": ["LEGACY_LUT_PRESERVED_FOR_HISTORICAL_REGRESSION_ONLY"], "rows": 0,
                 "source": "legacy_scattering_runtime_detected", "csv_path": str(legacy_csv),
                 "manifest_path": str(legacy_manifest), "runtime_contract": DIRECTIONAL_RUNTIME_CONTRACT,

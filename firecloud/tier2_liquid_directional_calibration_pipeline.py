@@ -27,6 +27,20 @@ import numpy as np
 import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
+from .tier2_libradtran_mystic_adapter import (
+    MYSTIC_ADAPTER_CONTRACT,
+    INCIDENT_IRRADIANCE_REFERENCE,
+    ATMOSPHERIC_COUPLING,
+    SURFACE_BOUNDARY,
+    CALIBRATION_SCOPE,
+    geometry_to_uvspec,
+    unit_solar_spectrum_text,
+    liquid_cloud_profile_text,
+    render_uvspec_input,
+    parse_mc_rad_spc,
+    parse_mc_rad_std_spc,
+    external_result_row,
+)
 from .tier2_directional_scattering_calibration import (
     DIRECTIONAL_CALIBRATION_CONTRACT,
     DIRECTIONAL_GEOMETRY_CONVENTION,
@@ -64,9 +78,16 @@ CALIBRATION_TARGET_COLUMNS = [
 ]
 
 EXTERNAL_RESULT_REQUIRED_COLUMNS = [
-    "job_id", "response_factor", "mc_relative_sigma", "solver_exit_code",
-    "solver_family", "solver_version", "result_contract",
+    "job_id", "response_factor", "response_factor_std", "mc_absolute_sigma",
+    "mc_relative_sigma", "photon_count", "sample_qc_state", "solver_run_id",
+    "solver_exit_code", "solver_family", "solver_version", "result_contract",
+    "adapter_contract",
 ]
+
+
+def canonical_domain_spec_sha256(domain_spec: dict[str, Any]) -> str:
+    payload = json.dumps(domain_spec, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -323,30 +344,32 @@ def plan_liquid_directional_calibration_domain(
 
 
 def _uvspec_umu_from_cloud_to_observer_view_zenith(view_zenith_deg: float) -> float:
-    """Map PhysicsCore Cloud->Observer propagation zenith to uvspec sensor look cosine.
-
-    PhysicsCore theta_v is measured from the target-local upward zenith for the
-    propagation vector Cloud->Observer.  For uvspec radiance geometry, positive
-    umu denotes a sensor looking downward.  Therefore the detector look cosine
-    corresponding to the propagation direction is -cos(theta_v).
-    """
-    return float(-math.cos(math.radians(float(view_zenith_deg))))
+    return geometry_to_uvspec(90.0, float(view_zenith_deg), 180.0).umu
 
 
 def build_libradtran_mystic_solver_recipe(
     *,
     libRadtran_version: str = "UNRESOLVED_EXTERNAL_RUNTIME",
     photons_per_job: int = 1_000_000,
-    atmosphere_profile: str = "REQUIRES_VALIDATED_CALIBRATION_PROFILE",
-    cloud_optics_source: str = "LIBRADTRAN_WATER_MIE_OR_VALIDATED_EQUIVALENT",
+    atmosphere_profile: str = "REQUIRES_VALIDATED_GEOMETRY_PROFILE",
+    cloud_optics_source: str = "LIBRADTRAN_WATER_MIE_INTERPOLATE",
     phase_function_source: str = "FULL_MIE_PHASE_FUNCTION",
-    effective_variance: str = "REQUIRES_EXPLICIT_CALIBRATION_VALUE",
+    effective_variance: str = "LIBRADTRAN_MIE_TABLE_PROVENANCE_REQUIRED",
+    reference_cloud_base_km: float = 5.0,
+    reference_cloud_top_km: float = 6.0,
+    maximum_mc_relative_error: float = 0.02,
+    maximum_mc_absolute_error: float = 0.01,
 ) -> dict[str, Any]:
     if int(photons_per_job) <= 0:
         raise ValueError("MYSTIC_PHOTON_COUNT_INVALID")
+    if not (float(reference_cloud_top_km) > float(reference_cloud_base_km) >= 0):
+        raise ValueError("REFERENCE_CLOUD_VERTICAL_GEOMETRY_INVALID")
+    if float(maximum_mc_relative_error) < 0 or float(maximum_mc_absolute_error) < 0:
+        raise ValueError("MYSTIC_QC_THRESHOLD_INVALID")
     return {
         "contract": SOLVER_RECIPE_CONTRACT,
         "pipeline_contract": PIPELINE_CONTRACT,
+        "solver_adapter_contract": MYSTIC_ADAPTER_CONTRACT,
         "solver_family": "LIBRADTRAN_UVSPEC_MYSTIC",
         "solver_version": str(libRadtran_version),
         "rte_solver": "mystic",
@@ -354,11 +377,20 @@ def build_libradtran_mystic_solver_recipe(
         "variance_reduction": "mc_vroom",
         "multiple_scattering_enabled": True,
         "photons_per_job": int(photons_per_job),
+        "minimum_photon_count": int(photons_per_job),
+        "maximum_mc_relative_error": float(maximum_mc_relative_error),
+        "maximum_mc_absolute_error": float(maximum_mc_absolute_error),
         "atmosphere_profile": str(atmosphere_profile),
         "cloud_optics_source": str(cloud_optics_source),
         "phase_function_source": str(phase_function_source),
         "effective_variance": str(effective_variance),
-        "source_normalization": "EXTERNAL_VALIDATED_CLOUD_RESPONSE_NORMALIZATION_REQUIRED",
+        "incident_irradiance_reference": INCIDENT_IRRADIANCE_REFERENCE,
+        "atmospheric_coupling": ATMOSPHERIC_COUPLING,
+        "surface_boundary": SURFACE_BOUNDARY,
+        "calibration_scope": CALIBRATION_SCOPE,
+        "reference_cloud_base_km": float(reference_cloud_base_km),
+        "reference_cloud_top_km": float(reference_cloud_top_km),
+        "source_normalization": INCIDENT_IRRADIANCE_REFERENCE,
         "response_definition": DIRECTIONAL_RESPONSE_DEFINITION,
         "response_units": DIRECTIONAL_RESPONSE_UNITS,
         "geometry_convention": DIRECTIONAL_GEOMETRY_CONVENTION,
@@ -375,13 +407,18 @@ def build_libradtran_mystic_solver_recipe(
 
 
 def uvspec_template_text() -> str:
-    """Return a provenance-safe MYSTIC template with explicit placeholders.
+    return """# Taiwan Firecloud PhysicsCore R5.7.23
+# Genuine liquid-cloud full-directional calibration template.
+# MUST NOT be interpreted as a completed production LUT.
+# Each concrete input is rendered by tier2_libradtran_mystic_adapter.py.
+# atmosphere_file <VALIDATED_ATMOSPHERE_PROFILE>
 
-    It is intentionally a template rather than a claim that libRadtran ran in
-    the current environment.  The external adapter must supply the validated
-    atmosphere, water-cloud profile/optics, and response normalization.
-    """
-    return """# Taiwan Firecloud PhysicsCore R5.7.23\n# Genuine liquid-cloud full-directional calibration template\n# This template MUST NOT be interpreted as a completed production LUT.\n\n# External validated atmosphere / data paths\ndata_files_path <LIBRADTRAN_DATA_FILES_PATH>\natmosphere_file <VALIDATED_ATMOSPHERE_PROFILE>\nsource solar <VALIDATED_SOLAR_SPECTRUM>\n\n# One monochromatic PhysicsCore band per job\nwavelength <WAVELENGTH_NM>\n\n# Target-local full directional geometry\nsza <SOLAR_ZENITH_DEG>\nphi0 0.0\numu <UVSPEC_UMU_FROM_MINUS_COS_VIEW_ZENITH>\nphi <RELATIVE_AZIMUTH_DEG>\n\n# Full spherical Monte-Carlo RT for low-Sun / twilight geometry\nrte_solver mystic\nmc_spherical 1D\nmc_vroom\nmc_photons <PHOTON_COUNT>\n\n# Validated liquid-cloud optical setup must be supplied by the external adapter\nwc_file 1D <LIQUID_CLOUD_PROFILE_FILE>\nwc_properties mie interpolate\nwc_modify tau550 set <COT>\n\n# Sensor/output setup and normalization are calibration-protocol controlled\nzout <CALIBRATION_SENSOR_ALTITUDE>\nquiet\n"""
+rte_solver mystic
+mc_spherical 1D
+mc_vroom
+wc_properties mie interpolate
+# cloud-only: no_rayleigh / no_absorption mol / albedo 0 are mandatory in rendered jobs
+"""
 
 
 def build_external_job_table(domain_spec: dict[str, Any], *, solver_recipe: dict[str, Any]) -> pd.DataFrame:
@@ -403,6 +440,12 @@ def build_external_job_table(domain_spec: dict[str, Any], *, solver_recipe: dict
     jobs["mc_photons"] = int(solver_recipe["photons_per_job"])
     jobs["solver_recipe_contract"] = SOLVER_RECIPE_CONTRACT
     jobs["result_contract"] = RESULT_CONTRACT
+    jobs["adapter_contract"] = MYSTIC_ADAPTER_CONTRACT
+    jobs["incident_irradiance_reference"] = INCIDENT_IRRADIANCE_REFERENCE
+    jobs["atmospheric_coupling"] = ATMOSPHERIC_COUPLING
+    jobs["surface_boundary"] = SURFACE_BOUNDARY
+    jobs["reference_cloud_base_km"] = float(solver_recipe["reference_cloud_base_km"])
+    jobs["reference_cloud_top_km"] = float(solver_recipe["reference_cloud_top_km"])
     jobs["execution_state"] = "PENDING_EXTERNAL_LIBRADTRAN_MYSTIC"
     return jobs
 
@@ -430,6 +473,7 @@ def write_external_calibration_bundle(
     template_path.write_text(uvspec_template_text(), encoding="utf-8")
     pd.DataFrame(columns=EXTERNAL_RESULT_REQUIRED_COLUMNS).to_csv(result_schema_path, index=False)
 
+    domain_sha256 = canonical_domain_spec_sha256(domain_spec)
     manifest = {
         "contract": PIPELINE_CONTRACT,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -439,6 +483,11 @@ def write_external_calibration_bundle(
         "domain_contract": DOMAIN_CONTRACT,
         "solver_recipe_contract": SOLVER_RECIPE_CONTRACT,
         "result_contract": RESULT_CONTRACT,
+        "solver_adapter_contract": MYSTIC_ADAPTER_CONTRACT,
+        "domain_spec_sha256": domain_sha256,
+        "incident_irradiance_reference": INCIDENT_IRRADIANCE_REFERENCE,
+        "atmospheric_coupling": ATMOSPHERIC_COUPLING,
+        "surface_boundary": SURFACE_BOUNDARY,
         "calibration_contract_after_external_qc": DIRECTIONAL_CALIBRATION_CONTRACT,
         "files": {
             "jobs": jobs_path.name,
@@ -466,6 +515,8 @@ def validate_external_rt_results(
     results: pd.DataFrame,
     *,
     max_mc_relative_sigma: float = 0.02,
+    max_mc_absolute_sigma: float = 0.01,
+    minimum_photon_count: int = 1,
 ) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -497,18 +548,20 @@ def validate_external_rt_results(
     if extra_jobs:
         errors.append(f"EXTERNAL_RT_RESULTS_UNKNOWN_JOB_SET:{len(extra_jobs)}")
 
-    r["response_factor"] = pd.to_numeric(r["response_factor"], errors="coerce")
-    r["mc_relative_sigma"] = pd.to_numeric(r["mc_relative_sigma"], errors="coerce")
-    r["solver_exit_code"] = pd.to_numeric(r["solver_exit_code"], errors="coerce")
-    if r[["response_factor", "mc_relative_sigma", "solver_exit_code"]].isna().any().any():
+    for c in ("response_factor", "response_factor_std", "mc_absolute_sigma", "mc_relative_sigma", "photon_count", "solver_exit_code"):
+        r[c] = pd.to_numeric(r[c], errors="coerce")
+    if r[["response_factor", "response_factor_std", "mc_absolute_sigma", "mc_relative_sigma", "photon_count", "solver_exit_code"]].isna().any().any():
         errors.append("EXTERNAL_RT_RESULTS_NON_NUMERIC_OR_MISSING_QC")
-    if (r["response_factor"] < 0).any():
-        errors.append("EXTERNAL_RT_RESULTS_NEGATIVE_RESPONSE")
-    if (r["mc_relative_sigma"] < 0).any():
-        errors.append("EXTERNAL_RT_RESULTS_NEGATIVE_MC_SIGMA")
+    if (r["response_factor"] < 0).any(): errors.append("EXTERNAL_RT_RESULTS_NEGATIVE_RESPONSE")
+    if (r[["response_factor_std", "mc_absolute_sigma", "mc_relative_sigma"]] < 0).any().any(): errors.append("EXTERNAL_RT_RESULTS_NEGATIVE_MC_SIGMA")
     max_sigma = float(r["mc_relative_sigma"].max()) if r["mc_relative_sigma"].notna().any() else None
-    if max_sigma is not None and max_sigma > float(max_mc_relative_sigma):
-        errors.append("EXTERNAL_RT_RESULTS_MC_CONVERGENCE_FAILED")
+    max_abs = float(r["mc_absolute_sigma"].max()) if r["mc_absolute_sigma"].notna().any() else None
+    if max_sigma is not None and max_sigma > float(max_mc_relative_sigma): errors.append("EXTERNAL_RT_RESULTS_MC_CONVERGENCE_FAILED")
+    if max_abs is not None and max_abs > float(max_mc_absolute_sigma): errors.append("EXTERNAL_RT_RESULTS_MC_ABSOLUTE_CONVERGENCE_FAILED")
+    if (r["photon_count"] < int(minimum_photon_count)).any(): errors.append("EXTERNAL_RT_RESULTS_PHOTON_COUNT_BELOW_MINIMUM")
+    if not r["sample_qc_state"].astype(str).str.upper().eq("PASS").all(): errors.append("EXTERNAL_RT_RESULTS_SAMPLE_QC_NOT_PASS")
+    if not r["solver_run_id"].astype(str).str.strip().ne("").all(): errors.append("EXTERNAL_RT_RESULTS_SOLVER_RUN_ID_MISSING")
+    if not r["adapter_contract"].astype(str).eq(MYSTIC_ADAPTER_CONTRACT).all(): errors.append("EXTERNAL_RT_RESULTS_ADAPTER_CONTRACT_MISMATCH")
     if not r["solver_exit_code"].fillna(-999).eq(0).all():
         errors.append("EXTERNAL_RT_RESULTS_SOLVER_EXIT_NONZERO")
     if not r["result_contract"].astype(str).eq(RESULT_CONTRACT).all():
@@ -522,10 +575,14 @@ def validate_external_rt_results(
 
     pass_mask = (
         r["response_factor"].ge(0)
-        & r["mc_relative_sigma"].ge(0)
-        & r["mc_relative_sigma"].le(float(max_mc_relative_sigma))
+        & r["response_factor_std"].ge(0)
+        & r["mc_relative_sigma"].between(0, float(max_mc_relative_sigma), inclusive="both")
+        & r["mc_absolute_sigma"].between(0, float(max_mc_absolute_sigma), inclusive="both")
+        & r["photon_count"].ge(int(minimum_photon_count))
+        & r["sample_qc_state"].astype(str).str.upper().eq("PASS")
         & r["solver_exit_code"].eq(0)
         & r["result_contract"].astype(str).eq(RESULT_CONTRACT)
+        & r["adapter_contract"].astype(str).eq(MYSTIC_ADAPTER_CONTRACT)
     )
     audit = CalibrationResultAudit(
         ok=not errors,
@@ -543,21 +600,27 @@ def build_production_lut_from_external_results(
     results: pd.DataFrame,
     metadata: dict[str, Any],
     max_mc_relative_sigma: float = 0.02,
+    max_mc_absolute_sigma: float = 0.01,
+    minimum_photon_count: int = 1,
+    domain_spec: dict[str, Any] | None = None,
 ) -> tuple[bytes, bytes, dict[str, Any]]:
     """Build a production package only from a complete external RT result set."""
-    audit = validate_external_rt_results(jobs, results, max_mc_relative_sigma=max_mc_relative_sigma)
+    audit = validate_external_rt_results(
+        jobs, results, max_mc_relative_sigma=max_mc_relative_sigma,
+        max_mc_absolute_sigma=max_mc_absolute_sigma, minimum_photon_count=minimum_photon_count,
+    )
     if not audit.get("ok", False):
         raise ValueError(";".join(audit.get("errors", [])) or "EXTERNAL_RT_RESULTS_QC_FAILED")
 
     if jobs["phase"].map(_phase).nunique() != 1 or jobs["phase"].map(_phase).iloc[0] != "LIQUID":
         raise ValueError("R5.7.23_PRODUCTION_BUILD_REQUIRES_LIQUID_ONLY_JOB_GRID")
 
-    rcols = ["job_id", "response_factor"]
+    rcols = ["job_id", "response_factor", "response_factor_std", "photon_count", "sample_qc_state", "solver_run_id"]
     merged = jobs.merge(results[rcols], on="job_id", how="left", validate="one_to_one")
     sample_cols = [
         "phase", "wavelength_nm", "cot", "effective_radius_um",
         "solar_zenith_deg", "view_zenith_deg", "relative_azimuth_deg",
-        "response_factor",
+        "response_factor", "response_factor_std", "photon_count", "sample_qc_state", "solver_run_id",
     ]
     samples = merged[sample_cols].copy()
 
@@ -572,6 +635,20 @@ def build_production_lut_from_external_results(
     enriched.setdefault("response_units", DIRECTIONAL_RESPONSE_UNITS)
     enriched.setdefault("geometry_convention", DIRECTIONAL_GEOMETRY_CONVENTION)
     enriched.setdefault("directional_hemisphere_support", "FULL_0_180")
+    enriched.setdefault("solver_adapter_contract", MYSTIC_ADAPTER_CONTRACT)
+    enriched.setdefault("incident_irradiance_reference", INCIDENT_IRRADIANCE_REFERENCE)
+    enriched.setdefault("atmospheric_coupling", ATMOSPHERIC_COUPLING)
+    enriched.setdefault("surface_boundary", SURFACE_BOUNDARY)
+    enriched.setdefault("reference_cloud_base_km", float(jobs["reference_cloud_base_km"].iloc[0]) if "reference_cloud_base_km" in jobs else 5.0)
+    enriched.setdefault("reference_cloud_top_km", float(jobs["reference_cloud_top_km"].iloc[0]) if "reference_cloud_top_km" in jobs else 6.0)
+    enriched.setdefault("minimum_photon_count", int(minimum_photon_count))
+    enriched.setdefault("maximum_mc_relative_error", float(max_mc_relative_sigma))
+    enriched.setdefault("maximum_mc_absolute_error", float(max_mc_absolute_sigma))
+    enriched.setdefault("calibration_scope", CALIBRATION_SCOPE)
+    if domain_spec is not None:
+        enriched.setdefault("domain_spec_sha256", canonical_domain_spec_sha256(domain_spec))
+    if not str(enriched.get("domain_spec_sha256", "")).strip():
+        raise ValueError("DIRECTIONAL_DOMAIN_SPEC_SHA256_REQUIRED_FOR_PRODUCTION_BUILD")
     enriched["external_result_contract"] = RESULT_CONTRACT
     enriched["calibration_pipeline_contract"] = PIPELINE_CONTRACT
     enriched["max_mc_relative_sigma_observed"] = audit.get("max_mc_relative_sigma")

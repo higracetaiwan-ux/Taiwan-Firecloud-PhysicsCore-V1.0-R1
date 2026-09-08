@@ -12,6 +12,11 @@ from firecloud.tier2_directional_scattering_calibration import (
     DIRECTIONAL_GEOMETRY_CONVENTION,
     DIRECTIONAL_RESPONSE_DEFINITION,
     DIRECTIONAL_RESPONSE_UNITS,
+    DIRECTIONAL_CALIBRATION_CONTRACT,
+)
+from firecloud.tier2_libradtran_mystic_adapter import (
+    MYSTIC_ADAPTER_CONTRACT, INCIDENT_IRRADIANCE_REFERENCE, ATMOSPHERIC_COUPLING,
+    SURFACE_BOUNDARY, CALIBRATION_SCOPE,
 )
 from firecloud.tier2_directional_scattering_runtime import validate_directional_lut_bytes
 from firecloud.tier2_liquid_directional_calibration_pipeline import (
@@ -72,14 +77,21 @@ def _results_for_jobs(jobs: pd.DataFrame, sigma=0.005):
     for row in jobs.itertuples(index=False):
         # Test fixture only. This deterministic formula is never installed as a production LUT.
         response = 0.01 + 0.001 * float(row.cot) + 0.00001 * float(row.wavelength_nm)
+        std = response * float(sigma)
         rows.append({
             "job_id": row.job_id,
             "response_factor": response,
+            "response_factor_std": std,
+            "mc_absolute_sigma": std,
             "mc_relative_sigma": sigma,
+            "photon_count": int(row.mc_photons),
+            "sample_qc_state": "PASS",
+            "solver_run_id": f"TEST-RUN:{row.job_id}",
             "solver_exit_code": 0,
             "solver_family": "LIBRADTRAN_UVSPEC_MYSTIC",
             "solver_version": "test-external-rt-1",
             "result_contract": RESULT_CONTRACT,
+            "adapter_contract": MYSTIC_ADAPTER_CONTRACT,
         })
     return pd.DataFrame(rows, columns=EXTERNAL_RESULT_REQUIRED_COLUMNS)
 
@@ -214,9 +226,22 @@ def test_production_package_can_only_be_built_after_complete_external_qc():
         "directional_hemisphere_support": "FULL_0_180",
         "calibration_state": "CALIBRATED",
         "qc_state": "PASS",
+        "calibration_contract": DIRECTIONAL_CALIBRATION_CONTRACT,
+        "solver_adapter_contract": MYSTIC_ADAPTER_CONTRACT,
+        "incident_irradiance_reference": INCIDENT_IRRADIANCE_REFERENCE,
+        "atmospheric_coupling": ATMOSPHERIC_COUPLING,
+        "surface_boundary": SURFACE_BOUNDARY,
+        "reference_cloud_base_km": 5.0,
+        "reference_cloud_top_km": 6.0,
+        "cloud_vertical_sensitivity_validation_reference": "TEST_VERTICAL_SENSITIVITY_PASS",
+        "geometry_mapping_validation_reference": "TEST_GEOMETRY_MAPPING_PASS",
+        "minimum_photon_count": 1000000,
+        "maximum_mc_relative_error": 0.02,
+        "maximum_mc_absolute_error": 0.01,
+        "calibration_scope": CALIBRATION_SCOPE,
     }
     csv_bytes, manifest_bytes, audit = build_production_lut_from_external_results(
-        jobs=jobs, results=results, metadata=metadata
+        jobs=jobs, results=results, metadata=metadata, domain_spec=_tiny_domain(), minimum_photon_count=1000000
     )
     assert audit["ok"] is True
     assert audit["synthetic_response_used"] is False
@@ -228,5 +253,5 @@ def test_production_package_can_only_be_built_after_complete_external_qc():
 
     with pytest.raises(ValueError, match="EXTERNAL_RT_RESULTS_INCOMPLETE_JOB_SET"):
         build_production_lut_from_external_results(
-            jobs=jobs, results=results.iloc[:-1], metadata=metadata
+            jobs=jobs, results=results.iloc[:-1], metadata=metadata, domain_spec=_tiny_domain(), minimum_photon_count=1000000
         )

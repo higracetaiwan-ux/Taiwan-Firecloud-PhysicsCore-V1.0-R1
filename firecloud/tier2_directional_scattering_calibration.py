@@ -1,25 +1,27 @@
 from __future__ import annotations
-"""R5.7.22 full-directional Tier-2 scattering calibration contract.
-
-Production cloud-response LUTs are functions of COT, effective radius and the
-full target-local illumination/view geometry (theta0, thetav, Delta-phi).  The
-legacy scattering-angle-only contract remains available only for historical
-regression and cannot satisfy this production gate.
-"""
+"""R5.7.23 V3 genuine full-directional Tier-2 calibration contract."""
 
 import hashlib
 import itertools
 import json
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
 import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
+from .tier2_libradtran_mystic_adapter import (
+    MYSTIC_ADAPTER_CONTRACT,
+    INCIDENT_IRRADIANCE_REFERENCE,
+    ATMOSPHERIC_COUPLING,
+    SURFACE_BOUNDARY,
+    CALIBRATION_SCOPE,
+)
 
-DIRECTIONAL_CALIBRATION_CONTRACT = "R5.7.22_TIER2_DIRECTIONAL_SCATTERING_CALIBRATION_V2"
-DIRECTIONAL_RUNTIME_CONTRACT = "R5.7.22_TIER2_DIRECTIONAL_SCATTERING_LUT_RUNTIME_V2"
+DIRECTIONAL_CALIBRATION_CONTRACT = "R5.7.23_TIER2_DIRECTIONAL_SCATTERING_CALIBRATION_V3"
+DIRECTIONAL_RUNTIME_CONTRACT = "R5.7.23_TIER2_DIRECTIONAL_SCATTERING_LUT_RUNTIME_V3"
 DIRECTIONAL_RESPONSE_DEFINITION = "TARGET_RADIANCE_PER_UNIT_CLOUD_BASE_INCIDENT_IRRADIANCE"
 DIRECTIONAL_RESPONSE_UNITS = "SR^-1"
 DIRECTIONAL_GEOMETRY_CONVENTION = "TARGET_LOCAL_ENU_THETA0_THETAV_DELTAPHI_SCATTER_DIAGNOSTIC_V1"
@@ -27,8 +29,6 @@ DIRECTIONAL_INTERPOLATION_AXES = [
     "cot", "effective_radius_um", "solar_zenith_deg", "view_zenith_deg", "relative_azimuth_deg"
 ]
 
-# For the Firecloud geometry theta0/thetav may exceed 90 deg.  Ordinary
-# top-of-atmosphere plane-parallel reflection tables are therefore not enough.
 DIRECTIONAL_SUPPORTED_SOLVER_FAMILIES = {
     "LIBRADTRAN_UVSPEC_MYSTIC",
     "MONTE_CARLO_VALIDATED_EXTERNAL",
@@ -38,7 +38,8 @@ DIRECTIONAL_SUPPORTED_SOLVER_FAMILIES = {
 DIRECTIONAL_LUT_REQUIRED_COLUMNS = [
     "phase", "wavelength_nm", "cot", "effective_radius_um",
     "solar_zenith_deg", "view_zenith_deg", "relative_azimuth_deg",
-    "response_factor", "calibration_state", "lut_version",
+    "response_factor", "response_factor_std", "photon_count", "sample_qc_state",
+    "solver_run_id", "calibration_state", "lut_version",
 ]
 
 DIRECTIONAL_CALIBRATION_REQUIRED_FIELDS = [
@@ -47,6 +48,12 @@ DIRECTIONAL_CALIBRATION_REQUIRED_FIELDS = [
     "solver_version", "cloud_optics_source", "phase_function_source",
     "multiple_scattering_enabled", "response_definition", "response_units",
     "geometry_convention", "validation_reference", "directional_hemisphere_support",
+    "solver_adapter_contract", "incident_irradiance_reference", "atmospheric_coupling",
+    "surface_boundary", "reference_cloud_base_km", "reference_cloud_top_km",
+    "cloud_vertical_sensitivity_validation_reference",
+    "geometry_mapping_validation_reference", "minimum_photon_count",
+    "maximum_mc_relative_error", "maximum_mc_absolute_error", "calibration_scope",
+    "domain_spec_sha256",
 ]
 
 DIRECTIONAL_CALIBRATION_JOB_COLUMNS = [
@@ -68,8 +75,15 @@ def _bool(v: Any) -> bool:
     return str(v).strip().lower() in {"1", "true", "yes", "y"}
 
 
+def _finite_positive(v: Any, *, allow_zero: bool = False) -> bool:
+    try:
+        x = float(v)
+        return math.isfinite(x) and (x >= 0 if allow_zero else x > 0)
+    except Exception:
+        return False
+
+
 def directional_scattering_angle_from_angles_deg(theta0_deg: float, thetav_deg: float, relative_azimuth_deg: float) -> float:
-    """Derived 0-forward/180-backward scattering angle from full geometry."""
     t0 = math.radians(float(theta0_deg))
     tv = math.radians(float(thetav_deg))
     dp = math.radians(float(relative_azimuth_deg))
@@ -85,16 +99,13 @@ def validate_directional_scattering_lut(df: pd.DataFrame | None) -> dict[str, An
     if missing:
         legacy_markers = {"scattering_angle_deg", "cloud_thickness_km"}
         if legacy_markers.issubset(set(df.columns)):
-            return {
-                "valid": False,
-                "state": "LEGACY_SCATTERING_ANGLE_LUT_NOT_DIRECTIONAL",
-                "reason": "R5.7.22_REQUIRES_THETA0_THETAV_DELTAPHI",
-            }
+            return {"valid": False, "state": "LEGACY_SCATTERING_ANGLE_LUT_NOT_DIRECTIONAL", "reason": "R5.7.23_V3_REQUIRES_THETA0_THETAV_DELTAPHI"}
         return {"valid": False, "state": "DIRECTIONAL_LUT_SCHEMA_INVALID", "reason": "MISSING_COLUMNS:" + ",".join(missing)}
     q = df.copy()
     nums = [
         "wavelength_nm", "cot", "effective_radius_um", "solar_zenith_deg",
         "view_zenith_deg", "relative_azimuth_deg", "response_factor",
+        "response_factor_std", "photon_count",
     ]
     for c in nums:
         q[c] = pd.to_numeric(q[c], errors="coerce")
@@ -106,14 +117,17 @@ def validate_directional_scattering_lut(df: pd.DataFrame | None) -> dict[str, An
         return {"valid": False, "state": "DIRECTIONAL_LUT_WAVELENGTH_INCOMPLETE", "reason": "MISSING_REQUIRED_WAVELENGTH"}
     if (q["cot"] < 0).any() or (q["effective_radius_um"] <= 0).any():
         return {"valid": False, "state": "DIRECTIONAL_LUT_DOMAIN_INVALID", "reason": "NONPHYSICAL_COT_OR_REFF"}
-    if ((q["solar_zenith_deg"] < 0) | (q["solar_zenith_deg"] > 180)).any():
-        return {"valid": False, "state": "DIRECTIONAL_LUT_DOMAIN_INVALID", "reason": "SOLAR_ZENITH_OUT_OF_RANGE"}
-    if ((q["view_zenith_deg"] < 0) | (q["view_zenith_deg"] > 180)).any():
-        return {"valid": False, "state": "DIRECTIONAL_LUT_DOMAIN_INVALID", "reason": "VIEW_ZENITH_OUT_OF_RANGE"}
-    if ((q["relative_azimuth_deg"] < 0) | (q["relative_azimuth_deg"] > 180)).any():
-        return {"valid": False, "state": "DIRECTIONAL_LUT_DOMAIN_INVALID", "reason": "RELATIVE_AZIMUTH_OUT_OF_RANGE"}
-    if (q["response_factor"] < 0).any():
-        return {"valid": False, "state": "DIRECTIONAL_LUT_RESPONSE_INVALID", "reason": "NEGATIVE_RESPONSE_FACTOR"}
+    for c in ("solar_zenith_deg", "view_zenith_deg", "relative_azimuth_deg"):
+        if ((q[c] < 0) | (q[c] > 180)).any():
+            return {"valid": False, "state": "DIRECTIONAL_LUT_DOMAIN_INVALID", "reason": c.upper() + "_OUT_OF_RANGE"}
+    if (q["response_factor"] < 0).any() or (q["response_factor_std"] < 0).any():
+        return {"valid": False, "state": "DIRECTIONAL_LUT_RESPONSE_INVALID", "reason": "NEGATIVE_RESPONSE_OR_UNCERTAINTY"}
+    if (q["photon_count"] <= 0).any():
+        return {"valid": False, "state": "DIRECTIONAL_LUT_QC_INVALID", "reason": "NONPOSITIVE_PHOTON_COUNT"}
+    if not q["sample_qc_state"].astype(str).str.upper().eq("PASS").all():
+        return {"valid": False, "state": "DIRECTIONAL_LUT_QC_INVALID", "reason": "SAMPLE_QC_NOT_PASS"}
+    if not q["solver_run_id"].astype(str).str.strip().ne("").all():
+        return {"valid": False, "state": "DIRECTIONAL_LUT_QC_INVALID", "reason": "SOLVER_RUN_ID_MISSING"}
     if not q["calibration_state"].astype(str).str.upper().eq("CALIBRATED").all():
         return {"valid": False, "state": "DIRECTIONAL_LUT_NOT_CALIBRATED", "reason": "CALIBRATION_STATE_NOT_CALIBRATED"}
     phases = {_phase(x) for x in q["phase"]}
@@ -125,14 +139,7 @@ def validate_directional_scattering_lut(df: pd.DataFrame | None) -> dict[str, An
     coord_cols = ["phase", "wavelength_nm", *DIRECTIONAL_INTERPOLATION_AXES]
     if q.duplicated(coord_cols).any():
         return {"valid": False, "state": "DIRECTIONAL_LUT_COORDINATE_DUPLICATE", "reason": "DUPLICATE_GRID_COORDINATES"}
-    return {
-        "valid": True,
-        "state": "CALIBRATED_DIRECTIONAL_LUT_SCHEMA_READY",
-        "reason": "OK",
-        "lut_version": versions[0],
-        "row_count": int(len(q)),
-        "geometry_convention": DIRECTIONAL_GEOMETRY_CONVENTION,
-    }
+    return {"valid": True, "state": "CALIBRATED_DIRECTIONAL_LUT_SCHEMA_READY", "reason": "OK", "lut_version": versions[0], "row_count": int(len(q)), "geometry_convention": DIRECTIONAL_GEOMETRY_CONVENTION}
 
 
 def validate_directional_calibration_metadata(meta: dict[str, Any] | None) -> dict[str, Any]:
@@ -150,12 +157,8 @@ def validate_directional_calibration_metadata(meta: dict[str, Any] | None) -> di
     solver = str(meta.get("solver_family", "")).upper()
     if solver not in DIRECTIONAL_SUPPORTED_SOLVER_FAMILIES:
         errors.append("DIRECTIONAL_SOLVER_NOT_FULL_HEMISPHERE_APPROVED")
-    if not str(meta.get("solver_version", "")).strip():
-        errors.append("DIRECTIONAL_SOLVER_VERSION_MISSING")
-    if not str(meta.get("cloud_optics_source", "")).strip():
-        errors.append("DIRECTIONAL_CLOUD_OPTICS_SOURCE_MISSING")
-    if not str(meta.get("phase_function_source", "")).strip():
-        errors.append("DIRECTIONAL_PHASE_FUNCTION_SOURCE_MISSING")
+    for k in ("solver_version", "cloud_optics_source", "phase_function_source"):
+        if not str(meta.get(k, "")).strip(): errors.append("DIRECTIONAL_" + k.upper() + "_MISSING")
     if not _bool(meta.get("multiple_scattering_enabled", False)):
         errors.append("DIRECTIONAL_MULTIPLE_SCATTERING_REQUIRED")
     if str(meta.get("response_definition", "")) != DIRECTIONAL_RESPONSE_DEFINITION:
@@ -167,133 +170,93 @@ def validate_directional_calibration_metadata(meta: dict[str, Any] | None) -> di
     if str(meta.get("directional_hemisphere_support", "")).upper() != "FULL_0_180":
         errors.append("DIRECTIONAL_FULL_HEMISPHERE_SUPPORT_REQUIRED")
     for k in ("calibration_id", "calibration_source", "calibration_date", "validation_reference"):
-        if not str(meta.get(k, "")).strip():
-            errors.append("DIRECTIONAL_CALIBRATION_EMPTY_" + k.upper())
+        if not str(meta.get(k, "")).strip(): errors.append("DIRECTIONAL_CALIBRATION_EMPTY_" + k.upper())
     src = str(meta.get("calibration_source", "")).upper()
     if any(x in src for x in ("SYNTHETIC", "REGRESSION_ONLY", "PLACEHOLDER", "DUMMY")):
         errors.append("DIRECTIONAL_SYNTHETIC_SOURCE_NOT_PRODUCTION_ELIGIBLE")
-    return {
-        "ok": not errors,
-        "state": "PRODUCTION_DIRECTIONAL_CALIBRATION_READY" if not errors else "DIRECTIONAL_CALIBRATION_METADATA_INVALID",
-        "errors": errors,
-        "warnings": [],
-        "calibration_contract": DIRECTIONAL_CALIBRATION_CONTRACT,
-        "solver_family": solver,
-    }
+
+    if solver == "LIBRADTRAN_UVSPEC_MYSTIC" and str(meta.get("solver_adapter_contract", "")) != MYSTIC_ADAPTER_CONTRACT:
+        errors.append("DIRECTIONAL_SOLVER_ADAPTER_CONTRACT_MISMATCH")
+    if str(meta.get("incident_irradiance_reference", "")) != INCIDENT_IRRADIANCE_REFERENCE:
+        errors.append("DIRECTIONAL_INCIDENT_IRRADIANCE_REFERENCE_MISMATCH")
+    if str(meta.get("atmospheric_coupling", "")) != ATMOSPHERIC_COUPLING:
+        errors.append("DIRECTIONAL_ATMOSPHERIC_COUPLING_MISMATCH")
+    if str(meta.get("surface_boundary", "")) != SURFACE_BOUNDARY:
+        errors.append("DIRECTIONAL_SURFACE_BOUNDARY_MISMATCH")
+    try:
+        base, top = float(meta.get("reference_cloud_base_km")), float(meta.get("reference_cloud_top_km"))
+        if not (math.isfinite(base) and math.isfinite(top) and top > base >= 0): errors.append("DIRECTIONAL_REFERENCE_CLOUD_VERTICAL_GEOMETRY_INVALID")
+    except Exception:
+        errors.append("DIRECTIONAL_REFERENCE_CLOUD_VERTICAL_GEOMETRY_INVALID")
+    for k in ("cloud_vertical_sensitivity_validation_reference", "geometry_mapping_validation_reference"):
+        if not str(meta.get(k, "")).strip(): errors.append("DIRECTIONAL_" + k.upper() + "_MISSING")
+    if not _finite_positive(meta.get("minimum_photon_count")): errors.append("DIRECTIONAL_MINIMUM_PHOTON_COUNT_INVALID")
+    if not _finite_positive(meta.get("maximum_mc_relative_error"), allow_zero=True): errors.append("DIRECTIONAL_MAXIMUM_MC_RELATIVE_ERROR_INVALID")
+    if not _finite_positive(meta.get("maximum_mc_absolute_error"), allow_zero=True): errors.append("DIRECTIONAL_MAXIMUM_MC_ABSOLUTE_ERROR_INVALID")
+    if str(meta.get("calibration_scope", "")) != CALIBRATION_SCOPE: errors.append("DIRECTIONAL_CALIBRATION_SCOPE_MISMATCH")
+    sha = str(meta.get("domain_spec_sha256", "")).lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", sha): errors.append("DIRECTIONAL_DOMAIN_SPEC_SHA256_INVALID")
+    return {"ok": not errors, "state": "PRODUCTION_DIRECTIONAL_CALIBRATION_READY" if not errors else "DIRECTIONAL_CALIBRATION_METADATA_INVALID", "errors": errors, "warnings": [], "calibration_contract": DIRECTIONAL_CALIBRATION_CONTRACT, "solver_family": solver}
 
 
 def _grid_values(spec: dict[str, Any], key: str) -> list[float]:
     vals = spec.get(key, [])
-    if not isinstance(vals, (list, tuple)) or not vals:
-        raise ValueError(f"GRID_AXIS_EMPTY:{key}")
+    if not isinstance(vals, (list, tuple)) or not vals: raise ValueError(f"GRID_AXIS_EMPTY:{key}")
     return sorted({float(x) for x in vals})
 
 
 def build_directional_calibration_jobs(grid_spec: dict[str, Any], *, solver_family: str) -> pd.DataFrame:
     solver = str(solver_family or "").upper()
-    if solver not in DIRECTIONAL_SUPPORTED_SOLVER_FAMILIES:
-        raise ValueError("DIRECTIONAL_SOLVER_NOT_FULL_HEMISPHERE_APPROVED")
+    if solver not in DIRECTIONAL_SUPPORTED_SOLVER_FAMILIES: raise ValueError("DIRECTIONAL_SOLVER_NOT_FULL_HEMISPHERE_APPROVED")
     phases = [_phase(x) for x in grid_spec.get("phases", [])]
-    if not phases or any(p not in {"LIQUID", "ICE", "MIXED"} for p in phases):
-        raise ValueError("GRID_PHASES_INVALID")
+    if not phases or any(p not in {"LIQUID", "ICE", "MIXED"} for p in phases): raise ValueError("GRID_PHASES_INVALID")
     wls = [int(x) for x in grid_spec.get("wavelengths_nm", list(SIX_BAND_WAVELENGTHS_NM))]
-    if sorted(set(wls)) != sorted(int(x) for x in SIX_BAND_WAVELENGTHS_NM):
-        raise ValueError("GRID_WAVELENGTHS_MUST_MATCH_FROZEN_SIX_BANDS")
-    cot = _grid_values(grid_spec, "cot")
-    reff = _grid_values(grid_spec, "effective_radius_um")
-    theta0 = _grid_values(grid_spec, "solar_zenith_deg")
-    thetav = _grid_values(grid_spec, "view_zenith_deg")
-    relaz = _grid_values(grid_spec, "relative_azimuth_deg")
-    rows = []
-    for i, (p, wl, c, r, t0, tv, daz) in enumerate(itertools.product(phases, wls, cot, reff, theta0, thetav, relaz), start=1):
-        rows.append({
-            "job_id": f"T2DIR-{i:09d}", "phase": p, "wavelength_nm": int(wl),
-            "cot": float(c), "effective_radius_um": float(r),
-            "solar_zenith_deg": float(t0), "view_zenith_deg": float(tv),
-            "relative_azimuth_deg": float(daz),
-            "scattering_angle_deg_diagnostic": directional_scattering_angle_from_angles_deg(t0, tv, daz),
-            "solver_family": solver, "response_definition": DIRECTIONAL_RESPONSE_DEFINITION,
-            "response_units": DIRECTIONAL_RESPONSE_UNITS,
-            "geometry_convention": DIRECTIONAL_GEOMETRY_CONVENTION,
-            "calibration_state": "PENDING_EXTERNAL_RT",
-        })
-    return pd.DataFrame(rows, columns=DIRECTIONAL_CALIBRATION_JOB_COLUMNS)
+    if sorted(set(wls)) != sorted(int(x) for x in SIX_BAND_WAVELENGTHS_NM): raise ValueError("GRID_WAVELENGTHS_MUST_MATCH_FROZEN_SIX_BANDS")
+    axes = [_grid_values(grid_spec, x) for x in ("cot","effective_radius_um","solar_zenith_deg","view_zenith_deg","relative_azimuth_deg")]
+    rows=[]
+    for i,(p,wl,c,r,t0,tv,daz) in enumerate(itertools.product(phases,wls,*axes),1):
+        rows.append({"job_id":f"T2DIR-{i:09d}","phase":p,"wavelength_nm":int(wl),"cot":float(c),"effective_radius_um":float(r),"solar_zenith_deg":float(t0),"view_zenith_deg":float(tv),"relative_azimuth_deg":float(daz),"scattering_angle_deg_diagnostic":directional_scattering_angle_from_angles_deg(t0,tv,daz),"solver_family":solver,"response_definition":DIRECTIONAL_RESPONSE_DEFINITION,"response_units":DIRECTIONAL_RESPONSE_UNITS,"geometry_convention":DIRECTIONAL_GEOMETRY_CONVENTION,"calibration_state":"PENDING_EXTERNAL_RT"})
+    return pd.DataFrame(rows,columns=DIRECTIONAL_CALIBRATION_JOB_COLUMNS)
 
 
 def _assert_complete_directional_tensor(df: pd.DataFrame, phases: Iterable[str]) -> None:
-    q = df.copy()
-    q["phase"] = q["phase"].map(_phase)
+    q=df.copy(); q["phase"]=q["phase"].map(_phase)
     for phase in phases:
-        p = q[q["phase"] == _phase(phase)]
-        if p.empty:
-            raise ValueError(f"DIRECTIONAL_CALIBRATION_PHASE_GRID_EMPTY:{phase}")
+        p=q[q["phase"]==_phase(phase)]
+        if p.empty: raise ValueError(f"DIRECTIONAL_CALIBRATION_PHASE_GRID_EMPTY:{phase}")
         for wl in SIX_BAND_WAVELENGTHS_NM:
-            g = p[p["wavelength_nm"].astype(int) == int(wl)]
-            if g.empty:
-                raise ValueError(f"DIRECTIONAL_CALIBRATION_WAVELENGTH_GRID_EMPTY:{phase}:{int(wl)}")
-            axes = [sorted(set(pd.to_numeric(g[c], errors="coerce").dropna().astype(float))) for c in DIRECTIONAL_INTERPOLATION_AXES]
-            expected = math.prod(len(axis) for axis in axes)
-            if len(g) != expected:
-                raise ValueError(f"DIRECTIONAL_CALIBRATION_TENSOR_GRID_INCOMPLETE:{phase}:{int(wl)}:{len(g)}/{expected}")
+            g=p[p["wavelength_nm"].astype(int)==int(wl)]
+            if g.empty: raise ValueError(f"DIRECTIONAL_CALIBRATION_WAVELENGTH_GRID_EMPTY:{phase}:{int(wl)}")
+            axes=[sorted(set(pd.to_numeric(g[c],errors="coerce").dropna().astype(float))) for c in DIRECTIONAL_INTERPOLATION_AXES]
+            expected=math.prod(len(a) for a in axes)
+            if len(g)!=expected: raise ValueError(f"DIRECTIONAL_CALIBRATION_TENSOR_GRID_INCOMPLETE:{phase}:{int(wl)}:{len(g)}/{expected}")
 
 
-def build_directional_calibration_package(
-    samples: pd.DataFrame,
-    metadata: dict[str, Any],
-) -> tuple[bytes, bytes, dict[str, Any]]:
-    ma = validate_directional_calibration_metadata(metadata)
-    if not ma["ok"]:
-        raise ValueError(";".join(ma["errors"]))
-    if samples is None or samples.empty:
-        raise ValueError("DIRECTIONAL_CALIBRATION_SAMPLES_EMPTY")
-    q = samples.copy()
-    missing = [c for c in ["phase", "wavelength_nm", *DIRECTIONAL_INTERPOLATION_AXES, "response_factor"] if c not in q.columns]
-    if missing:
-        raise ValueError("DIRECTIONAL_CALIBRATION_SAMPLES_MISSING_COLUMNS:" + ",".join(missing))
-    q["phase"] = q["phase"].map(_phase)
-    q["calibration_state"] = "CALIBRATED"
-    q["lut_version"] = str(metadata.get("lut_version", "")).strip()
-    if not q["lut_version"].iloc[0]:
-        raise ValueError("DIRECTIONAL_CALIBRATION_LUT_VERSION_MISSING")
-    q = q[DIRECTIONAL_LUT_REQUIRED_COLUMNS].copy()
-    base = validate_directional_scattering_lut(q)
-    if not base.get("valid", False):
-        raise ValueError("DIRECTIONAL_LUT_SCHEMA_INVALID:" + str(base.get("reason", base.get("state"))))
-    phases = sorted(set(q["phase"].astype(str)))
-    _assert_complete_directional_tensor(q, phases)
-    csv_bytes = q.to_csv(index=False, lineterminator="\n").encode("utf-8")
-    manifest = {
-        "contract": DIRECTIONAL_RUNTIME_CONTRACT,
-        "lut_version": str(metadata["lut_version"]),
-        "calibration_state": "CALIBRATED",
-        "calibration_id": str(metadata["calibration_id"]),
-        "calibration_source": str(metadata["calibration_source"]),
-        "calibration_date": str(metadata["calibration_date"]),
-        "required_wavelengths_nm": [int(x) for x in SIX_BAND_WAVELENGTHS_NM],
-        "supported_phases": phases,
-        "csv_sha256": hashlib.sha256(csv_bytes).hexdigest(),
-        "calibration_contract": DIRECTIONAL_CALIBRATION_CONTRACT,
-        "qc_state": "PASS",
-        "solver_family": str(metadata["solver_family"]).upper(),
-        "solver_version": str(metadata["solver_version"]),
-        "cloud_optics_source": str(metadata["cloud_optics_source"]),
-        "phase_function_source": str(metadata["phase_function_source"]),
-        "multiple_scattering_enabled": True,
-        "response_definition": DIRECTIONAL_RESPONSE_DEFINITION,
-        "response_units": DIRECTIONAL_RESPONSE_UNITS,
-        "geometry_convention": DIRECTIONAL_GEOMETRY_CONVENTION,
-        "directional_hemisphere_support": "FULL_0_180",
-        "interpolation_axes": list(DIRECTIONAL_INTERPOLATION_AXES),
-        "scattering_angle_role": "DERIVED_DIAGNOSTIC_NOT_INTERPOLATION_AXIS",
-        "cloud_thickness_role": "TARGET_GEOMETRY_EVIDENCE_NOT_LUT_INTERPOLATION_AXIS",
-        "validation_reference": str(metadata["validation_reference"]),
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+def build_directional_calibration_package(samples: pd.DataFrame, metadata: dict[str, Any]) -> tuple[bytes, bytes, dict[str, Any]]:
+    ma=validate_directional_calibration_metadata(metadata)
+    if not ma["ok"]: raise ValueError(";".join(ma["errors"]))
+    if samples is None or samples.empty: raise ValueError("DIRECTIONAL_CALIBRATION_SAMPLES_EMPTY")
+    q=samples.copy()
+    required_sample=["phase","wavelength_nm",*DIRECTIONAL_INTERPOLATION_AXES,"response_factor","response_factor_std","photon_count","sample_qc_state","solver_run_id"]
+    missing=[c for c in required_sample if c not in q.columns]
+    if missing: raise ValueError("DIRECTIONAL_CALIBRATION_SAMPLES_MISSING_COLUMNS:"+",".join(missing))
+    q["phase"]=q["phase"].map(_phase); q["calibration_state"]="CALIBRATED"; q["lut_version"]=str(metadata.get("lut_version","")).strip()
+    if not q["lut_version"].iloc[0]: raise ValueError("DIRECTIONAL_CALIBRATION_LUT_VERSION_MISSING")
+    q=q[DIRECTIONAL_LUT_REQUIRED_COLUMNS].copy()
+    base=validate_directional_scattering_lut(q)
+    if not base.get("valid",False): raise ValueError("DIRECTIONAL_LUT_SCHEMA_INVALID:"+str(base.get("reason",base.get("state"))))
+    phases=sorted(set(q["phase"].astype(str))); _assert_complete_directional_tensor(q,phases)
+    min_photons=int(float(metadata["minimum_photon_count"])); max_rel=float(metadata["maximum_mc_relative_error"]); max_abs=float(metadata["maximum_mc_absolute_error"])
+    rel=(pd.to_numeric(q["response_factor_std"],errors="coerce") / pd.to_numeric(q["response_factor"],errors="coerce").replace(0,float("nan"))).fillna(0.0)
+    if (pd.to_numeric(q["photon_count"],errors="coerce")<min_photons).any(): raise ValueError("DIRECTIONAL_LUT_SAMPLE_PHOTON_COUNT_BELOW_CALIBRATION_MINIMUM")
+    if (rel>max_rel).any(): raise ValueError("DIRECTIONAL_LUT_SAMPLE_RELATIVE_ERROR_EXCEEDS_CALIBRATION_MAXIMUM")
+    if (pd.to_numeric(q["response_factor_std"],errors="coerce")>max_abs).any(): raise ValueError("DIRECTIONAL_LUT_SAMPLE_ABSOLUTE_ERROR_EXCEEDS_CALIBRATION_MAXIMUM")
+    csv_bytes=q.to_csv(index=False,lineterminator="\n").encode("utf-8")
+    manifest={
+        "contract":DIRECTIONAL_RUNTIME_CONTRACT,"lut_version":str(metadata["lut_version"]),"calibration_state":"CALIBRATED","calibration_id":str(metadata["calibration_id"]),"calibration_source":str(metadata["calibration_source"]),"calibration_date":str(metadata["calibration_date"]),"required_wavelengths_nm":[int(x) for x in SIX_BAND_WAVELENGTHS_NM],"supported_phases":phases,"csv_sha256":hashlib.sha256(csv_bytes).hexdigest(),"calibration_contract":DIRECTIONAL_CALIBRATION_CONTRACT,"qc_state":"PASS","solver_family":str(metadata["solver_family"]).upper(),"solver_version":str(metadata["solver_version"]),"cloud_optics_source":str(metadata["cloud_optics_source"]),"phase_function_source":str(metadata["phase_function_source"]),"multiple_scattering_enabled":True,"response_definition":DIRECTIONAL_RESPONSE_DEFINITION,"response_units":DIRECTIONAL_RESPONSE_UNITS,"geometry_convention":DIRECTIONAL_GEOMETRY_CONVENTION,"directional_hemisphere_support":"FULL_0_180","interpolation_axes":list(DIRECTIONAL_INTERPOLATION_AXES),"scattering_angle_role":"DERIVED_DIAGNOSTIC_NOT_INTERPOLATION_AXIS","cloud_thickness_role":"TARGET_GEOMETRY_EVIDENCE_NOT_LUT_INTERPOLATION_AXIS","validation_reference":str(metadata["validation_reference"]),"generated_at_utc":datetime.now(timezone.utc).isoformat(),
     }
-    manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    audit = {
-        "ok": True, "state": "PRODUCTION_DIRECTIONAL_CALIBRATION_PACKAGE_READY",
-        "rows": int(len(q)), "lut_version": manifest["lut_version"],
-        "calibration_id": manifest["calibration_id"], "csv_sha256": manifest["csv_sha256"],
-        "supported_phases": "/".join(phases), "calibration_contract": DIRECTIONAL_CALIBRATION_CONTRACT,
-    }
-    return csv_bytes, manifest_bytes, audit
+    for k in DIRECTIONAL_CALIBRATION_REQUIRED_FIELDS:
+        if k not in manifest and k in metadata: manifest[k]=metadata[k]
+    manifest_bytes=(json.dumps(manifest,ensure_ascii=False,indent=2,sort_keys=True)+"\n").encode("utf-8")
+    audit={"ok":True,"state":"PRODUCTION_DIRECTIONAL_CALIBRATION_PACKAGE_READY","rows":int(len(q)),"lut_version":manifest["lut_version"],"calibration_id":manifest["calibration_id"],"csv_sha256":manifest["csv_sha256"],"supported_phases":"/".join(phases),"calibration_contract":DIRECTIONAL_CALIBRATION_CONTRACT,"runtime_contract":DIRECTIONAL_RUNTIME_CONTRACT,"sample_qc_contract":"PER_SAMPLE_STD_PHOTON_RUN_ID_PASS"}
+    return csv_bytes,manifest_bytes,audit

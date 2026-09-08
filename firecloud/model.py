@@ -22,6 +22,8 @@ from .shared_geometry.vertical import VerticalIndexPlan
 _ray_altitudes_vectorized_km = ray_altitudes_vectorized_km
 import pandas as pd
 
+from .runtime_hardening import process_resource_snapshot, dataframe_memory_mb
+
 from .config import (
     CLOUD_LAYERS_KM, BANDS, ILLUMINATION_HEIGHTS_KM, ModelConfig,
     VOXEL_ALTITUDE_CENTERS_KM, VOXEL_VERTICAL_STEP_KM,
@@ -1173,6 +1175,22 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     tz_name = _tz_resolution.effective_timezone
     _analysis_t0 = perf_counter()
     performance_rows = []
+    runtime_resource_rows = []
+    def _record_runtime_resource(stage: str, angle_value=None, **frames):
+        row = process_resource_snapshot()
+        row.update({"stage": str(stage), "solar_altitude_deg": float(angle_value) if angle_value is not None else np.nan})
+        total_rows = 0
+        total_mem = 0.0
+        details = []
+        for name, df in frames.items():
+            if isinstance(df, pd.DataFrame):
+                n = int(len(df)); m = dataframe_memory_mb(df) or 0.0
+                total_rows += n; total_mem += float(m)
+                details.append(f"{name}:{n}rows/{m:.2f}MB")
+        row["dataframe_rows_total"] = total_rows
+        row["dataframe_memory_mb_total"] = total_mem
+        row["dataframe_detail"] = ";".join(details)
+        runtime_resource_rows.append(row)
     def _progress(fraction: float, message: str):
         if progress_callback is not None:
             try:
@@ -1384,11 +1402,22 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # at most two *time bundles* concurrently; each bundle continues to fetch
     # O3, spectral AOD, and native aerosol serially.  This preserves the ADS
     # queue protection added in V8.4.11 while avoiding a full 2-time serial wait.
+    # R5.7.23 Runtime Hardening: CAMS ADS single-flight.  R5.7.23 allowed two
+    # time bundles to run concurrently.  Although each bundle serialized its
+    # three roles, two bundles could still submit two ADS requests at once
+    # (most visibly two SPECTRAL_COLUMN_AOD requests).  This reintroduced the
+    # provider queue / hosted-memory failure mode that the serial ADS scheduler
+    # was designed to avoid.  Production therefore defaults to one time bundle
+    # at a time.  A two-bundle mode remains an explicit expert opt-in only.
     try:
-        _cams_parallel_workers = max(1, int(os.getenv("FIRECLOUD_CAMS_PREFETCH_WORKERS", "2")))
+        _cams_requested_workers = max(1, int(os.getenv("FIRECLOUD_CAMS_PREFETCH_WORKERS", "1")))
     except Exception:
-        _cams_parallel_workers = 2
-    _cams_parallel_workers = min(_cams_parallel_workers, 2, max(1, len(_cams_items)))
+        _cams_requested_workers = 1
+    _cams_parallel_opt_in = str(os.getenv("FIRECLOUD_CAMS_ALLOW_PARALLEL_TIME_BUNDLES", "0")).strip().lower() in {"1","true","yes","on"}
+    if _cams_parallel_opt_in:
+        _cams_parallel_workers = min(_cams_requested_workers, 2, max(1, len(_cams_items)))
+    else:
+        _cams_parallel_workers = 1
     _cams_progress_lock = threading.Lock()
     _cams_progress_states = {}
     # UI elapsed is driven by the main scheduler's monotonic clock, not by CAMS
@@ -1450,39 +1479,71 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                     _display.append(f"{_name}:{_value}")
             _summary = "｜".join(_display)
             _parts.append(f"時次 {_idx}/{len(_cams_items)}" + (f"｜{_summary}" if _summary else "｜等待"))
-        _progress(0.34 + 0.04 * float(_completed) / max(1, len(_cams_items)), "CAMS 並行預取（唯一時次；每時次內三鏈串行）｜" + "；".join(_parts))
+        _mode_label = "CAMS 安全預取（全域 ADS single-flight；每時次內三鏈串行）" if _cams_parallel_workers == 1 else "CAMS 專家模式並行預取（兩時次；每時次內三鏈串行）"
+        _progress(0.34 + 0.04 * float(_completed) / max(1, len(_cams_items)), _mode_label + "｜" + "；".join(_parts))
 
-    _future_to_item = {}
-    with ThreadPoolExecutor(max_workers=_cams_parallel_workers, thread_name_prefix="cams-time-prefetch") as _pool:
+    def _record_cams_bundle(_key, _payload, _elapsed):
+        cams_native_cache[_key] = _payload
+        _bundle_meta = _payload[1] if isinstance(_payload, tuple) and len(_payload) == 2 else {}
+        for _audit in (_bundle_meta or {}).get("cams_request_audit", []):
+            performance_rows.append({
+                "stage": f"CAMS_{_audit.get('request_role','UNKNOWN')}",
+                "elapsed_seconds": float(_audit.get("elapsed_seconds", 0.0) or 0.0),
+                "cache_status": _audit.get("final_status", _audit.get("status", "")),
+                "cache_key": str(_key),
+            })
+        performance_rows.append({
+            "stage": "CAMS_NATIVE_FETCH",
+            "elapsed_seconds": _elapsed,
+            "cache_status": "PREFETCH_PARALLEL_EXPERT_OPT_IN" if _cams_parallel_workers > 1 else "PREFETCH_GLOBAL_ADS_SINGLE_FLIGHT",
+            "cache_key": str(_key),
+        })
+
+    if _cams_parallel_workers == 1:
+        # Avoid ThreadPoolExecutor entirely in the production-safe path.  The
+        # role-level external worker already owns its independent watchdog, so
+        # adding a Python future here only adds another place where Streamlit can
+        # wait on a worker thread.  One bundle runs to a bounded role result, is
+        # recorded, and only then may the next time slice submit to ADS.
+        _completed = 0
         for _item in _cams_items:
-            _future_to_item[_pool.submit(_fetch_cams_time_bundle, _item)] = _item
-        _pending = set(_future_to_item)
-        while _pending:
-            _done, _pending = wait(_pending, timeout=0.5)
-            _render_cams_prefetch_progress(len(_future_to_item) - len(_pending))
-            for _future in _done:
-                try:
-                    _key, _t, _payload, _elapsed = _future.result()
-                except Exception as exc:
-                    _key, _t = _future_to_item[_future]
-                    _payload = (pd.DataFrame(), {
-                        "native_aerosol_status": "UNAVAILABLE",
-                        "native_ozone_status": "UNAVAILABLE",
-                        "cams_bundle_error": f"{type(exc).__name__}: {exc}",
-                    })
-                    _elapsed = perf_counter() - _prefetch_t0
-                cams_native_cache[_key] = _payload
-                _bundle_meta = _payload[1] if isinstance(_payload, tuple) and len(_payload) == 2 else {}
-                for _audit in (_bundle_meta or {}).get("cams_request_audit", []):
-                    performance_rows.append({
-                        "stage": f"CAMS_{_audit.get('request_role','UNKNOWN')}",
-                        "elapsed_seconds": float(_audit.get("elapsed_seconds", 0.0) or 0.0),
-                        "cache_status": _audit.get("final_status", _audit.get("status", "")),
-                        "cache_key": str(_key),
-                    })
-                performance_rows.append({"stage": "CAMS_NATIVE_FETCH", "elapsed_seconds": _elapsed, "cache_status": "PREFETCH_PARALLEL" if _cams_parallel_workers > 1 else "PREFETCH", "cache_key": str(_key)})
+            _render_cams_prefetch_progress(_completed)
+            try:
+                _key, _t, _payload, _elapsed = _fetch_cams_time_bundle(_item)
+            except Exception as exc:
+                _key, _t = _item
+                _payload = (pd.DataFrame(), {
+                    "native_aerosol_status": "UNAVAILABLE",
+                    "native_ozone_status": "UNAVAILABLE",
+                    "cams_bundle_error": f"{type(exc).__name__}: {exc}",
+                })
+                _elapsed = perf_counter() - _prefetch_t0
+            _record_cams_bundle(_key, _payload, _elapsed)
+            _completed += 1
+            _render_cams_prefetch_progress(_completed)
+    else:
+        _future_to_item = {}
+        with ThreadPoolExecutor(max_workers=_cams_parallel_workers, thread_name_prefix="cams-time-prefetch") as _pool:
+            for _item in _cams_items:
+                _future_to_item[_pool.submit(_fetch_cams_time_bundle, _item)] = _item
+            _pending = set(_future_to_item)
+            while _pending:
+                _done, _pending = wait(_pending, timeout=0.5)
                 _render_cams_prefetch_progress(len(_future_to_item) - len(_pending))
-    performance_rows.append({"stage": "CAMS_PREFETCH_SCHEDULER", "elapsed_seconds": perf_counter()-_prefetch_t0, "cache_status": "BOUNDED_UNIQUE_TIME_PARALLEL", "detail": f"workers={_cams_parallel_workers}; unique_times={len(_cams_items)}"})
+                for _future in _done:
+                    try:
+                        _key, _t, _payload, _elapsed = _future.result()
+                    except Exception as exc:
+                        _key, _t = _future_to_item[_future]
+                        _payload = (pd.DataFrame(), {
+                            "native_aerosol_status": "UNAVAILABLE",
+                            "native_ozone_status": "UNAVAILABLE",
+                            "cams_bundle_error": f"{type(exc).__name__}: {exc}",
+                        })
+                        _elapsed = perf_counter() - _prefetch_t0
+                    _record_cams_bundle(_key, _payload, _elapsed)
+                    _render_cams_prefetch_progress(len(_future_to_item) - len(_pending))
+    performance_rows.append({"stage": "CAMS_PREFETCH_SCHEDULER", "elapsed_seconds": perf_counter()-_prefetch_t0, "cache_status": "GLOBAL_ADS_SINGLE_FLIGHT" if _cams_parallel_workers == 1 else "BOUNDED_UNIQUE_TIME_PARALLEL_EXPERT_OPT_IN", "detail": f"workers={_cams_parallel_workers}; unique_times={len(_cams_items)}"})
     performance_rows.append({"stage": "CAMS_PREFETCH_TOTAL", "elapsed_seconds": perf_counter()-_prefetch_t0, "cache_status": "PREFETCH_PARALLEL" if _cams_parallel_workers > 1 else "PREFETCH"})
 
     # Fetch Open-Meteo Air Quality AOD only when CAMS native/spectral aerosol is
@@ -1642,16 +1703,19 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         _ts = perf_counter()
         forecast_voxels = build_forecast_voxel_illumination(snap, angle, cfg)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "FORECAST_VOXEL_ILLUMINATION", "elapsed_seconds": perf_counter()-_ts, "cache_status": "COMPUTED"})
+        _record_runtime_resource("FORECAST_VOXEL_ILLUMINATION", angle, forecast_voxels=forecast_voxels, snap=snap)
 
         _angle_progress(candidate_index, 0.245, f"{label}：重建 0.5 km 垂直雲柱…")
         _ts = perf_counter()
         reconstructed_voxels, reconstructed_columns = reconstruct_cloud_columns_3d(snap, angle, cfg)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "RECONSTRUCTED_0P5KM_CLOUD_COLUMN", "elapsed_seconds": perf_counter()-_ts, "cache_status": "COMPUTED"})
+        _record_runtime_resource("RECONSTRUCTED_0P5KM_CLOUD_COLUMN", angle, reconstructed_voxels=reconstructed_voxels, reconstructed_columns=reconstructed_columns)
 
         _angle_progress(candidate_index, 0.295, f"{label}：建立氣壓層 3D 雲體…")
         _ts = perf_counter()
         profile_voxels, profile_columns = build_pressure_profile_cloud_volume(snap, angle, cfg)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "PRESSURE_PROFILE_CLOUD_VOLUME", "elapsed_seconds": perf_counter()-_ts, "cache_status": "COMPUTED"})
+        _record_runtime_resource("PRESSURE_PROFILE_CLOUD_VOLUME", angle, profile_voxels=profile_voxels, profile_columns=profile_columns)
 
         _angle_progress(candidate_index, 0.34, f"{label}：建立 GFS 原生雲微物理體積…")
         # V8.4.0.6: native GFS condensate volume depends on the resolved GFS run/lead,
@@ -1671,6 +1735,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 native_volume_cache[_nv_key] = (native_voxels.copy(), native_columns.copy())
             _nv_status = "MISS"
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GFS_NATIVE_CLOUD_VOLUME", "elapsed_seconds": perf_counter()-_ts, "cache_status": _nv_status, "cache_key": str(_nv_key)})
+        _record_runtime_resource("GFS_NATIVE_CLOUD_VOLUME", angle, native_voxels=native_voxels, native_columns=native_columns)
         _angle_progress(candidate_index, 0.38, f"{label}：計算雲層 3D 光學阻擋…")
         _ts = perf_counter()
         _opt_proxy_t0 = perf_counter()
@@ -1715,6 +1780,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         native_optical_columns = summarize_native_optical_blocking(native_optical_voxels)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "NATIVE_CLOUD_RAY_BLOCKING", "elapsed_seconds": perf_counter()-_native_ray_t0, "cache_status": "COMPUTED"})
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "CLOUD_3D_OPTICAL_BLOCKING", "elapsed_seconds": perf_counter()-_ts, "cache_status": "COMPUTED"})
+        _record_runtime_resource("CLOUD_3D_OPTICAL_BLOCKING", angle, optical_voxels=optical_voxels, native_optical_voxels=native_optical_voxels)
         aerosol_snap = interpolate_route_aerosol_at_time(aerosol_hourly, t) if not aerosol_hourly.empty else pd.DataFrame()
         # V8.3.3: optional credential-gated native CAMS 3-D aerosol extinction.
         # A CAMS bundle contains pressure-level extinction at 532 nm plus real
@@ -1761,6 +1827,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             gas_rt_context_cache[_gas_key] = gas_rt_context
             _gas_ctx_status = "MISS"
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GAS_RT_PREPARED_CONTEXT", "elapsed_seconds": perf_counter()-_gas_ctx_t0, "cache_status": _gas_ctx_status, "cache_key": str(_gas_key), "detail": f"bands={','.join(map(str,gas_rt_context.wavelengths))}; valid={gas_rt_context.valid}; cause={gas_rt_context.failure_cause}"})
+        _record_runtime_resource("GAS_RT_PREPARED_CONTEXT", angle, gas_profile=gas_profile, cams_aerosol_snap=cams_aerosol_snap, aerosol_spectral_snap=aerosol_spectral_snap)
         _angle_progress(candidate_index, 0.61, f"{label}：開始 550–750 nm 六波段光譜 RT…")
         def _spectral_progress(_frac, _msg):
             _angle_progress(candidate_index, 0.61 + 0.25*max(0.0,min(1.0,float(_frac))), f"{label}：光譜 RT｜{_msg}")
@@ -1777,6 +1844,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             gas_prepared_context=gas_rt_context,
         )
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GAS_AND_SPECTRAL_RT", "elapsed_seconds": perf_counter()-_ts, "cache_status": "COMPUTED"})
+        _record_runtime_resource("GAS_AND_SPECTRAL_RT", angle, spectral_voxels=spectral_voxels, rt_target_voxels=rt_target_voxels)
         _angle_progress(candidate_index, 0.88, f"{label}：彙整光譜與垂直欄位…")
         spectral_columns = summarize_spectral_rt(spectral_voxels)
 
@@ -1934,6 +2002,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 v1_tier2_scattering_lut_domain_summary_frames.append(_tier2_domain_sum)
         _angle_progress(candidate_index, 0.98, f"{label}：完成")
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "PER_ANGLE_PHYSICS_TOTAL", "elapsed_seconds": perf_counter()-_angle_t0, "cache_status": "COMPUTED"})
+        _record_runtime_resource("PER_ANGLE_PHYSICS_TOTAL", angle, spectral_voxels=spectral_voxels, spectral_columns=spectral_columns, target_optics=_target_canvas_optics, tier2_ready=_tier2_ready)
         angle_f = float(angle)
         is_core = angle_f in core_set
         is_late = angle_f in late_set
@@ -2254,6 +2323,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     _progress(1.0, "分析完成。")
     _analysis_elapsed = perf_counter() - _analysis_t0
     performance_rows.append({"stage": "TOTAL_ANALYSIS_CORE", "elapsed_seconds": _analysis_elapsed, "cache_status": "COMPUTED"})
+    _record_runtime_resource("TOTAL_ANALYSIS_CORE", None)
 
     # R4.5 GFS native-condensate provider validation/audit tables.
     _gfs_meta_unique = []
@@ -2323,6 +2393,35 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "reuse_scope":"RUN_LEAD_ROUTE_SURFACE_ANCHOR_PERSISTENT_OPTICS"
         })
     api_efficiency_audit=pd.DataFrame(_api_eff_rows)
+
+    # R5.7.23 Runtime Hardening: preserve provider-cache origin separately from
+    # physics.  A successful warm-cache run must never be mistaken for a clean
+    # cold run.  Rows are copied from provider audits plus decoded-cache stamps.
+    _runtime_cache_rows = []
+    def _append_cache_rows(df, provider_name):
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return
+        for _r in df.to_dict("records"):
+            _cache_fields = {k:v for k,v in _r.items() if str(k).startswith("cache_") or k in {"current_job_id","current_run_mode"}}
+            if not _cache_fields:
+                continue
+            _runtime_cache_rows.append({
+                "provider": provider_name,
+                "role": _r.get("request_role", _r.get("request_profile", _r.get("stage", ""))),
+                "logical_status": _r.get("status", _r.get("network_status", _r.get("action", ""))),
+                **_cache_fields,
+            })
+    _append_cache_rows(openmeteo_request_audit, "OPEN_METEO_FORECAST")
+    _append_cache_rows(_cams_audit_df, "CAMS_ADS")
+    _append_cache_rows(gfs_native_request_audit, "NOAA_GFS_NATIVE")
+    _append_cache_rows(dwd_icon_request_audit, "DWD_ICON_SECONDARY")
+    _openmeteo_aq_audit = pd.DataFrame(aerosol_hourly.attrs.get("api_request_audit", [])) if isinstance(aerosol_hourly, pd.DataFrame) and not aerosol_hourly.empty else pd.DataFrame()
+    _append_cache_rows(_openmeteo_aq_audit, "OPEN_METEO_AIR_QUALITY")
+    for _m in _gfs_meta_unique:
+        _p = _m.get("decoded_route_cache_provenance")
+        if isinstance(_p, dict) and _p:
+            _runtime_cache_rows.append({"provider":"NOAA_GFS_NATIVE","role":"DECODED_ROUTE","logical_status":_m.get("decoded_route_cache_status", ""), **_p})
+    runtime_cache_provenance = pd.DataFrame(_runtime_cache_rows)
 
     # R5.7.14 Data Integrity Core: provider/decode/evidence handoff audit.
     # This audit is intentionally non-physical and must not alter Formation/Viewing.
@@ -2440,10 +2539,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "spectral_coverage_diagnostics": spectral_coverage_diagnostics,
         "performance_diagnostics": pd.DataFrame(performance_rows),
         "api_efficiency_audit": api_efficiency_audit,
+        "runtime_cache_provenance": runtime_cache_provenance,
+        "runtime_resource_telemetry": pd.DataFrame(runtime_resource_rows),
         "analysis_integrity_audit": analysis_integrity_audit,
         "aerosol_provider_error": aerosol_error,
         "openmeteo_request_audit": openmeteo_request_audit,
-        "openmeteo_aerosol_request_audit": pd.DataFrame(aerosol_hourly.attrs.get("api_request_audit", [])) if not aerosol_hourly.empty else pd.DataFrame(),
+        "openmeteo_aerosol_request_audit": _openmeteo_aq_audit,
         "reference_azimuth_deg": ref_az,
         "reference_route_solar_altitude_deg": _ref_angle,
         "route_reference_contract": route_reference_contract,

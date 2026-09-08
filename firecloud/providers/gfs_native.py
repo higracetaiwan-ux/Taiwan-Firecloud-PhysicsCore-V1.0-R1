@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+from ..runtime_hardening import atomic_write_bytes, stamp_cache_artifact, cache_provenance
+
 NATIVE_PROVIDER_NAME = "NOAA_GFS_0P25_NOMADS_GRIB2_CLWMR_ICMR"
 NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
 GFS_PROVIDER_SCHEMA_VERSION = "R5.7_NATIVE_CLOUD_AND_HYDROMETEOR_V3"
@@ -175,7 +177,8 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
     run, lead = resolve_run_and_lead(valid_time)
     bbox = route_bbox(points)
     url, params = build_nomads_request(run, lead, bbox)
-    cache = Path(cache_dir or Path(tempfile.gettempdir())/"taiwan_firecloud_gfs")
+    configured = (os.getenv("FIRECLOUD_GFS_CACHE_DIR") or "").strip()
+    cache = Path(cache_dir or configured or Path(tempfile.gettempdir())/"taiwan_firecloud_gfs")
     cache.mkdir(parents=True, exist_ok=True)
     schema_fp=_request_schema_fingerprint(params)
     bbox_fp=hashlib.sha256(json.dumps([round(x,3) for x in bbox]).encode()).hexdigest()[:10]
@@ -189,15 +192,18 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
         ctype=(r.headers.get('content-type') or '').lower()
         if len(r.content)<1000 or b'GRIB' not in r.content[:32]:
             raise RuntimeError(f"NOMADS did not return GRIB2 ({len(r.content)} bytes, {ctype})")
-        out.write_bytes(r.content)
-        audit.append({'action':'DOWNLOAD','reason':reason,'cache_file':out.name,'bytes':len(r.content),'http_status':getattr(r,'status_code',None)})
+        atomic_write_bytes(out, r.content)
+        stamp_cache_artifact(out, provider="NOAA_GFS_NATIVE", role="RAW_GRIB", schema=GFS_PROVIDER_SCHEMA_VERSION, qc_state="CACHE_READY")
+        prov=cache_provenance(out, provider="NOAA_GFS_NATIVE", role="RAW_GRIB", cache_status="DOWNLOAD")
+        audit.append({'action':'DOWNLOAD','reason':reason,'cache_file':out.name,'bytes':len(r.content),'http_status':getattr(r,'status_code',None), **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}}})
 
     cache_status='MISS'
     if out.exists() and out.stat().st_size >= 1000:
         cache_status='HIT'
         inv=grib_message_inventory(out)
         if _inventory_has_required_condensate(inv):
-            audit.append({'action':'CACHE_USE','reason':'REQUIRED_FIELDS_VALID','cache_file':out.name,'bytes':out.stat().st_size})
+            prov=cache_provenance(out, provider="NOAA_GFS_NATIVE", role="RAW_GRIB", cache_status="CACHE_HIT")
+            audit.append({'action':'CACHE_USE','reason':'REQUIRED_FIELDS_VALID','cache_file':out.name,'bytes':out.stat().st_size, **{k:v for k,v in prov.items() if k.startswith('cache_') or k in {'current_job_id','current_run_mode'}}})
         else:
             cache_status='INVALID_REQUIRED_FIELDS'
             audit.append({'action':'CACHE_INVALID_REQUIRED_FIELDS','reason':'CLWMR_OR_ICMR_MISSING','cache_file':out.name,'bytes':out.stat().st_size})
@@ -305,7 +311,11 @@ def _save_decoded_cache(grib_path: Path, points: list[dict], df: pd.DataFrame) -
         tmp = p.with_name(f".{p.name}.tmp")
         with tmp.open("wb") as fh:
             pickle.dump(df, fh, protocol=pickle.HIGHEST_PROTOCOL)
-        tmp.replace(p)
+            fh.flush()
+            try: os.fsync(fh.fileno())
+            except Exception: pass
+        os.replace(tmp, p)
+        stamp_cache_artifact(p, provider="NOAA_GFS_NATIVE", role="DECODED_ROUTE", schema=GFS_DECODED_CACHE_SCHEMA_VERSION, qc_state="CACHE_READY")
     except Exception:
         pass
 
@@ -315,10 +325,12 @@ def fetch_route_native(points: list[dict], valid_time: datetime, cache_dir: str|
     df=_load_decoded_cache(path,points)
     if df is not None:
         df=df.copy(); meta["decoded_route_cache_status"]="HIT"
+        meta["decoded_route_cache_provenance"] = cache_provenance(_decoded_cache_path(path,points), provider="NOAA_GFS_NATIVE", role="DECODED_ROUTE", cache_status="CACHE_HIT")
     else:
         df=decode_grib_to_route(path,points)
         _save_decoded_cache(path,points,df)
         meta["decoded_route_cache_status"]="MISS_WRITE"
+        meta["decoded_route_cache_provenance"] = cache_provenance(_decoded_cache_path(path,points), provider="NOAA_GFS_NATIVE", role="DECODED_ROUTE", cache_status="CURRENT_RUN_WRITE")
     required_present=bool(meta.get("gfs_required_condensate_fields_present"))
     cl_cols=[c for c in df.columns if c.startswith("cloud_liquid_water_kgkg_")]
     ic_cols=[c for c in df.columns if c.startswith("cloud_ice_water_kgkg_")]

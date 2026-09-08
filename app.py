@@ -568,6 +568,25 @@ def _launch_analysis_worker(request: dict, job_state: dict):
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
     env["FIRECLOUD_STATE_DIR"] = str(_STATE_DIR.resolve())
+    env["FIRECLOUD_JOB_ID"] = str(job_state.get("job_id", ""))
+    env["FIRECLOUD_ANALYSIS_RUN_MODE"] = str(job_state.get("analysis_run_mode", "WARM_PRODUCTION"))
+    env["FIRECLOUD_ANALYSIS_STARTED_AT_UTC"] = datetime.now(timezone.utc).isoformat()
+    _cache_policy = str(job_state.get("provider_cache_policy", "SHARED_PERSISTENT"))
+    _cache_ns_job = str(job_state.get("cache_namespace_job_id") or job_state.get("job_id") or "")
+    if _cache_policy == "ISOLATED_JOB_NAMESPACE" and _cache_ns_job:
+        _provider_root = (_STATE_DIR / "analysis_jobs" / _cache_ns_job / "provider_cache").resolve()
+        _provider_root.mkdir(parents=True, exist_ok=True)
+        env["FIRECLOUD_GFS_CACHE_DIR"] = str(_provider_root / "gfs")
+        env["FIRECLOUD_CAMS_CACHE_DIR"] = str(_provider_root / "cams")
+        env["FIRECLOUD_OPENMETEO_CACHE_DIR"] = str(_provider_root / "openmeteo_forecast")
+        env["FIRECLOUD_OPENMETEO_AQ_CACHE_DIR"] = str(_provider_root / "openmeteo_air_quality")
+        env["FIRECLOUD_DWD_ICON_CACHE_DIR"] = str(_provider_root / "dwd_icon")
+        # The remap weights are static geometry resources, not event/weather cache.
+        # Keep them shared so a cold test does not redownload the ~44 MB bundle.
+        env.setdefault("FIRECLOUD_DWD_ICON_REMAP_DIR", str((Path(__file__).resolve().parent / ".firecloud_cache" / "dwd_icon_secondary" / "remap").resolve()))
+        job_state["provider_cache_namespace"] = str(_provider_root)
+    else:
+        job_state["provider_cache_namespace"] = "SHARED_PROVIDER_DEFAULTS"
     job_state.update({
         "execution_mode": "EXTERNAL_ANALYSIS_WORKER",
         "worker_status": "STARTING",
@@ -674,8 +693,20 @@ def _monitor_analysis_worker(job_state: dict, progress, status_box, proc=None):
             except (TypeError, ValueError):
                 frac = 0.0
             message = str(pstate.get("last_message", "背景分析進行中"))
-            progress.progress(int(round(frac * 100)), text=message)
-            status_box.caption(message)
+            try:
+                _stage_elapsed = float(pstate.get("stage_elapsed_seconds", 0.0) or 0.0)
+            except Exception:
+                _stage_elapsed = 0.0
+            try:
+                _rss = float(pstate.get("rss_mb")) if pstate.get("rss_mb") is not None else None
+            except Exception:
+                _rss = None
+            _diag_suffix = f"｜階段 {_stage_elapsed:.0f}s"
+            if _rss is not None:
+                _diag_suffix += f"｜RSS {_rss:.0f} MB"
+            display_message = message + _diag_suffix
+            progress.progress(int(round(frac * 100)), text=display_message)
+            status_box.caption(display_message)
             worker_exit = pstate.get("exit_code")
             if worker_exit is None and proc is not None and proc.poll() is not None:
                 worker_exit = proc.poll()
@@ -1092,6 +1123,13 @@ with st.sidebar:
                 "更換觀測地點或國家不需要重建 LUT；只有更新 spectroscopy／網格／氣體集合時才需要。"
             )
 
+    cold_isolated_test = st.checkbox(
+        "Cold Test：隔離前次 provider cache（除 DWD 靜態 remap 資源）",
+        value=False,
+        help="用獨立 job cache namespace 執行，避免前一次 TEST 的 GFS/CAMS/Open-Meteo/ICON 事件資料遮蔽 cold-run 問題。正常分析請維持未勾選。",
+        key="runtime_cold_isolated_test",
+    )
+
     _persisted_status = str(_persisted_job.get("status", "")).upper()
     _can_resume = _persisted_status in {"RUNNING", "INTERRUPTED", "FAILED"} and bool(_recovery_req)
     resume_run = False
@@ -1187,6 +1225,7 @@ if run or st.session_state.analysis_result is not None:
             "tz_coordinate_name": _tz_resolution_run.coordinate_timezone,
             "tz_source": _tz_resolution_run.resolver_source,
             "tz_warning": _tz_resolution_run.warning,
+            "requested_runtime_mode": "COLD_ISOLATED_TEST" if cold_isolated_test else "WARM_PRODUCTION",
         }
         _old_job = dict(_persisted_job) if resume_run else {}
         _old_progress = _read_json_file(Path(str(_old_job.get("worker_progress_path")))) if _old_job.get("worker_progress_path") else {}
@@ -1204,12 +1243,21 @@ if run or st.session_state.analysis_result is not None:
             # Reattach to the already detached worker.  Starting a second
             # analysis for the same recovery job would duplicate ADS requests.
             _job_state = _old_job
-            _job_state.update({"status": "RUNNING", "request": _request, "version": __version__, "recovery_mode": True})
+            _job_state.update({
+                "status": "RUNNING", "request": _request, "version": __version__, "recovery_mode": True,
+                "analysis_run_mode": str(_old_job.get("analysis_run_mode", "RESUME_SAME_JOB")),
+                "execution_intent": "RESUME_INTERRUPTED_ANALYSIS",
+            })
             _save_analysis_job_state(_job_state)
             _analysis_proc = None
         else:
+            _new_job_id = str(_old_job.get("job_id")) if resume_run and _old_job.get("job_id") else str(uuid.uuid4())
+            _original_mode = str(_old_job.get("analysis_run_mode", "")) if resume_run else ""
+            _cache_policy = str(_old_job.get("provider_cache_policy", "")) if resume_run else ""
+            if not _cache_policy:
+                _cache_policy = "ISOLATED_JOB_NAMESPACE" if cold_isolated_test else "SHARED_PERSISTENT"
             _job_state = {
-                "job_id": str(uuid.uuid4()),
+                "job_id": _new_job_id,
                 "version": __version__,
                 "status": "RUNNING",
                 "request": _request,
@@ -1217,6 +1265,11 @@ if run or st.session_state.analysis_result is not None:
                 "last_message": "準備分析…",
                 "result_path": str(_RESULT_STATE_PATH),
                 "recovery_mode": bool(resume_run),
+                "analysis_run_mode": "RESUME_SAME_JOB" if resume_run else ("COLD_ISOLATED_TEST" if cold_isolated_test else "WARM_PRODUCTION"),
+                "original_analysis_run_mode": _original_mode or ("COLD_ISOLATED_TEST" if cold_isolated_test else "WARM_PRODUCTION"),
+                "provider_cache_policy": _cache_policy,
+                "cache_namespace_job_id": str(_old_job.get("cache_namespace_job_id") or _new_job_id),
+                "execution_intent": "RESUME_INTERRUPTED_ANALYSIS" if resume_run else ("NEW_ANALYSIS_COLD_ISOLATED" if cold_isolated_test else "NEW_ANALYSIS_REUSING_PROVIDER_CACHE"),
             }
             _save_analysis_job_state(_job_state)
             _analysis_proc, _analysis_paths = _launch_analysis_worker(_request, _job_state)
@@ -1870,6 +1923,10 @@ if run or st.session_state.analysis_result is not None:
             ("ecmwf_ifs_request_audit.csv", result.get("ecmwf_ifs_request_audit", pd.DataFrame())),
             ("dwd_icon_request_audit.csv", result.get("dwd_icon_request_audit", pd.DataFrame())),
             ("api_efficiency_audit.csv", result.get("api_efficiency_audit", pd.DataFrame())),
+            ("runtime_execution_contract.csv", result.get("runtime_execution_contract", pd.DataFrame())),
+            ("runtime_cache_provenance.csv", result.get("runtime_cache_provenance", pd.DataFrame())),
+            ("runtime_stage_trace.csv", result.get("runtime_stage_trace", pd.DataFrame())),
+            ("runtime_resource_telemetry.csv", result.get("runtime_resource_telemetry", pd.DataFrame())),
             ("analysis_integrity_audit.csv", result.get("analysis_integrity_audit", pd.DataFrame())),
             ("secondary_provider_audit.csv", result.get("secondary_provider_audit", pd.DataFrame())),
             ("v1_six_band_spectroscopy_readiness.csv", result.get("v1_six_band_spectroscopy_readiness", pd.DataFrame())),

@@ -10,6 +10,8 @@ import time
 import requests
 import pandas as pd
 
+from ..runtime_hardening import atomic_write_json, stamp_cache_artifact, cache_provenance
+
 
 class OpenMeteoRateLimitError(requests.HTTPError):
     """Terminal HTTP 429 after bounded retries.
@@ -83,9 +85,9 @@ def _load_cached_json(key: str):
 def _save_cached_json(key: str, data) -> None:
     try:
         d = _cache_dir(); d.mkdir(parents=True, exist_ok=True)
-        tmp = d / f".{key}.tmp"
-        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(d / f"{key}.json")
+        p = d / f"{key}.json"
+        atomic_write_json(p, data)
+        stamp_cache_artifact(p, provider="OPEN_METEO_FORECAST", role="CANONICAL_JSON", schema="OPEN_METEO_CACHE_V1", qc_state="CACHE_READY", include_sha256=True)
     except Exception:
         pass
 
@@ -307,6 +309,8 @@ def fetch_route_hourly(points: list[dict], start: datetime, end: datetime, timez
                 _append_member_frames(frames, member_group, base)
                 successful_unique_locations += 1
 
+        _cache_path = _cache_dir() / f"{key}.json"
+        _prov = cache_provenance(_cache_path, provider="OPEN_METEO_FORECAST", role=str(request_profile), cache_status=cache_status)
         audit.append({
             "provider": "OPEN_METEO_FORECAST", "batch_index": batch_idx,
             "request_profile": str(request_profile),
@@ -320,6 +324,7 @@ def fetch_route_hourly(points: list[dict], start: datetime, end: datetime, timez
             "requested_variable_count": len(vars_used),
             "batch_size": int(batch_size),
             "start_date": params["start_date"], "end_date": params["end_date"],
+            **{k:v for k,v in _prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}},
         })
         if batch_idx < len(batches) - 1 and cache_status != "HIT" and data is not None:
             # Surface-only batches are already consolidated. Keep a small gap to

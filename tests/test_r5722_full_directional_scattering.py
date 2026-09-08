@@ -18,6 +18,10 @@ from firecloud.tier2_directional_scattering_calibration import (
     validate_directional_scattering_lut,
 )
 from firecloud.tier2_directional_scattering_runtime import validate_directional_lut_bytes
+from firecloud.tier2_libradtran_mystic_adapter import (
+    MYSTIC_ADAPTER_CONTRACT, INCIDENT_IRRADIANCE_REFERENCE, ATMOSPHERIC_COUPLING,
+    SURFACE_BOUNDARY, CALIBRATION_SCOPE,
+)
 from firecloud.tier2_directional_scattering_domain import evaluate_tier2_directional_scattering_domain
 from firecloud.tier2_directional_scattering_solver import (
     build_tier2_directional_scattering_response,
@@ -44,6 +48,8 @@ def samples():
                                 'phase':'LIQUID','wavelength_nm':wl,'cot':cot,'effective_radius_um':reff,
                                 'solar_zenith_deg':theta0,'view_zenith_deg':thetav,'relative_azimuth_deg':relaz,
                                 'response_factor':formula(wl,cot,reff,theta0,thetav,relaz),
+                                'response_factor_std':0.000001,'photon_count':1000000,
+                                'sample_qc_state':'PASS','solver_run_id':f'R5722-REG-{wl}-{cot}-{reff}-{theta0}-{thetav}-{relaz}',
                             })
     return pd.DataFrame(rows)
 
@@ -60,6 +66,15 @@ def metadata():
         'multiple_scattering_enabled':True,'response_definition':DIRECTIONAL_RESPONSE_DEFINITION,
         'response_units':DIRECTIONAL_RESPONSE_UNITS,'geometry_convention':DIRECTIONAL_GEOMETRY_CONVENTION,
         'directional_hemisphere_support':'FULL_0_180','validation_reference':'PHYSICAL_VALIDATION_REFERENCE',
+        'solver_adapter_contract':MYSTIC_ADAPTER_CONTRACT,
+        'incident_irradiance_reference':INCIDENT_IRRADIANCE_REFERENCE,
+        'atmospheric_coupling':ATMOSPHERIC_COUPLING,'surface_boundary':SURFACE_BOUNDARY,
+        'reference_cloud_base_km':5.0,'reference_cloud_top_km':6.0,
+        'cloud_vertical_sensitivity_validation_reference':'R5722_REG_VERTICAL_PASS',
+        'geometry_mapping_validation_reference':'R5722_REG_GEOMETRY_PASS',
+        'minimum_photon_count':1000000,'maximum_mc_relative_error':0.02,
+        'maximum_mc_absolute_error':0.01,'calibration_scope':CALIBRATION_SCOPE,
+        'domain_spec_sha256':'1'*64,
         'lut_version':'DIRTEST22',
     }
 

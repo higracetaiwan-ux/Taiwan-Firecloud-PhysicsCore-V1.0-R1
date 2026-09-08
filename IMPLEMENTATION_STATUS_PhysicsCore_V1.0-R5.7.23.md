@@ -1,53 +1,92 @@
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.23 實作狀態
 
-## 正式基線
+## 正式來源基線
 
-來源：**V1.0-R5.7.22.1 ACCEPTED BASELINE**。
+**V1.0-R5.7.22.1 ACCEPTED BASELINE**。
 
-R5.7.23 不重新定義既有 PhysicsCore 權重或 Formation / Viewing 科學狀態。
+R5.7.23 不改寫既有 Formation / Viewing / Glow、Route Invariance、Earth Shadow、六波段、Target Optical Truth 與 Missing 語義。
 
-## 已完成
+## A. Runtime Hardening：已完成
 
-- [x] REAL Tier-2-ready liquid calibration target selector
-- [x] COT / r_eff / θ₀ / θᵥ / Δφ 真實 domain planner
+- [x] `WARM_PRODUCTION / COLD_ISOLATED_TEST / RESUME_SAME_JOB`
+- [x] per-job isolated provider cache namespace
+- [x] provider cache provenance
+- [x] GFS / CAMS / Open-Meteo / AQ / DWD dynamic cache atomic commit
+- [x] CAMS production default global ADS single-flight
+- [x] 5 秒 analysis-worker independent heartbeat
+- [x] true stage trace
+- [x] RSS / peak RSS / process / DataFrame telemetry
+- [x] UI 顯示 stage elapsed + RSS
+- [x] CASE：`runtime_execution_contract.csv`
+- [x] CASE：`runtime_cache_provenance.csv`
+- [x] CASE：`runtime_stage_trace.csv`
+- [x] CASE：`runtime_resource_telemetry.csv`
+
+## B. Genuine Liquid-Cloud Full Directional Calibration：已完成工程鏈
+
+- [x] REAL Tier-2-ready liquid target selector
+- [x] CASE / foundation+readiness → COT / r_eff / θ₀ / θᵥ / Δφ domain planner
+- [x] `tools/derive_tier2_liquid_directional_domain_from_case.py`
 - [x] 六波段 full-directional job grid
-- [x] libRadtran/MYSTIC spherical solver recipe
-- [x] uvspec input template
-- [x] Cloud→Observer θᵥ 到 uvspec `umu` adapter
-- [x] external result required schema
-- [x] job completeness / duplicate / unknown-job QC
-- [x] response / Monte-Carlo convergence / exit-code QC
-- [x] solver family / version provenance QC
-- [x] external genuine result → R5.7.22 production LUT package builder
-- [x] runtime LUT bytes + manifest validation
-- [x] CLI job generator
-- [x] CLI production package builder
-- [x] R5.7.23 regression tests
+- [x] `firecloud/tier2_libradtran_mystic_adapter.py`
+- [x] target-local geometry → uvspec/MYSTIC adapter
+- [x] unit incident irradiance normalization
+- [x] liquid `wc_file` reference profile generator
+- [x] cloud-only MYSTIC renderer（不重算 Gas / Rayleigh / aerosol / Earth Shadow）
+- [x] spherical MYSTIC batch runner CLI
+- [x] `mc.rad.spc` / `mc.rad.std.spc` collector
+- [x] V3 per-sample QC：response std / photon count / QC state / solver run id
+- [x] V3 manifest provenance gate
+- [x] domain spec SHA256 gate
+- [x] external genuine result → production directional LUT package builder
+- [x] runtime V3 LUT validation
 
-## 本環境限制
+## C. Genuine calibrated LUT 的真實狀態
 
-建置環境目前沒有 `uvspec` 執行檔，因此無法在本次封裝內聲稱已完成 genuine libRadtran/MYSTIC calibration run。
+本建置環境目前**沒有 `uvspec` / libRadtran 執行檔**。
 
-因此：
+因此本版可以產生、渲染、驗證 genuine calibration jobs，但不能在此環境執行真正 MYSTIC Monte-Carlo 全 job grid。
 
-- Production calibrated LUT：**尚未生成**
-- Production LUT install：**尚未執行**
-- Tier-2 production solver：應繼續在沒有 genuine LUT 時保持 blocked
+正式狀態仍必須是：
 
-這不是錯誤回退，而是刻意維持 calibration provenance 與 Missing 語義。
+`CALIBRATED DIRECTIONAL LUT NOT INSTALLED`
 
-## 下一個實際驗收
+以及 calibration bundle：
 
-1. 以 REAL R5.7.22.1 CASE 的 Tier-2 foundation / readiness CSV 產生 calibration bundle。
-2. 在具有 genuine libRadtran/MYSTIC spherical 環境執行所有 jobs。
-3. 收集六波段 response 與 Monte-Carlo uncertainty。
-4. 通過 R5.7.23 external-result QC。
-5. 建立並安裝 production directional LUT。
-6. 重新跑同一 REAL_CANVAS CASE，確認 `INPUTS_READY_AWAITING_LUT_SOLVER` 進入 deterministic interpolation。
+`NOT_YET_GENERATED_EXTERNAL_RT_REQUIRED`
 
-## 後續但非本版範圍
+**本版沒有 synthetic response 冒充 genuine LUT。**
+
+## D. Production V3 install 前仍需外部證據
+
+即使 external MYSTIC jobs 全部完成，production install gate 仍要求：
+
+- genuine solver version
+- Mie/cloud-optics provenance
+- phase-function provenance
+- unit incident irradiance contract
+- cloud-only atmospheric coupling contract
+- black surface boundary
+- reference cloud base / top
+- cloud vertical-sensitivity validation reference
+- geometry-mapping validation reference
+- minimum photon count
+- maximum MC relative / absolute error
+- calibration scope
+- exact domain-spec SHA256
+- 每 sample solver run id 與 QC PASS
+
+## E. 尚未在本建置環境完成的物理資料產品
+
+- [ ] genuine libRadtran/MYSTIC 大規模 calibration execution
+- [ ] genuine calibrated liquid-cloud production LUT
+- [ ] production LUT install
+- [ ] 同一 REAL_CANVAS CASE 安裝後 Tier-2 deterministic response 驗收
+
+這些不是程式缺漏，而是必須由真正 external RT 執行結果提供；不得由 synthetic fixture 取代。
+
+## F. 後續主線（非本次 release blocker）
 
 - GFS 09Z / 10Z temporal interpolation contract
 - ice-cloud genuine directional LUT
-- cloud thickness sensitivity study
-- calibration atmosphere / liquid droplet effective variance / normalization protocol 最終定案
+- cloud-thickness sensitivity study（除非證明必要，不升格 LUT axis）

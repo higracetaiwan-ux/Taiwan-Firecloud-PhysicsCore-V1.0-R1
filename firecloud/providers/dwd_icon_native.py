@@ -35,6 +35,7 @@ import pandas as pd
 import requests
 
 from ..cloud_optics import condensate_extinction_m1, DEFAULT_LIQUID_REFF_UM, DEFAULT_ICE_REFF_UM
+from ..runtime_hardening import stamp_cache_artifact, cache_provenance
 
 PROVIDER_NAME = "DWD_ICON_GLOBAL_NATIVE_CLOUD_MICROPHYSICS"
 PROVIDER_SCHEMA_VERSION = "R5.6.1_ICON_GLOBAL_NATIVE_CLOUD_V3"
@@ -197,7 +198,8 @@ def _cache_path(url: str) -> Path:
 def _download_decompress(url: str, timeout_s: float = 20.0) -> tuple[Path | None, dict]:
     dest = _cache_path(url)
     if dest.exists() and dest.stat().st_size > 0:
-        return dest, {"url":url,"status":"CACHE_HIT","bytes":int(dest.stat().st_size)}
+        prov=cache_provenance(dest,provider="DWD_ICON_SECONDARY",role="RAW_GRIB",cache_status="CACHE_HIT")
+        return dest, {"url":url,"status":"CACHE_HIT","bytes":int(dest.stat().st_size), **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}}}
     tmp = None
     try:
         r = requests.get(url, timeout=timeout_s)
@@ -209,8 +211,10 @@ def _download_decompress(url: str, timeout_s: float = 20.0) -> tuple[Path | None
         fd, tmpname = tempfile.mkstemp(prefix="icon_", suffix=".grib2", dir=str(dest.parent))
         os.close(fd); tmp = Path(tmpname)
         tmp.write_bytes(raw)
-        tmp.replace(dest)
-        return dest, {"url":url,"status":"DOWNLOADED","bytes":int(len(raw))}
+        os.replace(tmp,dest)
+        stamp_cache_artifact(dest,provider="DWD_ICON_SECONDARY",role="RAW_GRIB",schema=PROVIDER_SCHEMA_VERSION,qc_state="CACHE_READY")
+        prov=cache_provenance(dest,provider="DWD_ICON_SECONDARY",role="RAW_GRIB",cache_status="DOWNLOADED")
+        return dest, {"url":url,"status":"DOWNLOADED","bytes":int(len(raw)), **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}}}
     except Exception as exc:
         return None, {"url":url,"status":"FAILED","error":f"{type(exc).__name__}: {exc}","bytes":0}
     finally:
@@ -630,7 +634,11 @@ def _save_persistent_optics_cache(run: datetime, lead: int, points: list[dict], 
         tmp = p.with_name(f".{p.name}.tmp")
         with tmp.open("wb") as fh:
             pickle.dump({"optics":optics, "meta":dict(meta)}, fh, protocol=pickle.HIGHEST_PROTOCOL)
-        tmp.replace(p)
+            fh.flush()
+            try: os.fsync(fh.fileno())
+            except Exception: pass
+        os.replace(tmp,p)
+        stamp_cache_artifact(p,provider="DWD_ICON_SECONDARY",role="DECODED_OPTICS",schema=PROVIDER_SCHEMA_VERSION,qc_state="CACHE_READY")
     except Exception:
         pass
 

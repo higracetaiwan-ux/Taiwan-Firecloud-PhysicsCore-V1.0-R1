@@ -1,6 +1,59 @@
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.23
 
-## 目前版本重點
+正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+R5.7.23 同時完成兩條工程主線：
+
+1. **Runtime Hardening**：Cold/Warm/Resume、cache provenance、atomic cache、CAMS ADS single-flight、stage heartbeat、resource telemetry。
+2. **Genuine Liquid-Cloud Full Directional Calibration Pipeline V3**：REAL CASE domain → spherical MYSTIC jobs → external result collector/QC → production LUT package gate。
+
+本建置環境沒有 `uvspec`，所以 genuine calibrated directional LUT **尚未生成／尚未安裝**；不得以 synthetic LUT 取代。
+
+### Runtime Cold Test
+
+UI 勾選 Cold Test 後，本次 job 使用隔離 provider cache namespace。CASE 會新增：
+
+- `runtime_execution_contract.csv`
+- `runtime_cache_provenance.csv`
+- `runtime_stage_trace.csv`
+- `runtime_resource_telemetry.csv`
+
+### Calibration CLI
+
+由 CASE 推導 domain：
+
+```bash
+python tools/derive_tier2_liquid_directional_domain_from_case.py --case <CASE.zip_or_dir> --output-dir <domain_dir>
+```
+
+建立 calibration bundle：
+
+```bash
+python build_tier2_liquid_directional_calibration_jobs.py --foundation-csv <foundation.csv> --readiness-csv <readiness.csv> --output-dir <bundle_dir>
+```
+
+在外部 libRadtran 環境先渲染 jobs（不執行 RT）：
+
+```bash
+python run_tier2_libradtran_mystic_calibration.py --jobs-csv <jobs.csv> --solver-recipe-json <recipe.json> --run-dir <run_dir> --data-files-path <libRadtran/data> --atmosphere-file <atm.dat> --render-only
+```
+
+真正 external MYSTIC 執行後收集結果：
+
+```bash
+python collect_tier2_libradtran_mystic_results.py --jobs-csv <jobs.csv> --run-dir <run_dir> --output-csv <results.csv> --solver-version <version>
+```
+
+最後 production build 必須同時提供 exact domain spec 與 calibration metadata：
+
+```bash
+python build_tier2_liquid_directional_lut_from_results.py --jobs-csv <jobs.csv> --results-csv <results.csv> --metadata-json <metadata.json> --domain-spec-json <domain.json> --output-dir <lut_package_dir>
+```
+
+詳見：
+
+- `RUNTIME_HARDENING_SPEC_R5.7.23.md`
+- `TIER2_LIQUID_DIRECTIONAL_CALIBRATION_PIPELINE_SPEC_R5.7.23.md`
 
 ## R5.7.23 Genuine Liquid-Cloud Full Directional Calibration Pipeline
 
@@ -118,3 +171,9 @@ Production LUT 必須提供：
 - `RELEASE_NOTES_PhysicsCore_V1.0-R5.7.22.md`
 - `IMPLEMENTATION_STATUS_PhysicsCore_V1.0-R5.7.22.md`
 - `TIER2_DIRECTIONAL_SCATTERING_GEOMETRY_SPEC_R5.7.22.md`
+
+## R5.7.23 Runtime Hardening
+
+為了區分真正的 provider/runtime stall 與重新 TEST 後的 persistent-cache 加速，本版提供三種分析執行契約：`WARM_PRODUCTION`、`COLD_ISOLATED_TEST`、`RESUME_SAME_JOB`。Cold Test 會建立 job-specific provider cache namespace；CASE 另保存 runtime stage trace、cache provenance 與 resource telemetry。CAMS production 預設採 ADS global single-flight，避免兩個 forecast time 同時送出 SPECTRAL_COLUMN_AOD 等遠端請求。
+
+R5.7.23 的 genuine liquid-cloud calibration pipeline 已可產生與驗證外部 libRadtran/MYSTIC jobs；本封裝環境未含 `uvspec`，因此 genuine calibrated production LUT 仍維持 `NOT_YET_GENERATED_EXTERNAL_RT_REQUIRED`，不會以 synthetic LUT 取代。
