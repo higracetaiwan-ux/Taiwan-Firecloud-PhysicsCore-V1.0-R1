@@ -1,6 +1,19 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.26
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.27
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+
+## R5.7.27 Formation-First Photography Decision Aggregation
+
+R5.7.27 收斂 **Formation → Viewing → Photography Decision** 的最外層聚合契約。Photography Decision 的時間軸現在由 Formation 驅動，因此 0°～−6°、每 0.5° 的 **13 個核心角度必須完整輸出 13/13 rows**；Viewing 可以因為沒有真實 target 而只有部分角度，但不得因此刪掉 Photography Decision 的其他角度。
+
+本版加入 **Formation-first hard gate**：只要 Formation 已經是物理上明確的 NO-GO，例如 `CLEAR_RED_PATH_NO_CANVAS`、其他已解析 `NO_CANVAS_*` 狀態、或 `NOT_FORMED_EARTH_SHADOW`，最終 `photography_opportunity` 必須是 `NO_GO`。Cloud→Observer Viewing 仍保留原始診斷值，但此時其角色會標為 `DIAGNOSTIC_ONLY_FORMATION_NO_GO`，不得把 NO-GO 提升成 `FAIR / LIMITED / GOOD`。
+
+No-Canvas 且沒有 Cloud→Observer target 時，Viewing 以 `VIEWING_NOT_APPLICABLE_NO_FORMED_TARGET` 表示 N/A；這不是 Viewing 資料缺失，也不會回寫 Formation。`NO_CANVAS_EVIDENCE` 仍不被硬判 NO-GO，因為它可能代表 Canvas evidence 尚未完整；只有 R5.7.26+ 已解析的 no-Canvas states 才能進 hard NO-GO。
+
+Analysis Integrity 新增 `PHOTOGRAPHY_DECISION_FORMATION_ANGLE_COVERAGE` 與 `PHOTOGRAPHY_FORMATION_NO_GO_DOMINANCE`，防止日後再退回 2/13 rows 或 Viewing 覆蓋 Formation。
+
+本版不修改 R5.7.26 Red-Light Availability、六波段 RT、Canvas Optical Truth、Viewing 物理本身或任何科學權重。
 
 
 ## R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State

@@ -123,6 +123,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     aerosol_spectral = _df(result.get("aerosol_spectral_route_snapshots"))
     formation = _df(result.get("v1_formation"))
     viewing = _df(result.get("v1_viewing_summary"))
+    photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
     spectral = _df(result.get("v1_spectral_optical_paths"))
@@ -223,6 +224,39 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
 
     add("FORMATION_TABLE_PRESENT", PASS if not formation.empty else FAIL, "FORMATION", _rows(formation), ">0 rows")
     add("VIEWING_SUMMARY_PRESENT", PASS if not viewing.empty else WARN, "VIEWING", _rows(viewing), ">0 rows when viewing targets exist")
+
+    # R5.7.27 Formation-first Photography Decision aggregation.  The decision
+    # timeline must follow Formation, not the usually sparser Viewing target
+    # table, and a resolved Formation NO-GO may never be promoted by Viewing.
+    if not formation.empty:
+        if photography.empty:
+            status = FAIL if not red_sum.empty else WARN
+            add("PHOTOGRAPHY_DECISION_FORMATION_ANGLE_COVERAGE", status, "PHOTOGRAPHY_DECISION", 0, "same solar-angle coverage as Formation", "R5.7.27+ requires Formation-driven Photography Decision rows")
+        else:
+            f_angles = set(pd.to_numeric(formation.get("solar_altitude_deg"), errors="coerce").dropna().round(8).tolist())
+            p_angles = set(pd.to_numeric(photography.get("solar_altitude_deg"), errors="coerce").dropna().round(8).tolist())
+            missing = sorted(f_angles - p_angles)
+            extra = sorted(p_angles - f_angles)
+            add("PHOTOGRAPHY_DECISION_FORMATION_ANGLE_COVERAGE", PASS if not missing and not extra else FAIL, "PHOTOGRAPHY_DECISION", f"missing={missing};extra={extra};rows={len(photography)}", "same solar-angle coverage as Formation", "Viewing may be sparse but must not collapse the Photography Decision timeline")
+
+            if {"formation_state","photography_opportunity"}.issubset(photography.columns):
+                fs = photography["formation_state"].fillna("").astype(str)
+                no_go = (
+                    fs.isin([
+                        "FORMATION_FAILED","FAILED","NO_FORMATION","NOT_FORMED_EARTH_SHADOW",
+                        "ILLUMINATION_BLOCKED","NOT_FORMED_ILLUMINATION_BLOCKED",
+                        "CLEAR_RED_PATH_NO_CANVAS","PARTIAL_RED_PATH_NO_CANVAS",
+                        "RED_PATH_ATTENUATED_NO_CANVAS","NO_CANVAS_NO_DIRECT_RED_ACCESS",
+                        "NO_CANVAS_RED_PATH_CONFLICT","NO_CANVAS_RED_PATH_UNKNOWN",
+                    ])
+                    | (fs.str.startswith("NO_CANVAS_") & ~fs.eq("NO_CANVAS_EVIDENCE"))
+                    | fs.str.endswith("_NO_CANVAS")
+                )
+                bad = photography.loc[no_go & ~photography["photography_opportunity"].astype(str).eq("NO_GO"), [c for c in ["solar_altitude_deg","formation_state","viewing_state","photography_opportunity"] if c in photography.columns]]
+                add("PHOTOGRAPHY_FORMATION_NO_GO_DOMINANCE", PASS if bad.empty else FAIL, "PHOTOGRAPHY_DECISION", int(len(bad)), "0 Formation NO-GO rows with opportunity other than NO_GO", "Viewing remains diagnostic and cannot rewrite Formation")
+            else:
+                add("PHOTOGRAPHY_FORMATION_NO_GO_DOMINANCE", WARN, "PHOTOGRAPHY_DECISION", "SCHEMA_NOT_AVAILABLE", "formation_state + photography_opportunity columns")
+
     add("PERFORMANCE_DIAGNOSTICS_PRESENT", PASS if not perf.empty else FAIL, "PERFORMANCE", _rows(perf), ">0 rows")
 
     if canvas.empty:
