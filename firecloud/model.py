@@ -2733,6 +2733,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "aerosol_spectral_route_snapshots": aerosol_spectral_route_snapshots,
         "v1_formation": v1_formation,
         "v1_viewing_summary": v1_viewing_summary,
+        # R5.7.27.1: hand the already-built Formation-first decision table to
+        # the pre-export integrity audit.  R5.7.27 returned/exported this table
+        # but omitted it here, so the audit saw a false empty-table failure.
+        "v1_photography_decision": v1_photography_decision,
         "performance_diagnostics": pd.DataFrame(performance_rows),
         "v1_canvas_candidates": v1_canvas_candidates,
         "v1_spectral_optical_paths": v1_spectral_optical_paths,

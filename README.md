@@ -1,4 +1,15 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.27
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.27.1
+
+## R5.7.27.1 Photography Integrity Handoff Hotfix
+
+R5.7.27.1 修正 R5.7.27 的整合漏接：完整分析已建立 13-angle
+`v1_photography_decision`，但先前未將它放入 `_pre_integrity_result`，使
+Analysis Integrity 在真實 pipeline 中把 decision table 視為空表並可能誤報
+angle coverage `FAIL`。本 hotfix 補上正式 handoff，並把
+`v1_photography_decision.csv` 納入 CASE archive required-member 檢查。
+
+本版不改 Formation、Viewing、Glow、13 angles、六波段、route resolution、
+物理權重或任何 Forecast／Observation 分離規則。
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
 

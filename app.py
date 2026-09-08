@@ -1087,7 +1087,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -2398,7 +2398,7 @@ if run or st.session_state.analysis_result is not None:
 
 st.divider()
 st.caption(
-    "R5.7.27 為完整替換部署版本；本版使 Photography Decision 由 Formation 13-angle timeline 驅動，並加入 Formation-first hard gate：Formation 已確定 NO-GO 時，Viewing 只保留診斷，不得把最終攝影機會提升成 FAIR/GOOD/LIMITED。R5.7.26 的 Red-Light Availability 與 Clear-Path-No-Canvas 契約完整保留。"
+    "R5.7.27.1 為完整替換部署 hotfix；本版把 R5.7.27 已建立的 Photography Decision 正確交給 Analysis Integrity，並要求 CASE 封存必須包含 v1_photography_decision.csv。Formation-first、13-angle、六波段與 R5.7.26 Red-Light Availability 契約均完整保留。"
     "當 Primary 0–40 km 與 Extended 40–100 km 都沒有有效 Canvas，而 reference path 證據完整且紅光通道成立時，Formation 輸出 CLEAR_RED_PATH_NO_CANVAS；不再誤列 UNKNOWN / DATA INCOMPLETE，也不會把霞光或紅光潛力誤當火燒雲 Formation。"
     "No Canvas 時 target-specific SPECTRAL_CLOUD_PATH / SPECTRAL_AEROSOL_PATH / Full Spectral RT 均為 NOT_APPLICABLE；Viewing 仍由獨立 Cloud→Observer 分支判定。並完整保留 R5.7.25 與 R5.7.24.x 的既有修正。"
     "Genuine calibrated liquid-cloud directional LUT 仍須外部 libRadtran/MYSTIC 計算後才可安裝。"

@@ -355,6 +355,7 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "gfs_native_field_completeness.csv",
         "v1_formation.csv",
         "v1_viewing_summary.csv",
+        "v1_photography_decision.csv",
         "analysis_integrity_audit.csv",
     }
     for name in sorted(required):

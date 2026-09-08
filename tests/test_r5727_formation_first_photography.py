@@ -1,7 +1,12 @@
+from pathlib import Path
+
 import pandas as pd
 
 from firecloud.photography_decision import build_photography_decision
-from firecloud.case_integrity import build_analysis_integrity_audit
+from firecloud.case_integrity import (
+    build_analysis_integrity_audit,
+    build_archive_integrity_audit,
+)
 
 
 ANGLES = [0.0, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0, -4.5, -5.0, -5.5, -6.0]
@@ -79,3 +84,67 @@ def test_integrity_detects_sparse_photo_rows_and_viewing_override():
     dom = a[a.check_id.eq("PHOTOGRAPHY_FORMATION_NO_GO_DOMINANCE")].iloc[0]
     assert cov.status == "FAIL"
     assert dom.status == "FAIL"
+
+
+def test_integrity_passes_complete_formation_first_decision_table():
+    formation = _formation_13()
+    viewing = pd.DataFrame([
+        {"time": "t-5.5", "solar_altitude_deg": -5.5, "viewing_state": "VIEWING_MINOR_OBSTRUCTION"},
+        {"time": "t-6.0", "solar_altitude_deg": -6.0, "viewing_state": "VIEWING_MINOR_OBSTRUCTION"},
+    ])
+    photography = build_photography_decision(formation, viewing)
+    audit = build_analysis_integrity_audit({
+        "v1_formation": formation,
+        "v1_photography_decision": photography,
+        "v1_red_light_availability_summary": pd.DataFrame([{"solar_altitude_deg": 0.0}]),
+    })
+    assert audit.loc[
+        audit.check_id.eq("PHOTOGRAPHY_DECISION_FORMATION_ANGLE_COVERAGE"), "status"
+    ].iloc[0] == "PASS"
+    assert audit.loc[
+        audit.check_id.eq("PHOTOGRAPHY_FORMATION_NO_GO_DOMINANCE"), "status"
+    ].iloc[0] == "PASS"
+
+
+def test_model_hands_photography_decision_to_pre_export_integrity_audit():
+    """Guard the production pipeline wiring, not only the audit helper."""
+    model_text = (Path(__file__).resolve().parents[1] / "firecloud" / "model.py").read_text(encoding="utf-8")
+    start = model_text.index("_pre_integrity_result = {")
+    end = model_text.index("analysis_integrity_audit = build_analysis_integrity_audit", start)
+    handoff = model_text[start:end]
+    assert '"v1_photography_decision": v1_photography_decision' in handoff
+
+
+def test_case_integrity_requires_photography_decision_member():
+    required_names = [
+        "summary.csv",
+        "route_reference_contract.csv",
+        "route_points.csv",
+        "forecast_raw.csv",
+        "performance_diagnostics.csv",
+        "gfs_native_request_audit.csv",
+        "gfs_grib_message_inventory.csv",
+        "gfs_native_field_completeness.csv",
+        "v1_formation.csv",
+        "v1_viewing_summary.csv",
+        "v1_photography_decision.csv",
+        "analysis_integrity_audit.csv",
+    ]
+    analysis = pd.DataFrame([{"check_id": "UPSTREAM", "status": "PASS"}])
+    complete = pd.DataFrame({"artifact": required_names})
+    complete_audit = build_archive_integrity_audit(complete, analysis)
+    assert complete_audit.loc[
+        complete_audit.check_id.eq("ARCHIVE_MEMBER::v1_photography_decision.csv"), "status"
+    ].iloc[0] == "PASS"
+    assert complete_audit.loc[
+        complete_audit.check_id.eq("CASE_ARCHIVE_INTEGRITY_OVERALL"), "status"
+    ].iloc[0] == "PASS"
+
+    missing = complete[complete.artifact.ne("v1_photography_decision.csv")]
+    missing_audit = build_archive_integrity_audit(missing, analysis)
+    assert missing_audit.loc[
+        missing_audit.check_id.eq("ARCHIVE_MEMBER::v1_photography_decision.csv"), "status"
+    ].iloc[0] == "FAIL"
+    assert missing_audit.loc[
+        missing_audit.check_id.eq("CASE_ARCHIVE_INTEGRITY_OVERALL"), "status"
+    ].iloc[0] == "FAIL"
