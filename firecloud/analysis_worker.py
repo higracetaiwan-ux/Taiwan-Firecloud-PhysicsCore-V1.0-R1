@@ -76,6 +76,11 @@ def main(argv: list[str] | None = None) -> int:
     resource_path = progress_path.parent / "runtime_resource_telemetry.csv"
     req = json.loads(request_path.read_text(encoding="utf-8"))
     started = datetime.now(timezone.utc)
+    # R5.7.24.3: freeze provider-cycle availability against one immutable
+    # analysis-start clock. Long CAMS/DWD waits must not let later per-angle
+    # resolver calls jump to a newer GFS/CAMS cycle than the one prefetched at
+    # the beginning of this same job. CAMS subprocesses inherit this value.
+    os.environ["FIRECLOUD_PROVIDER_RESOLUTION_NOW_UTC"] = started.isoformat()
     started_mono = time.monotonic()
     job_id = runtime_job_id() or progress_path.parent.name
     run_mode = runtime_cache_mode()
@@ -234,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
             "cold_cache_isolated": run_mode == "COLD_ISOLATED_TEST",
             "resume_same_job": run_mode == "RESUME_SAME_JOB",
             "provider_cache_reuse_allowed": run_mode != "COLD_ISOLATED_TEST",
+            "provider_cycle_resolution_frozen": True,
+            "provider_resolution_now_utc": os.getenv("FIRECLOUD_PROVIDER_RESOLUTION_NOW_UTC", started.isoformat()),
         }])
         _atomic_pickle(result_path, result)
         with lock:

@@ -1,6 +1,11 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.24.2
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.24.3
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+## R5.7.24.3 Provider Cycle Freeze / Prefetch-Handoff Reliability
+
+本版修正長時間分析跨越 provider availability boundary 時，prefetch 與 per-angle lookup 可能解析到不同 GFS/CAMS cycle 的問題。Analysis worker 啟動時凍結 `FIRECLOUD_PROVIDER_RESOLUTION_NOW_UTC`；父程序、per-angle resolver 與 CAMS 外部 worker 全部使用同一個 analysis-start clock。此修正不改 Forecast valid time、物理幾何、六波段、Formation / Viewing 或 Missing 語義。
+
 
 ## R5.7.24.2 Spectral Aerosol Formation-Path Contract
 

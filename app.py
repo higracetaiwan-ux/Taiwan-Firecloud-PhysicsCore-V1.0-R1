@@ -1087,7 +1087,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Completion Guarantee + Memory Containment + R5.7.23.4 CASE-Integrity Type-Safety + R5.7.23 Runtime Hardening + Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Completion Guarantee + Memory Containment + R5.7.23.4 CASE-Integrity Type-Safety + R5.7.23 Runtime Hardening + Liquid Full Directional Calibration Pipeline + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -2377,7 +2377,7 @@ if run or st.session_state.analysis_result is not None:
 
 st.divider()
 st.caption(
-    "R5.7.24.2 為完整替換部署版本；本版修正 Spectral Aerosol Formation Path 的 NOT_APPLICABLE 語義、六波段 575 nm 路徑，以及 native CAMS 3D 不完整時的 Sun→CloudBase real-AOD fallback。"
+    "R5.7.24.3 為完整替換部署版本；本版凍結單次分析的 Provider Cycle Resolution，避免長時間 CAMS/DWD 等待跨過 availability boundary 後，per-angle lookup 跳到不同 GFS/CAMS cycle 而遺失已預取證據。"
     "同時保留 R5.7.24.1 CAMS Availability Guard 與 R5.7.24 Runtime Reliability / Memory Containment。"
     "Genuine calibrated liquid-cloud directional LUT 仍須外部 libRadtran/MYSTIC 計算後才可安裝。"
 )

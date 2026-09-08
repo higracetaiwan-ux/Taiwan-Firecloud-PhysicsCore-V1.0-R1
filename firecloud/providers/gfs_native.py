@@ -57,7 +57,18 @@ def resolve_run_and_lead(valid_time: datetime, now_utc: datetime | None = None) 
     the target is used. Forecast lead is rounded to the nearest 3 h.
     """
     target = _utc(valid_time)
-    now = _utc(now_utc or datetime.now(timezone.utc))
+    if now_utc is None:
+        frozen_now = str(os.getenv("FIRECLOUD_PROVIDER_RESOLUTION_NOW_UTC", "") or "").strip()
+        if frozen_now:
+            try:
+                parsed = datetime.fromisoformat(frozen_now.replace("Z", "+00:00"))
+                now = _utc(parsed)
+            except Exception:
+                now = datetime.now(timezone.utc)
+        else:
+            now = datetime.now(timezone.utc)
+    else:
+        now = _utc(now_utc)
     anchor = min(target, now - timedelta(hours=5))
     cycle_hour = max(h for h in (0,6,12,18) if h <= anchor.hour)
     run = anchor.replace(hour=cycle_hour, minute=0, second=0, microsecond=0)
