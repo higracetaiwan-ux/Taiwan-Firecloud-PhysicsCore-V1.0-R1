@@ -1,6 +1,19 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.25
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.26
 
 正式來源基線：**R5.7.22.1 ACCEPTED BASELINE**。
+
+
+## R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State
+
+R5.7.26 將「紅光有沒有來」與「有沒有雲接住紅光」正式拆成不同物理事實。新增不代表真實雲體的 Reference Receivers，在 Primary Canvas（0–40 km）與 Extended Canvas（40–100 km）區域，以六波段 550/575/600/650/700/750 nm、有限太陽盤 `DirectSolarFraction`、Gas/O₃、CAMS aerosol、上游 CloudScene blocker 與原生 3D hydrometeor/降水證據，診斷 `RED_LIGHT_PATH_OPEN / PARTIAL / BLOCKED / CONFLICT / UNKNOWN`。Reference receiver 永遠不會被提升成 Canvas，也不會自行建立 Firecloud Formation。
+
+若兩個 Canvas 域都沒有有效目標雲，target-specific `SPECTRAL_AEROSOL_PATH`、`SPECTRAL_CLOUD_PATH` 與 `FULL_SPECTRAL_RT` 皆為 `NOT_APPLICABLE`，而不是 Missing。若同時 Red-Light path 證據完整且通道 Open，Formation 的無雲情境會明確輸出 `CLEAR_RED_PATH_NO_CANVAS`；這代表「光路好，但沒有畫布」，不是火燒雲形成，也不是資料不足。`Unused Red-Light Potential` 僅為未校準連續診斷量，不是 Physics Score。Glow/Twilight Glow 仍是獨立第三分支，Viewing 仍是 Cloud→Observer。
+
+只有在 Cloud Geometry completeness 完整時，「0 個 Canvas candidates」才可正式提升為 `ABSENT / NO_CANVAS`；若雲幾何本身 Partial/Missing，則輸出 `CANVAS_AVAILABILITY_UNKNOWN`，避免把資料不足誤當成晴空。
+
+本版 regression：**456 passed / 0 failed**（正式封裝前 working tree；FULL-CLEAN 解壓驗收見本版 Release Notes）。
+
+**凍結關係：** `Red-Light Availability != Firecloud Formation != Viewing != Glow`。真正 Formation 仍需要 Red-Light Availability × Effective Canvas Availability × Canvas Optical Response。
 
 ## R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness
 

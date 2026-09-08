@@ -1087,7 +1087,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + Penumbra RT Applicability + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1098,7 +1098,7 @@ COLUMN_ZH = {
     "twilight_phase": "曙暮光階段",
     "core_score_eligible": "核心評分資格",
     "late_glow_diagnostic": "晚霞／三燒診斷",
-    "physics_score": "物理潛力 (%)",
+    "physics_score": "Legacy physics_score（診斷，不作 Formation 決策）",
     "visual_magnitude": "視覺規模代理 (%)",
     "data_completeness": "資料完整率 (%)",
     "operational_decision": "出勤判定",
@@ -1765,6 +1765,24 @@ if run or st.session_state.analysis_result is not None:
 
     _r4_canvas = result.get("v1_canvas_radiance", pd.DataFrame())
     _r4_form = result.get("v1_formation", pd.DataFrame())
+    _red_ref = result.get("v1_red_light_reference", pd.DataFrame())
+    _red_sum = result.get("v1_red_light_availability_summary", pd.DataFrame())
+    if not _red_sum.empty:
+        st.markdown("#### Red-Light Availability（獨立於 Canvas）")
+        st.caption("這裡只回答：如果 0–40 km／40–100 km 前方區域存在合適雲底，Sun→前方區域的紅橘光是否能抵達。Reference receiver 不是雲、不會建立火燒雲 Formation。Red-Light Availability ≠ Firecloud Formation。")
+        _rs = _red_sum[pd.to_numeric(_red_sum["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+        if not _rs.empty:
+            rr=_rs.iloc[0]
+            c1,c2,c3=st.columns(3)
+            c1.metric("紅光通道路徑", str(rr.get("red_light_path_state","UNKNOWN")))
+            c2.metric("0–40 km 主畫布", str(rr.get("primary_canvas_state","UNKNOWN")))
+            c3.metric("40–100 km 延伸畫布", str(rr.get("extended_canvas_state","UNKNOWN")))
+            st.info(f"Formation 情境：{rr.get('formation_context_state','UNKNOWN')}｜Unused Red-Light Potential（未校準診斷）：" + (f"{float(rr.get('unused_red_light_potential'))*100:.1f}%" if pd.notna(rr.get('unused_red_light_potential')) else "N/A"))
+            st.dataframe(localized_df(_rs), use_container_width=True, hide_index=True)
+        if not _red_ref.empty:
+            with st.expander("Red-Light Reference Receivers（非 Canvas）", expanded=False):
+                _rrf=_red_ref[pd.to_numeric(_red_ref["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
+                st.dataframe(localized_df(_rrf), use_container_width=True, hide_index=True)
     if not _r4_form.empty:
         st.markdown("#### R4 Formation（三維分量分離，不使用單一分數）")
         _fshow = _r4_form[pd.to_numeric(_r4_form["solar_altitude_deg"], errors="coerce").eq(float(diagnostic_angle))].copy()
@@ -2227,6 +2245,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_optical_bottlenecks.csv", result.get("v1_optical_bottlenecks", pd.DataFrame())),
             ("v1_canvas_radiance_550_750nm.csv", result.get("v1_canvas_radiance", pd.DataFrame())),
             ("v1_formation.csv", result.get("v1_formation", pd.DataFrame())),
+            ("v1_red_light_reference_550_750nm.csv", result.get("v1_red_light_reference", pd.DataFrame())),
+            ("v1_red_light_availability_summary.csv", result.get("v1_red_light_availability_summary", pd.DataFrame())),
             ("v1_viewing_path_geometry.csv", result.get("v1_viewing_path_geometry", pd.DataFrame())),
             ("v1_viewing_summary.csv", result.get("v1_viewing_summary", pd.DataFrame())),
             ("v1_viewing_precipitation_evidence.csv", result.get("v1_viewing_precipitation_evidence", pd.DataFrame())),
@@ -2378,7 +2398,8 @@ if run or st.session_state.analysis_result is not None:
 
 st.divider()
 st.caption(
-    "R5.7.25 為完整替換部署版本；本版統一 Formation Sun→CloudBase 的 Cloud Optical Path 完整性判定，修正 finite native tau 在 path incomplete 時被誤當完整 transmission，以及 penumbra 中 Canvas-base DirectSolarFraction 被 native voxel-centre illumination 錯誤否決的問題。"
-    "Cloud Path / Full Spectral RT 在本版均明確屬於 Formation（紅光照射到雲）；Viewing 仍由獨立 Cloud→Observer 分支判定觀測者是否看得到。並完整保留 R5.7.24.x Runtime Reliability / Provider Cycle Freeze。"
+    "R5.7.26 為完整替換部署版本；本版新增獨立於真實 Canvas 的 Red-Light Availability reference receivers，正式區分『紅光能否抵達前方區域』與『是否有有效 Canvas』。"
+    "當 Primary 0–40 km 與 Extended 40–100 km 都沒有有效 Canvas，而 reference path 證據完整且紅光通道成立時，Formation 輸出 CLEAR_RED_PATH_NO_CANVAS；不再誤列 UNKNOWN / DATA INCOMPLETE，也不會把霞光或紅光潛力誤當火燒雲 Formation。"
+    "No Canvas 時 target-specific SPECTRAL_CLOUD_PATH / SPECTRAL_AEROSOL_PATH / Full Spectral RT 均為 NOT_APPLICABLE；Viewing 仍由獨立 Cloud→Observer 分支判定。並完整保留 R5.7.25 與 R5.7.24.x 的既有修正。"
     "Genuine calibrated liquid-cloud directional LUT 仍須外部 libRadtran/MYSTIC 計算後才可安裝。"
 )

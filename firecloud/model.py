@@ -63,6 +63,10 @@ from .providers.ecmwf_ifs_native import fetch_route_secondary_target_optics as f
 from .providers.dwd_icon_native import fetch_route_secondary_target_optics as fetch_icon_secondary_target_optics, provider_status as dwd_icon_provider_status
 from .v1_runtime import build_r2_geometry_tables
 from .optical_path import build_r3_optical_tables
+from .red_light_availability import (
+    build_red_light_reference_evidence, summarize_red_light_availability,
+    apply_red_light_context_to_formation, apply_red_light_context_to_headline_summary,
+)
 from .formation import build_r4_formation_tables
 from .target_canvas_optics import (
     build_target_canvas_optical_evidence, summarize_target_canvas_optical_evidence,
@@ -1360,6 +1364,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_canvas_optical_suitability_summary_frames = []
     v1_secondary_target_optics_frames = []
     v1_formation_gate_frames = []
+    v1_red_light_reference_frames = []
     # Small per-angle readiness rows are computed before large atmospheric and
     # spectral frames are spooled.  This removes the former reason for keeping
     # gas/aerosol/spectral DataFrames resident until the final aggregation.
@@ -1962,6 +1967,37 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             pd.Timestamp(t.replace(tzinfo=None)), (pd.DataFrame(), {"status":"UNAVAILABLE"})
         )
         _secondary_validated = validate_secondary_forecast_optical_evidence(_secondary_forecast_optics)
+
+        # R5.7.26: Red-Light Availability exists independently of actual Canvas.
+        # Small virtual receiving surfaces in the 0–40 / 40–100 km regions ask
+        # whether the six-band Sun→forward-region field could reach a suitable
+        # cloud base *if one existed*.  They are never promoted to Canvas.
+        _red_ref_t0 = perf_counter()
+        _cloud_geom_comp = 0.0
+        _v1_dep_now = _v1.get("dependency_status", pd.DataFrame())
+        if _v1_dep_now is not None and not _v1_dep_now.empty and {"dependency","completeness"}.issubset(_v1_dep_now.columns):
+            _cg = _v1_dep_now[_v1_dep_now["dependency"].astype(str).eq("CLOUD_GEOMETRY")]
+            if not _cg.empty:
+                _cv = pd.to_numeric(_cg["completeness"], errors="coerce").dropna()
+                _cloud_geom_comp = float(_cv.iloc[0]) if len(_cv) else 0.0
+        _red_ref = build_red_light_reference_evidence(
+            native_optical_voxels=native_optical_voxels,
+            scene=_v1["scene"], route_snapshot=snap,
+            aerosol_spectral_snapshot=aerosol_spectral_snap,
+            cams_native_aerosol_snapshot=cams_aerosol_snap,
+            gas_profile=gas_profile, solar_altitude_deg=float(angle),
+            earth_radius_km=cfg.earth_radius_km, valid_time=t,
+            secondary_forecast_optics=_secondary_validated,
+            cloud_geometry_completeness=_cloud_geom_comp,
+            gas_prepared_context=gas_rt_context,
+        )
+        if _red_ref is not None and not _red_ref.empty:
+            v1_red_light_reference_frames.append(_red_ref)
+        performance_rows.append({"time": t, "solar_altitude_deg": float(angle),
+            "stage":"RED_LIGHT_REFERENCE_AVAILABILITY",
+            "elapsed_seconds":perf_counter()-_red_ref_t0, "cache_status":"COMPUTED",
+            "detail":f"reference_receivers={len(_red_ref) if isinstance(_red_ref,pd.DataFrame) else 0}; canvas_independent=true"})
+
         _r3 = build_r3_optical_tables(
             scene=_v1["scene"],
             canvases=_v1.get("canvas_objects", ()),
@@ -2380,7 +2416,14 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_optical_bottlenecks = _concat_release(v1_optical_bottleneck_frames)
     v1_canvas_radiance = _concat_release(v1_canvas_radiance_frames)
     v1_formation = _concat_release(v1_formation_frames)
-    _aggregation_checkpoint("V1 Formation 證據矩陣完成", v1_cloud_layers=v1_cloud_layers, v1_canvas_candidates=v1_canvas_candidates, v1_spectral_optical_paths=v1_spectral_optical_paths)
+    v1_red_light_reference = _concat_release(v1_red_light_reference_frames)
+    v1_red_light_availability_summary = summarize_red_light_availability(
+        v1_red_light_reference, v1_canvas_candidates
+    )
+    v1_formation = apply_red_light_context_to_formation(
+        v1_formation, v1_red_light_availability_summary
+    )
+    _aggregation_checkpoint("V1 Formation 證據矩陣完成", v1_cloud_layers=v1_cloud_layers, v1_canvas_candidates=v1_canvas_candidates, v1_spectral_optical_paths=v1_spectral_optical_paths, v1_red_light_reference=v1_red_light_reference)
     collect_and_trim()
     # PhysicsCore V1.0-R5.7: projected-volume Cloud→Observer Viewing plus an
     # independent six-band viewing extinction branch. No Sun→CloudBase optical
@@ -2456,6 +2499,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         _fr = v1_formation[pd.to_numeric(v1_formation.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_formation.empty else pd.DataFrame()
         _vw = v1_viewing_summary[pd.to_numeric(v1_viewing_summary.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_viewing_summary.empty else pd.DataFrame()
         _pd = v1_photography_decision[pd.to_numeric(v1_photography_decision.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_photography_decision.empty else pd.DataFrame()
+        _rl = v1_red_light_availability_summary[pd.to_numeric(v1_red_light_availability_summary.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_red_light_availability_summary.empty else pd.DataFrame()
         _v1_summary_rows.append({
             "time": _time, "solar_altitude_deg": _a, "solar_azimuth_deg": float(_az),
             "cloud_layer_count": int(len(_cl)), "canvas_candidate_count": int(len(_ca)),
@@ -2477,6 +2521,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "view_obstruction_fraction_proxy": (float(_vw.iloc[0]["mean_view_obstruction_fraction_proxy"]) if not _vw.empty and pd.notna(_vw.iloc[0]["mean_view_obstruction_fraction_proxy"]) else float("nan")),
             "photography_opportunity": (str(_pd.iloc[0]["photography_opportunity"]) if not _pd.empty else "UNKNOWN"),
             "photography_outcome": (str(_pd.iloc[0]["photography_outcome"]) if not _pd.empty else "PHOTOGRAPHY_OUTCOME_UNKNOWN"),
+            "red_light_path_state": (str(_rl.iloc[0]["red_light_path_state"]) if not _rl.empty else "RED_LIGHT_PATH_UNKNOWN"),
+            "primary_red_light_path_state": (str(_rl.iloc[0]["primary_red_light_path_state"]) if not _rl.empty else "RED_LIGHT_PATH_UNKNOWN"),
+            "extended_red_light_path_state": (str(_rl.iloc[0]["extended_red_light_path_state"]) if not _rl.empty else "RED_LIGHT_PATH_UNKNOWN"),
+            "formation_context_state": (str(_rl.iloc[0]["formation_context_state"]) if not _rl.empty else "UNKNOWN"),
+            "primary_canvas_state": (str(_rl.iloc[0]["primary_canvas_state"]) if not _rl.empty else "UNKNOWN"),
+            "extended_canvas_state": (str(_rl.iloc[0]["extended_canvas_state"]) if not _rl.empty else "UNKNOWN"),
+            "unused_red_light_potential": (float(_rl.iloc[0]["unused_red_light_potential"]) if not _rl.empty and pd.notna(_rl.iloc[0]["unused_red_light_potential"]) else float("nan")),
         })
     v1_core_summary = pd.DataFrame(_v1_summary_rows)
 
@@ -2542,6 +2593,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             }).fillna("DIAGNOSTIC")
             _dep = _dep[[c for c in ["time","solar_altitude_deg","dependency","status","evidence_state","completeness","criticality","affected_outputs","provider","missing_reason"] if c in _dep.columns]]
             v1_dependency_status = pd.concat([v1_dependency_status, _dep], ignore_index=True, sort=False)
+
+    # R5.7.26 Red-Light Availability bridge.  This does not revive a single
+    # score.  It only distinguishes "bad/unknown light" from the physically
+    # different outcome "red light available but no effective Canvas".
+    summary = apply_red_light_context_to_headline_summary(
+        summary, v1_red_light_availability_summary
+    )
 
     # Re-rank only after the real mandatory-layer completeness gate has been
     # propagated into summary. Physically scored but data-incomplete candidates
@@ -2678,6 +2736,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "performance_diagnostics": pd.DataFrame(performance_rows),
         "v1_canvas_candidates": v1_canvas_candidates,
         "v1_spectral_optical_paths": v1_spectral_optical_paths,
+        "physics_data_completeness": physics_data_completeness,
+        "v1_red_light_reference": v1_red_light_reference,
+        "v1_red_light_availability_summary": v1_red_light_availability_summary,
+        "summary": summary,
         "details": details,
     }
     analysis_integrity_audit = build_analysis_integrity_audit(_pre_integrity_result)
@@ -2735,6 +2797,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_optical_bottlenecks": v1_optical_bottlenecks,
         "v1_canvas_radiance": v1_canvas_radiance,
         "v1_formation": v1_formation,
+        "v1_red_light_reference": v1_red_light_reference,
+        "v1_red_light_availability_summary": v1_red_light_availability_summary,
         "v1_viewing_path_geometry": v1_viewing_path_geometry,
         "v1_viewing_summary": v1_viewing_summary,
         "v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence,
@@ -2935,6 +2999,7 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
             if rt_req_known and direct_sunlit_canvas_count <= 0:
                 _na_reason = "NO_TARGET_CLOUD_GEOMETRY" if canvas_count <= 0 else "NO_DIRECT_SUNLIT_CANVAS_RT_REQUIRED"
                 spectral_aerosol_c=1.0; spectral_aerosol_status="NOT_APPLICABLE"; spectral_aerosol_reason=_na_reason
+                spectral_cloud_c=1.0; spectral_cloud_status="NOT_APPLICABLE"; spectral_cloud_reason=_na_reason
                 full_c=1.0; full_status="NOT_APPLICABLE"; full_reason=_na_reason
                 diagnostic_full_c=1.0; diagnostic_status="NOT_APPLICABLE"; diagnostic_reason="NO_SPECTRAL_RT_TARGET_ROWS"
             else:
@@ -3086,6 +3151,16 @@ def _build_physics_data_completeness(details: dict, candidates, base_summary: pd
                     full_status="PARTIAL"; full_reason="V1_FULL_RT_BLOCKED_BY_PARTIAL_CLOUD_PATH_EVIDENCE"
                 else:
                     full_status="MISSING"; full_reason="V1_FULL_RT_BLOCKED;" + spectral_cloud_reason
+
+        # R5.7.26 semantic closure: when there is no direct-sunlit Canvas RT
+        # target, the Canvas-specific cloud path is NOT_APPLICABLE, not Missing.
+        # Red-Light Availability is evaluated separately on virtual reference
+        # receivers and must not be conflated with target-dependent Formation RT.
+        if rt_req_known and direct_sunlit_canvas_count <= 0:
+            _na_reason = "NO_TARGET_CLOUD_GEOMETRY" if canvas_count <= 0 else "NO_DIRECT_SUNLIT_CANVAS_RT_REQUIRED"
+            spectral_cloud_c=1.0; spectral_cloud_status="NOT_APPLICABLE"; spectral_cloud_reason=_na_reason
+            spectral_aerosol_c=1.0; spectral_aerosol_status="NOT_APPLICABLE"; spectral_aerosol_reason=_na_reason
+            full_c=1.0; full_status="NOT_APPLICABLE"; full_reason=_na_reason
 
         # Explicit vertical-domain audit: current Open-Meteo/CAMS gas profile tops
         # are real pressure-level data and are not extrapolated upward.

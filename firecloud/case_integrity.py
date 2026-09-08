@@ -127,6 +127,9 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     canvas = _df(result.get("v1_canvas_candidates"))
     spectral = _df(result.get("v1_spectral_optical_paths"))
     completeness = _df(result.get("physics_data_completeness"))
+    red_ref = _df(result.get("v1_red_light_reference"))
+    red_sum = _df(result.get("v1_red_light_availability_summary"))
+    headline = _df(result.get("summary"))
 
     add("ROUTE_POINTS_PRESENT", PASS if not route.empty else FAIL, "ROUTE", _rows(route), ">0 rows")
     if not route_ref.empty:
@@ -226,6 +229,30 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add("TARGET_DEPENDENT_SPECTRAL_EMPTY", ALLOWED_EMPTY if spectral.empty else PASS, "FORMATION_RT", _rows(spectral), "empty allowed when no canvas candidates", "No-canvas is a physical outcome; an empty target-dependent RT table is not CASE corruption")
     else:
         add("TARGET_DEPENDENT_SPECTRAL_EVIDENCE", PASS if not spectral.empty else WARN, "FORMATION_RT", _rows(spectral), ">0 rows when canvas candidates exist", "May remain partial/missing optically, but evidence table should normally exist")
+
+    # R5.7.26 Red-Light Availability / no-Canvas semantic closure.
+    if not red_sum.empty:
+        add("RED_LIGHT_REFERENCE_EVIDENCE_PRESENT", PASS if not red_ref.empty else FAIL, "RED_LIGHT_AVAILABILITY", _rows(red_ref), ">0 virtual reference-receiver rows", "Reference receivers are not Canvas and must not create Formation")
+        if {"solar_altitude_deg","primary_canvas_count","extended_canvas_count","formation_context_state"}.issubset(red_sum.columns):
+            no_canvas = red_sum[(pd.to_numeric(red_sum["primary_canvas_count"],errors="coerce").fillna(0)==0) & (pd.to_numeric(red_sum["extended_canvas_count"],errors="coerce").fillna(0)==0)]
+            if not no_canvas.empty and not completeness.empty and {"solar_altitude_deg","layer","status"}.issubset(completeness.columns):
+                bad=[]
+                for a in pd.to_numeric(no_canvas["solar_altitude_deg"],errors="coerce").dropna().tolist():
+                    q=completeness[(pd.to_numeric(completeness["solar_altitude_deg"],errors="coerce")-float(a)).abs()<=1e-9]
+                    q=q[q["layer"].astype(str).eq("SPECTRAL_CLOUD_PATH")]
+                    if q.empty or not q["status"].astype(str).eq("NOT_APPLICABLE").all():
+                        bad.append(float(a))
+                add("NO_CANVAS_CLOUD_PATH_NOT_APPLICABLE", PASS if not bad else FAIL, "FORMATION_RT", str(bad), "SPECTRAL_CLOUD_PATH=NOT_APPLICABLE for every no-Canvas angle", "Missing != Not Applicable")
+            clear = no_canvas[no_canvas["formation_context_state"].astype(str).eq("CLEAR_RED_PATH_NO_CANVAS")]
+            if not clear.empty and not headline.empty and {"solar_altitude_deg","operational_decision"}.issubset(headline.columns):
+                mismatch=[]
+                for a in pd.to_numeric(clear["solar_altitude_deg"],errors="coerce").dropna().tolist():
+                    q=headline[(pd.to_numeric(headline["solar_altitude_deg"],errors="coerce")-float(a)).abs()<=1e-9]
+                    if q.empty or not q["operational_decision"].astype(str).eq("CLEAR_RED_PATH_NO_CANVAS").all():
+                        mismatch.append(float(a))
+                add("CLEAR_RED_PATH_NO_CANVAS_SUMMARY_PROPAGATION", PASS if not mismatch else FAIL, "FORMATION_SUMMARY", str(mismatch), "headline summary preserves CLEAR_RED_PATH_NO_CANVAS", "Red-Light Availability != Firecloud Formation")
+    else:
+        add("RED_LIGHT_REFERENCE_EVIDENCE_PRESENT", WARN, "RED_LIGHT_AVAILABILITY", 0, "R5.7.26+ CASE exports reference-receiver evidence; legacy/minimal fixtures may omit it")
 
     # R5.7.25: the exported FULL_SPECTRAL_RT readiness must agree with the
     # Canvas-specific V1 Sun→CloudBase OpticalPathResult.  This detects the

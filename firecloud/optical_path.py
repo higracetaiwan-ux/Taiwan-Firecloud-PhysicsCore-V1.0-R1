@@ -769,3 +769,138 @@ def build_r3_optical_tables(
         "uncertainty": pd.DataFrame(uncertainty_rows),
         "optical_bottlenecks": pd.DataFrame(bottleneck_rows),
     }
+
+
+def build_reference_receiver_cloud_path_evidence(
+    scene: CloudScene,
+    reference_receivers: pd.DataFrame,
+    *,
+    solar_altitude_deg: float,
+    earth_radius_km: float,
+    secondary_forecast_optics: Optional[pd.DataFrame] = None,
+    cloud_geometry_completeness: float = 1.0,
+) -> pd.DataFrame:
+    """Resolve upstream cloud blocking for *virtual* Formation receivers.
+
+    R5.7.26 Red-Light Availability must answer a question that exists even when
+    there is no actual Canvas cloud: "if a suitable cloud base existed at this
+    reference location/height, could direct red/orange sunlight reach it?"
+
+    The reference receiver is therefore NOT a cloud and is never counted as a
+    Canvas.  Existing CloudScene layers at distances strictly upstream of the
+    receiver are tested with the same native/secondary optical-support contract
+    used by actual Sun→CloudBase paths.  Cloud fraction/RH never fabricate COT.
+
+    A no-intersection result is promoted to FULL clear evidence only when the
+    CloudScene geometry dependency is complete.  Otherwise it remains MISSING.
+    """
+    cols = [
+        "reference_receiver_id", "direction_offset_deg", "distance_km",
+        "reference_cloud_base_km", "sampled_receiver_altitude_km",
+        "cloud_path_evidence_state", "cloud_path_status",
+        "resolved_upstream_cloud_tau", "resolved_upstream_cloud_transmission",
+        "upstream_cloud_intersection_count", "resolved_cloud_intersection_count",
+        "direct_evidence_conflict_count", "partial_cloud_evidence_count",
+        "missing_cloud_evidence_count", "cloud_geometry_completeness",
+        "cloud_path_note",
+    ]
+    if reference_receivers is None or reference_receivers.empty:
+        return pd.DataFrame(columns=cols)
+
+    path_view = _path_optical_layer_view(scene, secondary_forecast_optics)
+    support_map = _native_horizontal_support(scene, path_view)
+    by_direction: dict[float, dict[float, list]] = {}
+    for layer in scene.layers:
+        by_direction.setdefault(float(layer.direction_offset_deg), {}).setdefault(float(layer.distance_km), []).append(layer)
+    sorted_distances = {off: sorted(nodes) for off, nodes in by_direction.items()}
+
+    rows: list[dict] = []
+    geom_complete = bool(_finite(cloud_geometry_completeness) and float(cloud_geometry_completeness) >= 0.999)
+    for _, rr in reference_receivers.iterrows():
+        rid = str(rr.get("reference_receiver_id"))
+        off = float(rr.get("direction_offset_deg"))
+        td = float(rr.get("distance_km"))
+        tz = float(rr.get("sampled_receiver_altitude_km", rr.get("reference_cloud_base_km")))
+        nodes = by_direction.get(off, {})
+        distances = sorted_distances.get(off, ())
+        # The reference receiver is hypothetical; an actual cloud exactly at the
+        # receiver distance would be the target, not an upstream blocker.
+        relevant = [d for d in distances if d > td + 1e-9]
+        tau_sum = 0.0
+        hits = resolved = conflicts = partial = missing = 0
+        centre_cache: dict[float, Optional[float]] = {}
+        for d in relevant:
+            for layer in nodes.get(d, ()):  # may contain multiple vertical layers
+                support = support_map.get(layer.layer_id, {})
+                pv = path_view.get(layer.layer_id, {})
+                if support.get("horizontal_support_resolved"):
+                    # Minimal receiver shim: helper only requires distance/base.
+                    class _Receiver:
+                        distance_km = td
+                        cloud_base_altitude_km = tz
+                    hit, _path, tau = _slant_intersection_through_supported_layer(
+                        _Receiver, layer, support, solar_altitude_deg, earth_radius_km,
+                        vertical_cot=pv.get("path_vertical_cot"),
+                    )
+                    if not hit:
+                        continue
+                    hits += 1
+                    if tau is not None and _finite(tau):
+                        tau_sum += max(0.0, float(tau)); resolved += 1
+                    else:
+                        missing += 1
+                    continue
+
+                if d not in centre_cache:
+                    centre_cache[d] = ray_altitude_km_at_surface_distance(
+                        td, tz, d, solar_altitude_deg, earth_radius_km
+                    )
+                z = centre_cache[d]
+                hit = bool(z is not None and _finite(z)
+                           and float(layer.z_base_km)-1e-9 <= float(z) <= float(layer.z_top_km)+1e-9)
+                if not hit:
+                    continue
+                hits += 1
+                ev, _reason = _classify_unresolved_cloud_intersection(layer, pv, support)
+                if ev == "DIRECT_EVIDENCE_CONFLICT":
+                    conflicts += 1
+                elif ev == "PARTIAL_OPTICS":
+                    partial += 1
+                else:
+                    missing += 1
+
+        if conflicts:
+            ev_state = "DIRECT_EVIDENCE_CONFLICT"; status = "REFERENCE_CLOUD_PATH_CONFLICT"
+            tau_out = float("nan"); trans = float("nan")
+        elif missing:
+            ev_state = "MISSING"; status = "REFERENCE_CLOUD_PATH_MISSING"
+            tau_out = float("nan"); trans = float("nan")
+        elif partial:
+            ev_state = "PARTIAL_OPTICS"; status = "REFERENCE_CLOUD_PATH_PARTIAL"
+            tau_out = float("nan"); trans = float("nan")
+        elif not geom_complete:
+            ev_state = "MISSING"; status = "REFERENCE_CLOUD_GEOMETRY_INCOMPLETE"
+            tau_out = float("nan"); trans = float("nan")
+        else:
+            ev_state = "FULL"; status = "REFERENCE_CLOUD_PATH_RESOLVED"
+            tau_out = float(tau_sum); trans = float(math.exp(-tau_sum))
+
+        rows.append({
+            "reference_receiver_id": rid,
+            "direction_offset_deg": off,
+            "distance_km": td,
+            "reference_cloud_base_km": float(rr.get("reference_cloud_base_km", tz)),
+            "sampled_receiver_altitude_km": tz,
+            "cloud_path_evidence_state": ev_state,
+            "cloud_path_status": status,
+            "resolved_upstream_cloud_tau": tau_out,
+            "resolved_upstream_cloud_transmission": trans,
+            "upstream_cloud_intersection_count": int(hits),
+            "resolved_cloud_intersection_count": int(resolved),
+            "direct_evidence_conflict_count": int(conflicts),
+            "partial_cloud_evidence_count": int(partial),
+            "missing_cloud_evidence_count": int(missing),
+            "cloud_geometry_completeness": float(cloud_geometry_completeness) if _finite(cloud_geometry_completeness) else float("nan"),
+            "cloud_path_note": "FORMATION_REFERENCE_RECEIVER_SUN_TO_REGION;REFERENCE_RECEIVER_IS_NOT_A_CLOUD;NO_CF_RH_TO_COT",
+        })
+    return pd.DataFrame(rows, columns=cols)
