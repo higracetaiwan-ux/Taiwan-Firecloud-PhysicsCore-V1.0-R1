@@ -1,4 +1,20 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.30
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.30.1
+
+
+## R5.7.30.1 Integrity Regression Restore + Packaging Continuity Hotfix
+
+R5.7.30 的 Twilight Glow 第三分支本身保留不變；本 hotfix 修正檢查時發現的
+Integrity regression：R5.7.29.1 已 field-pass 的
+`VIEWING_PRECIPITATION_TARGET_COVERAGE` 與
+`VIEWING_NATIVE_HYDROMETEOR_HANDOFF` 曾被弱化成只要求「>0 downstream rows」。
+R5.7.30.1 恢復完整 time + solar angle + canvas target coverage，並要求當
+RWMR/SNMR/GRLE 全部 READY 時，不得存在
+`VIEW_PRECIPITATION_VOLUME_UNRESOLVED`。
+
+同時恢復 R5.7.29.1 的 versioned release notes 與 spool-handoff spec，避免
+FULL-CLEAN 完整替換包遺失已凍結的歷史契約文件。Formation、Viewing extinction、
+Twilight Glow、Photography、13 angles、六波段、route resolution 與 provider policy
+均未改動。
 
 ## R5.7.30 Independent Twilight Glow Third Branch
 
@@ -20,12 +36,20 @@ integration 與 multiple scattering，因此相關狀態全部明列為 unresolv
 Glow 不建立 Canvas、不輸出 decision/score、不改寫 Formation，也不成為 Photography
 modifier。UI、權重、13 angles、route resolution 與 Forecast／Observation 邊界均未改動。
 
-## R5.7.29.1 Viewing precipitation spool-order hotfix
+## R5.7.29.1 Viewing Precipitation Spool Handoff Hotfix
 
-R5.7.29 真實部署 CASE 證明 RWMR、SNMR、GRLE 上游皆 READY，但 Viewing route
-snapshot 在讀回前已被 spool cleanup 移除，使 precipitation evidence 錯誤成為空表。
-R5.7.29.1 改為先讀回合併 native hydrometeor 後的 snapshot，再清理暫存，並新增
-`VIEWING_NATIVE_PRECIPITATION_HANDOFF` Integrity 硬檢查。Missing 仍不視為零。
+R5.7.29 真實部署 CASE 證明 GFS 已完整取得 RWMR/SNMR/GRLE，但
+`viewing_route_snapshot` 在 final aggregation 讀取前被
+`AngleFrameSpool.cleanup()` 刪除，造成 Viewing precipitation evidence 只有表頭，
+所有 target 的 precipitation component 都保持 unresolved。
+
+R5.7.29.1 將 cleanup 移到 Viewing snapshot drain 之後，並把 precipitation table
+交給 Analysis Integrity。新增 target coverage 與 native hydrometeor handoff 兩項
+硬檢查；當 RWMR/SNMR/GRLE 都為 READY，空 evidence table 或
+`VIEW_PRECIPITATION_VOLUME_UNRESOLVED` 不再能被整體 Integrity 誤判為 PASS。
+
+本 hotfix 不更改任何 extinction 公式、粒徑假設、Full RT 條件、Formation、Glow、
+Photography gate、13 angles、六波段、route resolution 或 provider policy。
 
 ## R5.7.29 Viewing Full Six-Band RT Closure
 
