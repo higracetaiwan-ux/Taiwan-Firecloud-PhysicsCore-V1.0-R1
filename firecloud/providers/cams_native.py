@@ -527,6 +527,9 @@ def download_ozone_subset(points: list[dict], valid_time: datetime, cache_dir: s
 def download_spectral_aod_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
     return _retrieve_request(points, valid_time, "SPECTRAL_COLUMN_AOD", build_ads_spectral_aod_request, cache_dir)
 
+def download_aerosol_scattering_properties_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
+    return _retrieve_request(points, valid_time, "AEROSOL_SCATTERING_COLUMN_PROPERTIES", build_ads_aerosol_scattering_properties_request, cache_dir)
+
 def _message_identity(gid, codes_get) -> dict:
     out = {}
     for key in ("shortName", "name", "paramId", "units", "typeOfLevel", "level"):
@@ -704,6 +707,105 @@ SPECTRAL_AOD_VARIABLES = {
     800: "total_aerosol_optical_depth_800nm",
 }
 
+
+
+AEROSOL_SCATTERING_PROPERTY_WAVELENGTHS_NM = (550, 645, 670, 800)
+AEROSOL_SCATTERING_AOD_VARIABLES = {
+    532: "total_aerosol_optical_depth_532nm",
+    550: "total_aerosol_optical_depth_550nm",
+    645: "total_aerosol_optical_depth_645nm",
+    670: "total_aerosol_optical_depth_670nm",
+    800: "total_aerosol_optical_depth_800nm",
+}
+AEROSOL_SCATTERING_SSA_VARIABLES = {
+    wl: f"single_scattering_albedo_{wl}nm" for wl in AEROSOL_SCATTERING_PROPERTY_WAVELENGTHS_NM
+}
+AEROSOL_SCATTERING_G_VARIABLES = {
+    wl: f"asymmetry_factor_{wl}nm" for wl in AEROSOL_SCATTERING_PROPERTY_WAVELENGTHS_NM
+}
+
+def build_ads_aerosol_scattering_properties_request(points: list[dict], valid_time: datetime) -> tuple[dict, dict]:
+    """CAMS column optical properties used only for Glow aerosol single scattering.
+
+    All variables in this role share one forecast valid time and one route bbox.
+    They remain column optical properties and are never promoted to a 3-D profile.
+    """
+    run, lead = resolve_cams_run_and_lead(valid_time)
+    variables = [
+        *AEROSOL_SCATTERING_AOD_VARIABLES.values(),
+        *AEROSOL_SCATTERING_SSA_VARIABLES.values(),
+        *AEROSOL_SCATTERING_G_VARIABLES.values(),
+    ]
+    request = {
+        "variable": variables,
+        "date": run.strftime("%Y-%m-%d"),
+        "time": run.strftime("%H:%M"),
+        "leadtime_hour": str(int(lead)),
+        "type": "forecast",
+        "area": route_bbox(points),
+        "data_format": "grib",
+    }
+    return request, {
+        "cams_run_utc": run.isoformat(),
+        "cams_forecast_hour": int(lead),
+        "request_role": "AEROSOL_SCATTERING_COLUMN_PROPERTIES",
+    }
+
+def _aerosol_scattering_property_from_message(gid, codes_get):
+    parts=[]
+    for key in ("shortName", "name"):
+        try: parts.append(str(codes_get(gid,key)).lower())
+        except Exception: pass
+    text=" ".join(parts)
+    compact=text.replace(" ", "").replace("_", "")
+    for wl in AEROSOL_SCATTERING_AOD_VARIABLES:
+        if str(wl) in text and ("aod" in compact or ("aerosol" in text and "optical depth" in text)) and "absorption" not in text:
+            return "aod", int(wl)
+    for wl in AEROSOL_SCATTERING_PROPERTY_WAVELENGTHS_NM:
+        if str(wl) in text and ("ssa" in compact or "single scattering albedo" in text):
+            return "ssa", int(wl)
+        if str(wl) in text and ("asymmetry" in text or f"asymmetry{wl}" in compact):
+            return "asymmetry", int(wl)
+    return None, None
+
+def decode_grib_aerosol_scattering_properties_to_route(grib_path: str | Path, points: list[dict]) -> pd.DataFrame:
+    if not decoder_available():
+        raise RuntimeError("ecCodes decoder unavailable")
+    from eccodes import codes_grib_new_from_file, codes_get, codes_get_array, codes_release
+    recs={p["point_id"]:{
+        "point_id":p["point_id"], "distance_km":p.get("distance_km"),
+        "direction_offset_deg":p.get("direction_offset_deg"), "lat":p.get("lat"), "lon":p.get("lon"),
+        "cams_aerosol_scattering_property_source": PROVIDER_NAME,
+    } for p in points}
+    nearest_idx=None; grid_signature=None
+    with open(grib_path,"rb") as f:
+        while True:
+            gid=codes_grib_new_from_file(f)
+            if gid is None: break
+            try:
+                kind,wl=_aerosol_scattering_property_from_message(gid,codes_get)
+                if kind is None: continue
+                vals=np.asarray(codes_get_array(gid,"values"),dtype=float)
+                lats=np.asarray(codes_get_array(gid,"latitudes"),dtype=float)
+                lons=np.asarray(codes_get_array(gid,"longitudes"),dtype=float)
+                lons=np.where(lons>180,lons-360,lons)
+                sig=(len(vals),round(float(lats[0]),4),round(float(lons[0]),4))
+                if nearest_idx is None or sig!=grid_signature:
+                    nearest_idx=[]
+                    for pnt in points:
+                        d2=(lats-float(pnt["lat"]))**2 + ((lons-float(pnt["lon"]))*math.cos(math.radians(float(pnt["lat"]))))**2
+                        nearest_idx.append(int(np.nanargmin(d2)))
+                    grid_signature=sig
+                for pnt,j in zip(points,nearest_idx):
+                    v=float(vals[j])
+                    if not np.isfinite(v): v=np.nan
+                    elif kind=="aod": v=max(0.0,v)
+                    elif kind=="ssa": v=min(1.0,max(0.0,v))
+                    elif kind=="asymmetry": v=min(1.0,max(-1.0,v))
+                    recs[pnt["point_id"]][f"{kind}{wl}"]=v
+            finally:
+                codes_release(gid)
+    return pd.DataFrame(recs.values())
 
 def build_ads_spectral_aod_request(points: list[dict], valid_time: datetime) -> tuple[dict, dict]:
     run, lead = resolve_cams_run_and_lead(valid_time)
@@ -969,7 +1071,7 @@ def _write_cams_worker_checkpoint(role: str, status: str, *, elapsed_seconds: fl
 
 def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_time: datetime, cache_dir):
     try:
-        # All three CAMS roles use the same external worker contract.  Perform
+        # All CAMS roles use the same external worker contract.  Perform
         # the dependency/credential check before constructing a request so a
         # missing local runtime component cannot turn into a misleading ADS
         # wait (or trigger dozens of pointless adaptive children).
@@ -1025,6 +1127,19 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
                               "meta": smeta, "columns": have, "rows": len(df),
                               "inventory": inv.to_dict(orient="records") if not inv.empty else [],
                               "error": "" if len(have)>=2 else "CAMS_SPECTRAL_AOD_INCOMPLETE"})
+            return
+        if role == "AEROSOL_SCATTERING_COLUMN_PROPERTIES":
+            out, pmeta = download_aerosol_scattering_properties_subset(points, valid_time, cache_dir=cache_dir)
+            df=decode_grib_aerosol_scattering_properties_to_route(out, points)
+            required=["aod532","aod550","aod645","aod670","aod800",
+                      "ssa550","ssa645","ssa670","ssa800",
+                      "asymmetry550","asymmetry645","asymmetry670","asymmetry800"]
+            have=[c for c in required if c in df and df[c].notna().any()]
+            inv=inspect_grib_message_inventory(out)
+            _write_cams_worker_result(result_path, {"role": role, "status": "OK" if len(have)==len(required) else "INCOMPLETE", "df": df,
+                              "meta": pmeta, "columns": have, "rows": len(df),
+                              "inventory": inv.to_dict(orient="records") if not inv.empty else [],
+                              "error": "" if len(have)==len(required) else "CAMS_AEROSOL_SCATTERING_PROPERTIES_INCOMPLETE"})
             return
         raise ValueError(f"Unknown CAMS role: {role}")
     except AdsStatefulTimeout as exc:
@@ -1723,7 +1838,7 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
     if not points:
         return pd.DataFrame(), {"cams_request_planner":"WHOLE_ROUTE_FIRST_ADAPTIVE_SUBTILING","cams_route_requested_points":0,
                                 "cams_route_returned_points":0,"cams_route_point_completeness":0.0}
-    roles=["O3_PRESSURE_LEVEL","SPECTRAL_COLUMN_AOD","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL"]
+    roles=["O3_PRESSURE_LEVEL","SPECTRAL_COLUMN_AOD","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","AEROSOL_SCATTERING_COLUMN_PROPERTIES"]
     merged=pd.DataFrame(); all_audits=[]; all_inventory=[]; planner_rows=[]
     role_statuses={}; role_stats={}
     try:
@@ -1767,7 +1882,8 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
           "cams_planner_audit":planner_rows,
           "native_aerosol_status":role_statuses.get("NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","MISSING"),
           "native_ozone_status":role_statuses.get("O3_PRESSURE_LEVEL","MISSING"),
-          "cams_spectral_aod_status":role_statuses.get("SPECTRAL_COLUMN_AOD","MISSING")}
+          "cams_spectral_aod_status":role_statuses.get("SPECTRAL_COLUMN_AOD","MISSING"),
+          "cams_aerosol_scattering_properties_status":role_statuses.get("AEROSOL_SCATTERING_COLUMN_PROPERTIES","MISSING")}
 
     # Build an adaptive segment audit from every leaf/attempt.  This keeps the
     # existing CASE cams_tile_audit.csv useful without implying fixed 320-km tiles.

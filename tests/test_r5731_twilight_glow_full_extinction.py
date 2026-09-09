@@ -222,7 +222,8 @@ def test_phase1_production_handoff_and_case_members_are_explicit():
         "v1_viewing_spectral_summary.csv", "v1_twilight_glow_scattering_volume_550_750nm.csv",
         "v1_twilight_glow_sun_to_scatter_extinction_550_750nm.csv",
         "v1_twilight_glow_scatter_to_observer_extinction_550_750nm.csv",
-        "v1_twilight_glow_single_scattering_550_750nm.csv", "v1_twilight_glow_summary.csv",
+        "v1_twilight_glow_single_scattering_550_750nm.csv",
+        "v1_twilight_glow_aerosol_scattering_550_750nm.csv", "v1_twilight_glow_summary.csv",
         "v1_photography_decision.csv", "analysis_integrity_audit.csv",
     ]})
     audit = build_archive_integrity_audit(manifest, pd.DataFrame([{"status": "PASS"}]))

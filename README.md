@@ -1,4 +1,9 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.34
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.35
+
+## R5.7.35 Aerosol Scattering Physics Phase 1
+
+Adds independent Twilight Glow aerosol single-scattering evidence using CAMS native AOD/SSA/asymmetry factor, native 3-D aerext532, bounded six-band interpolation, and a clearly labeled Henyey-Greenstein phase approximation. Multiple scattering and calibrated absolute radiance remain unresolved.
+
 
 ## R5.7.34 CAMS ADS Stateful Deadline / Request-ID Recovery
 

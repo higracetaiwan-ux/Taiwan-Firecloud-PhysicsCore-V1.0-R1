@@ -19,4 +19,4 @@ def test_cams_ui_elapsed_is_scheduler_clock_driven():
     src = Path('firecloud/model.py').read_text(encoding='utf-8')
     assert '_cams_progress_started = {}' in src
     assert '_elapsed_ui = max(0.0, _now_mono - _started)' in src
-    assert 'RUNNING {_elapsed_ui:.0f}s / 90s' in src
+    assert 'RUNNING {_elapsed_ui:.0f}s / phased ADS deadline' in src

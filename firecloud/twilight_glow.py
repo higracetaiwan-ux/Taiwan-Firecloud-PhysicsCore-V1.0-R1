@@ -6,13 +6,11 @@ six-band atmospheric single-scattering diagnostic:
     Sun -> atmospheric scatter volume -> observer
 
 The branch deliberately does *not* create a cloud Canvas, alter Firecloud
-Formation, or reuse Cloud->Observer results as a Formation score.  With the
-current forecast inputs it can resolve molecular (Rayleigh) single-scattering
-source coefficients and both extinction paths.  Aerosol source scattering
-still requires single-scattering albedo and a phase function, while absolute
-sky radiance additionally requires calibrated angular-volume integration and
-multiple scattering.  Those unavailable terms remain explicit instead of
-being fabricated from AOD or relative humidity.
+Formation, or reuse Cloud->Observer results as a Formation score.  With the current forecast inputs it resolves molecular (Rayleigh) single-scattering
+source coefficients and both extinction paths. R5.7.35 adds an independent
+aerosol single-scattering evidence table using CAMS native column SSA/asymmetry
+and native 3-D extinction. Absolute sky radiance still requires multiple
+scattering and radiometric calibration; unavailable terms remain explicit.
 """
 from __future__ import annotations
 
@@ -34,6 +32,7 @@ from .viewing_spectral import (
     _evidence_key,
     _projected_support_interval,
     sample_observer_los_segment,
+    _interp_aerosol_ext532_with_endpoint,
 )
 
 
@@ -42,11 +41,17 @@ TWILIGHT_GLOW_EXTINCTION_CONTRACT = "R5.7.31_SUN_SCATTER_OBSERVER_SIX_BAND_EXTIN
 TWILIGHT_GLOW_SINGLE_SCATTERING_CONTRACT = "R5.7.31_RAYLEIGH_SINGLE_SCATTERING_SPECTRAL_PROXY_V1"
 GLOW_VOLUME_DOMAIN = "FORWARD_ATMOSPHERE_10_100KM_4_12KM"
 GLOW_PROXY_UNITS = "RELATIVE_INCIDENT_IRRADIANCE_PER_M_SR"
-NO_TOTAL_RADIANCE_CLAIM = "NOT_RESOLVED_AEROSOL_SSA_PHASE_AND_MULTIPLE_SCATTERING_REQUIRED"
-NO_AEROSOL_SOURCE_CLAIM = "NOT_RESOLVED_NO_SSA_OR_PHASE_FUNCTION"
+NO_TOTAL_RADIANCE_CLAIM = "NOT_RESOLVED_MULTIPLE_SCATTERING_AND_ABSOLUTE_CALIBRATION_REQUIRED"
+NO_AEROSOL_SOURCE_CLAIM = "R5.7.35_AEROSOL_SCATTERING_EVIDENCE_IN_SEPARATE_TABLE"
 NO_MULTIPLE_SCATTERING_CLAIM = "NOT_RESOLVED_NO_CALIBRATED_ATMOSPHERIC_RT"
 GLOW_DEEP_RANGE_CLOSURE_CONTRACT = "R5.7.33_DEEP_RANGE_MOLECULAR_BOUNDARY_AND_CLOUD_CONFLICT_PRESERVATION_V1"
 GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM = DEFAULT_PROFILE_BOUNDARY_TOLERANCE_KM
+
+AEROSOL_SCATTERING_PHASE1_CONTRACT = "R5.7.35_CAMS_NATIVE_SSA_G_HG_SINGLE_SCATTERING_PHASE1_V1"
+AEROSOL_COLUMN_PROPERTY_WAVELENGTHS_NM = (550, 645, 670, 800)
+AEROSOL_PHASE_FUNCTION_MODEL = "HENYEY_GREENSTEIN_FROM_NATIVE_ASYMMETRY_FACTOR"
+AEROSOL_VERTICAL_PROPERTY_CONTRACT = "COLUMN_SSA_G_APPLIED_TO_NATIVE_3D_EXTINCTION"
+AEROSOL_SCATTERING_PROXY_UNITS = "RELATIVE_INCIDENT_IRRADIANCE_PER_M_SR"
 
 _STANDARD_PRESSURE_PA = 101325.0
 _STANDARD_GRAVITY_M_S2 = 9.80665
@@ -956,6 +961,183 @@ def build_twilight_glow_branch(
     detail = pd.DataFrame(rows)
     return detail, summarize_twilight_glow(detail, event_timeline)
 
+
+
+def heney_greenstein_phase_function_sr(scattering_angle_deg: float, asymmetry_g: float) -> float:
+    """Normalized Henyey-Greenstein phase approximation from provider-native g."""
+    theta=math.radians(float(scattering_angle_deg)); g=float(asymmetry_g)
+    if not math.isfinite(g) or g < -1.0 or g > 1.0:
+        return float("nan")
+    denom=max(1e-15, 1.0 + g*g - 2.0*g*math.cos(theta))
+    return (1.0-g*g)/(4.0*math.pi*denom**1.5)
+
+
+def _bounded_property_at_wavelength(row: pd.Series, prefix: str, wavelength_nm: int, *, log_space: bool=False):
+    """Return exact/bounded-native property only; never extrapolate."""
+    wl=float(wavelength_nm)
+    known=[]
+    if prefix == "aod":
+        candidates=(532,550,645,670,800)
+    else:
+        candidates=AEROSOL_COLUMN_PROPERTY_WAVELENGTHS_NM
+    for src_w in candidates:
+        v=_finite(row.get(f"{prefix}{src_w}"))
+        if v is not None:
+            known.append((float(src_w), float(v)))
+    for src_w,v in known:
+        if abs(src_w-wl) <= 1e-9:
+            return v, f"EXACT_NATIVE_{int(src_w)}NM"
+    lower=[x for x in known if x[0] < wl]
+    upper=[x for x in known if x[0] > wl]
+    if not lower or not upper:
+        return None, "MISSING_NO_NATIVE_BRACKET"
+    w1,v1=max(lower,key=lambda x:x[0]); w2,v2=min(upper,key=lambda x:x[0])
+    if log_space:
+        if v1 <= 0.0 or v2 <= 0.0:
+            return None, "MISSING_NONPOSITIVE_NATIVE_BRACKET"
+        x=(math.log(wl)-math.log(w1))/(math.log(w2)-math.log(w1))
+        value=math.exp(math.log(v1)+x*(math.log(v2)-math.log(v1)))
+    else:
+        x=(wl-w1)/(w2-w1); value=v1+x*(v2-v1)
+    return float(value), f"BOUNDED_NATIVE_{int(w1)}_{int(w2)}NM"
+
+
+def _glow_route_group_map(df: pd.DataFrame):
+    out={}
+    if df is None or df.empty:
+        return out
+    q=df.copy()
+    q["solar_altitude_deg"]=pd.to_numeric(q.get("solar_altitude_deg"),errors="coerce").round(8)
+    q["direction_offset_deg"]=pd.to_numeric(q.get("direction_offset_deg"),errors="coerce").round(8)
+    q["distance_km"]=pd.to_numeric(q.get("distance_km"),errors="coerce")
+    for keys,g in q.groupby([q.get("time",pd.Series("",index=q.index)).astype(str),"solar_altitude_deg","direction_offset_deg"],dropna=False,sort=False):
+        t,a,d=keys
+        if pd.isna(a) or pd.isna(d): continue
+        out[(str(t),round(float(a),8),round(float(d),8))]=g.sort_values("distance_km")
+    return out
+
+
+def build_twilight_glow_aerosol_scattering(detail: pd.DataFrame, cams_native_snapshots: pd.DataFrame) -> pd.DataFrame:
+    """R5.7.35 aerosol single-scattering source evidence for every Glow volume.
+
+    Native 3-D aerext532 supplies the vertical extinction state. CAMS column
+    AOD/SSA/asymmetry only supply spectral/particle optical properties; they are
+    never interpreted as a 3-D profile.  HG is an explicit phase approximation.
+    """
+    if detail is None or detail.empty:
+        return pd.DataFrame()
+    groups=_glow_route_group_map(cams_native_snapshots)
+    rows=[]
+    for _,src in detail.iterrows():
+        rec={c:src.get(c) for c in (
+            "time","solar_altitude_deg","solar_azimuth_deg","glow_volume_id","reference_receiver_id",
+            "direction_offset_deg","distance_km","scatter_altitude_km","target_lat","target_lon","scattering_angle_deg"
+        )}
+        angle=_finite(src.get("solar_altitude_deg")); direction=_finite(src.get("direction_offset_deg")); dist=_finite(src.get("distance_km")); alt=_finite(src.get("scatter_altitude_km")); scat=_finite(src.get("scattering_angle_deg"))
+        key=(str(src.get("time")), None if angle is None else round(angle,8), None if direction is None else round(direction,8))
+        route=groups.get(key,pd.DataFrame())
+        row=None
+        if not route.empty and dist is not None:
+            dd=pd.to_numeric(route["distance_km"],errors="coerce")
+            if dd.notna().any(): row=route.loc[(dd-float(dist)).abs().idxmin()]
+        beta532=None; beta532_snap=False
+        if row is not None and alt is not None:
+            beta532,beta532_snap=_interp_aerosol_ext532_with_endpoint(row,float(alt),0.0)
+        aod532=_finite(row.get("aod532")) if row is not None else None
+        property_source=str(row.get("cams_aerosol_scattering_property_source") or "") if row is not None else ""
+        base_state="GLOW_AEROSOL_SCATTERING_UNRESOLVED"
+        missing=[]
+        conflict=False
+        if row is None: missing.append("ROUTE_PROPERTY_ROW")
+        if beta532 is None: missing.append("NATIVE_3D_EXTINCTION_532")
+        if aod532 is None: missing.append("AOD532_ANCHOR")
+        elif beta532 is not None and beta532 > 0.0 and aod532 <= 0.0:
+            conflict=True
+        rec.update({
+            "glow_aerosol_scattering_contract":AEROSOL_SCATTERING_PHASE1_CONTRACT,
+            "aerosol_phase_function_model":AEROSOL_PHASE_FUNCTION_MODEL,
+            "aerosol_vertical_property_contract":AEROSOL_VERTICAL_PROPERTY_CONTRACT,
+            "aerosol_column_property_source":property_source,
+            "aerosol_local_extinction_532_m1":beta532,
+            "aerosol_aod532_anchor":aod532,
+            "aerosol_native_3d_endpoint_snap_used":bool(beta532_snap),
+            "aerosol_scattering_proxy_units":AEROSOL_SCATTERING_PROXY_UNITS,
+            "calibrated_glow_radiance_available":False,
+            "glow_total_radiance_state":NO_TOTAL_RADIANCE_CLAIM,
+        })
+        all_full=True
+        for wavelength in SIX_BAND_WAVELENGTHS_NM:
+            w=int(wavelength)
+            aod,aodprov=_bounded_property_at_wavelength(row,"aod",w,log_space=True) if row is not None else (None,"MISSING")
+            ssa,ssaprov=_bounded_property_at_wavelength(row,"ssa",w,log_space=False) if row is not None else (None,"MISSING")
+            gg,gprov=_bounded_property_at_wavelength(row,"asymmetry",w,log_space=False) if row is not None else (None,"MISSING")
+            if ssa is not None and not (0.0 <= ssa <= 1.0): ssa=None
+            if gg is not None and not (-1.0 <= gg <= 1.0): gg=None
+            betaext=(float(beta532)*float(aod)/float(aod532)) if (not conflict and beta532 is not None and aod is not None and aod532 is not None and aod532>0.0) else None
+            betasca=betaext*ssa if betaext is not None and ssa is not None else None
+            phase=heney_greenstein_phase_function_sr(float(scat),float(gg)) if scat is not None and gg is not None else None
+            if phase is not None and not math.isfinite(phase): phase=None
+            source_coeff=betasca*phase if betasca is not None and phase is not None else None
+            incident=_finite(src.get(f"glow_sun_incident_relative_irradiance_{w}nm"))
+            observer_t=_finite(src.get(f"glow_observer_transmission_{w}nm"))
+            aerosol_proxy=(max(0.0,incident)*observer_t*source_coeff) if all(v is not None for v in (incident,observer_t,source_coeff)) else None
+            rayleigh_proxy=_finite(src.get(f"glow_single_scattering_source_proxy_{w}nm"))
+            combined=(rayleigh_proxy+aerosol_proxy) if rayleigh_proxy is not None and aerosol_proxy is not None else None
+            full=all(v is not None for v in (aod,ssa,gg,betaext,betasca,phase,source_coeff,incident,observer_t,aerosol_proxy)) and not conflict
+            all_full &= full
+            rec[f"aerosol_aod_{w}nm"]=aod; rec[f"aerosol_aod_provenance_{w}nm"]=aodprov
+            rec[f"aerosol_ssa_{w}nm"]=ssa; rec[f"aerosol_ssa_provenance_{w}nm"]=ssaprov
+            rec[f"aerosol_asymmetry_g_{w}nm"]=gg; rec[f"aerosol_asymmetry_provenance_{w}nm"]=gprov
+            rec[f"aerosol_hg_phase_function_sr_{w}nm"]=phase
+            rec[f"aerosol_extinction_coefficient_m1_{w}nm"]=betaext
+            rec[f"aerosol_scattering_coefficient_m1_{w}nm"]=betasca
+            rec[f"aerosol_source_coefficient_m1_sr_{w}nm"]=source_coeff
+            rec[f"aerosol_single_scattering_source_proxy_{w}nm"]=aerosol_proxy
+            rec[f"rayleigh_plus_aerosol_source_proxy_{w}nm"]=combined
+            rec[f"aerosol_band_evidence_state_{w}nm"]="FULL_AEROSOL_SINGLE_SCATTERING_PROXY" if full else "MISSING"
+        if conflict:
+            base_state="GLOW_AEROSOL_SCATTERING_DIRECT_EVIDENCE_CONFLICT"
+            missing.append("AOD532_VS_NATIVE_3D_EXTINCTION_CONFLICT")
+        elif all_full:
+            base_state="GLOW_AEROSOL_SINGLE_SCATTERING_PROXY_READY"
+        elif any(_finite(rec.get(f"aerosol_single_scattering_source_proxy_{int(w)}nm")) is not None for w in SIX_BAND_WAVELENGTHS_NM):
+            base_state="GLOW_AEROSOL_SINGLE_SCATTERING_PROXY_PARTIAL"
+        rec["glow_aerosol_scattering_state"]=base_state
+        rec["glow_aerosol_missing_components"]=";".join(sorted(set(missing)))
+        rows.append(rec)
+    return pd.DataFrame(rows)
+
+
+def attach_twilight_glow_aerosol_summary(summary: pd.DataFrame, aerosol: pd.DataFrame) -> pd.DataFrame:
+    out=summary.copy() if isinstance(summary,pd.DataFrame) else pd.DataFrame()
+    if out.empty:
+        return out
+    amap={}
+    if aerosol is not None and not aerosol.empty:
+        for (t,a),g in aerosol.groupby([aerosol["time"].astype(str),pd.to_numeric(aerosol["solar_altitude_deg"],errors="coerce").round(8)],dropna=False,sort=False):
+            ready=g["glow_aerosol_scattering_state"].astype(str).eq("GLOW_AEROSOL_SINGLE_SCATTERING_PROXY_READY")
+            amap[(str(t),None if pd.isna(a) else round(float(a),8))]=(g,ready)
+    for idx,row in out.iterrows():
+        a=_finite(row.get("solar_altitude_deg")); key=(str(row.get("time")),None if a is None else round(a,8)); pair=amap.get(key)
+        if pair is None:
+            out.at[idx,"aerosol_scattering_proxy_ready_volume_count"]=0
+            out.at[idx,"aerosol_scattering_state"]="GLOW_AEROSOL_SCATTERING_UNAVAILABLE"
+            continue
+        g,ready=pair; out.at[idx,"aerosol_scattering_proxy_ready_volume_count"]=int(ready.sum())
+        out.at[idx,"aerosol_scattering_proxy_unresolved_volume_count"]=int(len(g)-int(ready.sum()))
+        out.at[idx,"aerosol_scattering_state"]="READY" if bool(ready.all()) else ("PARTIAL" if bool(ready.any()) else "UNRESOLVED")
+        for wavelength in SIX_BAND_WAVELENGTHS_NM:
+            w=int(wavelength)
+            vals=pd.to_numeric(g.loc[ready,f"aerosol_single_scattering_source_proxy_{w}nm"],errors="coerce").dropna()
+            comb=pd.to_numeric(g.loc[ready,f"rayleigh_plus_aerosol_source_proxy_{w}nm"],errors="coerce").dropna()
+            out.at[idx,f"mean_glow_aerosol_single_scattering_source_proxy_{w}nm"]=float(vals.mean()) if len(vals) else np.nan
+            out.at[idx,f"max_glow_aerosol_single_scattering_source_proxy_{w}nm"]=float(vals.max()) if len(vals) else np.nan
+            out.at[idx,f"mean_glow_rayleigh_plus_aerosol_source_proxy_{w}nm"]=float(comb.mean()) if len(comb) else np.nan
+            out.at[idx,f"max_glow_rayleigh_plus_aerosol_source_proxy_{w}nm"]=float(comb.max()) if len(comb) else np.nan
+    out["glow_aerosol_scattering_state"]="R5.7.35_SSA_G_HG_PHASE1_EVIDENCE_AVAILABLE_WHEN_READY"
+    out["glow_total_radiance_state"]=NO_TOTAL_RADIANCE_CLAIM
+    out["calibrated_glow_radiance_available"]=False
+    return out
 
 def summarize_twilight_glow(detail: pd.DataFrame, event_timeline: pd.DataFrame) -> pd.DataFrame:
     """Return one independent Glow evidence row for every runtime angle."""

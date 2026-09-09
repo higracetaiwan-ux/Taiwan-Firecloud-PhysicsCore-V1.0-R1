@@ -134,9 +134,11 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     twilight_glow_sun_extinction = _df(result.get("v1_twilight_glow_sun_to_scatter_extinction_550_750nm"))
     twilight_glow_observer_extinction = _df(result.get("v1_twilight_glow_scatter_to_observer_extinction_550_750nm"))
     twilight_glow_single_scattering = _df(result.get("v1_twilight_glow_single_scattering_550_750nm"))
+    twilight_glow_aerosol_scattering = _df(result.get("v1_twilight_glow_aerosol_scattering_550_750nm"))
     twilight_glow_summary = _df(result.get("v1_twilight_glow_summary"))
     twilight_glow_required = bool(result.get("twilight_glow_required", False))
     twilight_glow_extinction_phase1_required = bool(result.get("twilight_glow_extinction_phase1_required", False))
+    twilight_glow_aerosol_scattering_phase1_required = bool(result.get("twilight_glow_aerosol_scattering_phase1_required", False))
     cams_geopotential_normalization_required = bool(result.get("cams_geopotential_normalization_required", False))
     twilight_glow_observer_aerosol_coverage_required = bool(result.get("twilight_glow_observer_aerosol_coverage_required", False))
     twilight_glow_deep_range_closure_required = bool(result.get("twilight_glow_deep_range_closure_required", False))
@@ -857,6 +859,57 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "required beginning with R5.7.31",
             )
 
+        if twilight_glow_aerosol_scattering_phase1_required:
+            def _aero_volume_keys(df: pd.DataFrame):
+                keys=set()
+                if df is None or df.empty: return keys
+                for _,r in df.iterrows():
+                    a=pd.to_numeric(pd.Series([r.get("solar_altitude_deg")]),errors="coerce").iloc[0]
+                    keys.add((str(r.get("time")),None if pd.isna(a) else round(float(a),8),str(r.get("glow_volume_id"))))
+                return keys
+            exp=_aero_volume_keys(twilight_glow); obs=_aero_volume_keys(twilight_glow_aerosol_scattering); diff=exp.symmetric_difference(obs)
+            add("TWILIGHT_GLOW_AEROSOL_SCATTERING_TARGET_COVERAGE", PASS if exp and not diff else FAIL,
+                "TWILIGHT_GLOW_AEROSOL_SCATTERING", f"expected={len(exp)};observed={len(obs)};difference={len(diff)}",
+                "exact time+angle+glow-volume coverage")
+            base_required={"glow_aerosol_scattering_state","glow_aerosol_scattering_contract","aerosol_phase_function_model",
+                           "aerosol_vertical_property_contract","aerosol_local_extinction_532_m1","aerosol_aod532_anchor",
+                           "calibrated_glow_radiance_available","glow_total_radiance_state"}
+            band_required={f"{name}_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM for name in (
+                "aerosol_aod","aerosol_aod_provenance","aerosol_ssa","aerosol_ssa_provenance","aerosol_asymmetry_g",
+                "aerosol_asymmetry_provenance","aerosol_hg_phase_function_sr","aerosol_extinction_coefficient_m1",
+                "aerosol_scattering_coefficient_m1","aerosol_source_coefficient_m1_sr",
+                "aerosol_single_scattering_source_proxy","rayleigh_plus_aerosol_source_proxy","aerosol_band_evidence_state")}
+            missing_cols=sorted((base_required|band_required)-set(twilight_glow_aerosol_scattering.columns))
+            add("TWILIGHT_GLOW_AEROSOL_SCATTERING_SCHEMA", PASS if not missing_cols and not diff else FAIL,
+                "TWILIGHT_GLOW_AEROSOL_SCATTERING", str(missing_cols),
+                "native 3D extinction + CAMS AOD/SSA/g + HG + six-band single-scattering proxy")
+            bad=0; extrap=0
+            if not twilight_glow_aerosol_scattering.empty and not missing_cols:
+                for _,r in twilight_glow_aerosol_scattering.iterrows():
+                    beta532=pd.to_numeric(pd.Series([r.get("aerosol_local_extinction_532_m1")]),errors="coerce").iloc[0]
+                    a532=pd.to_numeric(pd.Series([r.get("aerosol_aod532_anchor")]),errors="coerce").iloc[0]
+                    for w in SIX_BAND_WAVELENGTHS_NM:
+                        w=int(w); state=str(r.get(f"aerosol_band_evidence_state_{w}nm") or "")
+                        provs=[str(r.get(f"aerosol_aod_provenance_{w}nm") or ""),str(r.get(f"aerosol_ssa_provenance_{w}nm") or ""),str(r.get(f"aerosol_asymmetry_provenance_{w}nm") or "")]
+                        if any("EXTRAP" in x.upper() for x in provs): extrap+=1
+                        vals={k:pd.to_numeric(pd.Series([r.get(f"{k}_{w}nm")]),errors="coerce").iloc[0] for k in (
+                            "aerosol_aod","aerosol_ssa","aerosol_asymmetry_g","aerosol_hg_phase_function_sr",
+                            "aerosol_extinction_coefficient_m1","aerosol_scattering_coefficient_m1","aerosol_source_coefficient_m1_sr",
+                            "aerosol_single_scattering_source_proxy")}
+                        if state=="FULL_AEROSOL_SINGLE_SCATTERING_PROXY":
+                            if pd.isna(beta532) or pd.isna(a532) or float(a532)<=0 or any(pd.isna(v) for v in vals.values()): bad+=1; continue
+                            ext=float(beta532)*float(vals["aerosol_aod"])/float(a532)
+                            if abs(float(vals["aerosol_extinction_coefficient_m1"])-ext)>1e-12: bad+=1; continue
+                            sca=float(vals["aerosol_extinction_coefficient_m1"])*float(vals["aerosol_ssa"])
+                            if abs(float(vals["aerosol_scattering_coefficient_m1"])-sca)>1e-12: bad+=1; continue
+                            src=float(vals["aerosol_scattering_coefficient_m1"])*float(vals["aerosol_hg_phase_function_sr"])
+                            if abs(float(vals["aerosol_source_coefficient_m1_sr"])-src)>1e-12: bad+=1; continue
+                        elif not pd.isna(vals["aerosol_single_scattering_source_proxy"]): bad+=1
+            add("TWILIGHT_GLOW_AEROSOL_SCATTERING_NUMERIC_CLOSURE", PASS if not missing_cols and bad==0 else FAIL,
+                "TWILIGHT_GLOW_AEROSOL_SCATTERING", bad, "0 beta_ext/beta_sca/HG/source inconsistencies and no partial proxy promotion")
+            add("TWILIGHT_GLOW_AEROSOL_SCATTERING_PROVENANCE", PASS if not missing_cols and extrap==0 else FAIL,
+                "TWILIGHT_GLOW_AEROSOL_SCATTERING", extrap, "0 extrapolated SSA/g/AOD provenance; exact or bounded-native only")
+
         forbidden = {
             column for column in twilight_glow.columns
             if any(token in column.lower() for token in ("formation_state", "photography_opportunity", "decision", "score"))
@@ -879,7 +932,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             not twilight_glow.empty
             and not twilight_glow.get("calibrated_glow_radiance_available", pd.Series(True, index=twilight_glow.index)).fillna(True).astype(bool).any()
             and twilight_glow.get("glow_total_radiance_state", pd.Series("", index=twilight_glow.index)).astype(str).eq(
-                "NOT_RESOLVED_AEROSOL_SSA_PHASE_AND_MULTIPLE_SCATTERING_REQUIRED"
+                "NOT_RESOLVED_MULTIPLE_SCATTERING_AND_ABSOLUTE_CALIBRATION_REQUIRED"
             ).all()
         )
         add(
@@ -887,7 +940,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             PASS if no_radiance_claim else FAIL,
             "TWILIGHT_GLOW",
             bool(no_radiance_claim),
-            "calibrated radiance unavailable until aerosol SSA/phase and multiple scattering are resolved",
+            "calibrated radiance unavailable until multiple scattering and absolute radiometric calibration are resolved",
         )
     else:
         add(
@@ -1055,6 +1108,7 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "v1_twilight_glow_sun_to_scatter_extinction_550_750nm.csv",
         "v1_twilight_glow_scatter_to_observer_extinction_550_750nm.csv",
         "v1_twilight_glow_single_scattering_550_750nm.csv",
+        "v1_twilight_glow_aerosol_scattering_550_750nm.csv",
         "v1_twilight_glow_summary.csv",
         "v1_photography_decision.csv",
         "analysis_integrity_audit.csv",

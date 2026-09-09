@@ -95,7 +95,7 @@ from .viewing_spectral import (
     attach_viewing_spectral_status,
 )
 from .photography_decision import build_photography_decision
-from .twilight_glow import build_twilight_glow_branch, build_twilight_glow_phase1_exports
+from .twilight_glow import build_twilight_glow_branch, build_twilight_glow_phase1_exports, build_twilight_glow_aerosol_scattering, attach_twilight_glow_aerosol_summary
 from .tier2_scattering_readiness import (
     build_tier2_scattering_readiness, summarize_tier2_scattering_readiness,
     TIER2_SCATTERING_READINESS_COLUMNS, TIER2_SCATTERING_READINESS_SUMMARY_COLUMNS,
@@ -1508,6 +1508,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 "O3_PRESSURE_LEVEL_RETRY": "O₃重試",
                 "SPECTRAL_COLUMN_AOD": "光譜AOD",
                 "SPECTRAL_COLUMN_AOD_RETRY": "光譜AOD重試",
+                "AEROSOL_SCATTERING_COLUMN_PROPERTIES": "氣膠SSA/g",
+                "AEROSOL_SCATTERING_COLUMN_PROPERTIES_RETRY": "氣膠SSA/g重試",
                 "DECODED_ROUTE_CACHE_WRITE": "解碼快取落盤",
                 "CAMS_BUNDLE_POSTPROCESS": "時次後處理",
                 "DECODED_ROUTE_CACHE_LOOKUP": "解碼快取查找",
@@ -1554,12 +1556,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                     with _cams_progress_lock:
                         _started = _cams_progress_started.get((_key, _name))
                     _elapsed_ui = max(0.0, _now_mono - _started) if _started is not None else 0.0
-                    _display.append(f"{_name}:RUNNING {_elapsed_ui:.0f}s / 90s")
+                    _display.append(f"{_name}:RUNNING {_elapsed_ui:.0f}s / phased ADS deadline")
                 else:
                     _display.append(f"{_name}:{_value}")
             _summary = "｜".join(_display)
             _parts.append(f"時次 {_idx}/{len(_cams_items)}" + (f"｜{_summary}" if _summary else "｜等待"))
-        _mode_label = "CAMS 安全預取（全域 ADS single-flight；每時次內三鏈串行）" if _cams_parallel_workers == 1 else "CAMS 專家模式並行預取（兩時次；每時次內三鏈串行）"
+        _mode_label = "CAMS 安全預取（全域 ADS single-flight；每時次內四角色串行）" if _cams_parallel_workers == 1 else "CAMS 專家模式並行預取（兩時次；每時次內四角色串行）"
         _progress(0.34 + 0.04 * float(_completed) / max(1, len(_cams_items)), _mode_label + "｜" + "；".join(_parts))
 
     def _record_cams_bundle(_key, _payload, _elapsed):
@@ -2536,6 +2538,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         v1_twilight_glow_scatter_to_observer_extinction,
         v1_twilight_glow_single_scattering,
     ) = build_twilight_glow_phase1_exports(v1_twilight_glow_scattering_volume)
+    v1_twilight_glow_aerosol_scattering = build_twilight_glow_aerosol_scattering(
+        v1_twilight_glow_scattering_volume, cams_native_aerosol_route_snapshots
+    )
+    v1_twilight_glow_summary = attach_twilight_glow_aerosol_summary(
+        v1_twilight_glow_summary, v1_twilight_glow_aerosol_scattering
+    )
     performance_rows.append({
         "stage": "TWILIGHT_GLOW_INDEPENDENT_BRANCH",
         "elapsed_seconds": perf_counter() - _glow_t0,
@@ -2543,7 +2551,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "detail": (
             f"volumes={len(v1_twilight_glow_scattering_volume)};angles={len(v1_twilight_glow_summary)};"
             f"sun_extinction_rows={len(v1_twilight_glow_sun_to_scatter_extinction)};"
-            f"observer_extinction_rows={len(v1_twilight_glow_scatter_to_observer_extinction)}"
+            f"observer_extinction_rows={len(v1_twilight_glow_scatter_to_observer_extinction)};"
+            f"aerosol_scattering_rows={len(v1_twilight_glow_aerosol_scattering)}"
         ),
     })
     _aggregation_checkpoint(
@@ -2553,6 +2562,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         v1_twilight_glow_sun_to_scatter_extinction=v1_twilight_glow_sun_to_scatter_extinction,
         v1_twilight_glow_scatter_to_observer_extinction=v1_twilight_glow_scatter_to_observer_extinction,
         v1_twilight_glow_single_scattering=v1_twilight_glow_single_scattering,
+        v1_twilight_glow_aerosol_scattering=v1_twilight_glow_aerosol_scattering,
     )
     v1_spectral_colour = _concat_release(v1_spectral_colour_frames)
     v1_precipitation_path_evidence = _concat_release(v1_precipitation_path_frames)
@@ -2850,9 +2860,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_twilight_glow_sun_to_scatter_extinction_550_750nm": v1_twilight_glow_sun_to_scatter_extinction,
         "v1_twilight_glow_scatter_to_observer_extinction_550_750nm": v1_twilight_glow_scatter_to_observer_extinction,
         "v1_twilight_glow_single_scattering_550_750nm": v1_twilight_glow_single_scattering,
+        "v1_twilight_glow_aerosol_scattering_550_750nm": v1_twilight_glow_aerosol_scattering,
         "v1_twilight_glow_summary": v1_twilight_glow_summary,
         "twilight_glow_required": True,
         "twilight_glow_extinction_phase1_required": True,
+        "twilight_glow_aerosol_scattering_phase1_required": True,
         "cams_geopotential_normalization_required": True,
         "twilight_glow_observer_aerosol_coverage_required": True,
         "twilight_glow_deep_range_closure_required": True,
@@ -2935,6 +2947,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_twilight_glow_sun_to_scatter_extinction_550_750nm": v1_twilight_glow_sun_to_scatter_extinction,
         "v1_twilight_glow_scatter_to_observer_extinction_550_750nm": v1_twilight_glow_scatter_to_observer_extinction,
         "v1_twilight_glow_single_scattering_550_750nm": v1_twilight_glow_single_scattering,
+        "v1_twilight_glow_aerosol_scattering_550_750nm": v1_twilight_glow_aerosol_scattering,
         "v1_twilight_glow_summary": v1_twilight_glow_summary,
         "v1_photography_decision": v1_photography_decision,
         "v1_spectral_colour": v1_spectral_colour,

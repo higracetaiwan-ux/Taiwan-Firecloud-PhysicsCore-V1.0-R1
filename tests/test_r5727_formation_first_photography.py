@@ -134,6 +134,7 @@ def test_case_integrity_requires_photography_decision_member():
         "v1_twilight_glow_sun_to_scatter_extinction_550_750nm.csv",
         "v1_twilight_glow_scatter_to_observer_extinction_550_750nm.csv",
         "v1_twilight_glow_single_scattering_550_750nm.csv",
+        "v1_twilight_glow_aerosol_scattering_550_750nm.csv",
         "v1_twilight_glow_summary.csv",
         "v1_photography_decision.csv",
         "analysis_integrity_audit.csv",
