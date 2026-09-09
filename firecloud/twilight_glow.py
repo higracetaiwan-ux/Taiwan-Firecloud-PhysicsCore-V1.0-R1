@@ -23,12 +23,18 @@ import numpy as np
 import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
-from .gas_rt import BOLTZMANN, prepare_gas_rt_context, _interp_fast_profile_state, _sigma_fast
+from .gas_rt import BOLTZMANN, DEFAULT_PROFILE_BOUNDARY_TOLERANCE_KM, prepare_gas_rt_context, _interp_fast_profile_state, _sigma_fast
 from .precipitation import build_viewing_precipitation_evidence
 from .shared_geometry import destination_point, directional_scattering_geometry
 from .shared_geometry.ray import observer_los_height_agl_km
 from .spectral_rt import rayleigh_vertical_optical_depth
-from .viewing_spectral import build_viewing_spectral_extinction
+from .viewing_spectral import (
+    build_viewing_spectral_extinction,
+    _exact_cot_map,
+    _evidence_key,
+    _projected_support_interval,
+    sample_observer_los_segment,
+)
 
 
 TWILIGHT_GLOW_CONTRACT = "R5.7.31_TWILIGHT_GLOW_FULL_SIX_BAND_EXTINCTION_PHASE1_V1"
@@ -39,6 +45,8 @@ GLOW_PROXY_UNITS = "RELATIVE_INCIDENT_IRRADIANCE_PER_M_SR"
 NO_TOTAL_RADIANCE_CLAIM = "NOT_RESOLVED_AEROSOL_SSA_PHASE_AND_MULTIPLE_SCATTERING_REQUIRED"
 NO_AEROSOL_SOURCE_CLAIM = "NOT_RESOLVED_NO_SSA_OR_PHASE_FUNCTION"
 NO_MULTIPLE_SCATTERING_CLAIM = "NOT_RESOLVED_NO_CALIBRATED_ATMOSPHERIC_RT"
+GLOW_DEEP_RANGE_CLOSURE_CONTRACT = "R5.7.33_DEEP_RANGE_MOLECULAR_BOUNDARY_AND_CLOUD_CONFLICT_PRESERVATION_V1"
+GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM = DEFAULT_PROFILE_BOUNDARY_TOLERANCE_KM
 
 _STANDARD_PRESSURE_PA = 101325.0
 _STANDARD_GRAVITY_M_S2 = 9.80665
@@ -118,7 +126,20 @@ def _gas_profile_index(gas_profiles: pd.DataFrame) -> dict[tuple[str, float | No
     return out
 
 
-def _profile_state(profile: pd.DataFrame | None, altitude_km: float) -> tuple[float, float] | None:
+def _profile_state(
+    profile: pd.DataFrame | None,
+    altitude_km: float,
+    *,
+    lowest_endpoint_tolerance_km: float = 0.0,
+) -> tuple[float, float] | None:
+    """Interpolate a real T/P profile with an opt-in lowest-level boundary snap.
+
+    R5.7.33 aligns the independent Glow observer molecular integration with the
+    already-frozen Gas RT pressure-profile boundary contract.  A LOS midpoint
+    that falls only a few metres below the lowest *real* pressure level may use
+    that native endpoint; no value is extrapolated beyond the configured
+    tolerance and no upper-profile extrapolation is permitted.
+    """
     if profile is None or profile.empty:
         return None
     z = pd.to_numeric(profile["altitude_agl_km"], errors="coerce").to_numpy(float)
@@ -126,11 +147,40 @@ def _profile_state(profile: pd.DataFrame | None, altitude_km: float) -> tuple[fl
     p = pd.to_numeric(profile["pressure_hpa"], errors="coerce").to_numpy(float)
     valid = np.isfinite(z) & np.isfinite(t) & np.isfinite(p) & (t > 0.0) & (p > 0.0)
     z, t, p = z[valid], t[valid], p[valid]
-    if len(z) < 2 or float(altitude_km) < float(z.min()) - 1e-9 or float(altitude_km) > float(z.max()) + 1e-9:
+    if len(z) < 2:
         return None
     order = np.argsort(z)
     z, t, p = z[order], t[order], p[order]
-    return float(np.interp(float(altitude_km), z, t)), float(np.interp(float(altitude_km), z, p))
+    query = float(altitude_km)
+    lo = float(z.min()); hi = float(z.max())
+    tol = max(0.0, float(lowest_endpoint_tolerance_km))
+    if query < lo:
+        if lo - query <= tol + 1e-12:
+            query = lo
+        else:
+            return None
+    if query > hi + 1e-9:
+        return None
+    return float(np.interp(query, z, t)), float(np.interp(query, z, p))
+
+
+def _interp_fast_profile_state_lowest_boundary(rec, altitude_km: float, tolerance_km: float):
+    """Fast-profile equivalent of the R5.7.33 lowest native endpoint policy."""
+    state = _interp_fast_profile_state(rec, float(altitude_km))
+    if state is not None:
+        return state
+    try:
+        z = np.asarray(rec["z"], dtype=float)
+        finite = np.isfinite(z)
+        if not finite.any():
+            return None
+        lo = float(np.nanmin(z[finite]))
+        tol = max(0.0, float(tolerance_km))
+        if float(altitude_km) < lo and lo - float(altitude_km) <= tol + 1e-12:
+            return _interp_fast_profile_state(rec, lo)
+    except Exception:
+        return None
+    return None
 
 
 def _rayleigh_observer_path(
@@ -161,7 +211,10 @@ def _rayleigh_observer_path(
         midpoint = 0.5 * (d0 + d1)
         altitude = observer_los_height_agl_km(distance, target_altitude, midpoint, earth_radius_km)
         nearest = min(profiles, key=lambda d: abs(float(d) - midpoint))
-        state = _profile_state(profiles.get(nearest), altitude)
+        state = _profile_state(
+            profiles.get(nearest), altitude,
+            lowest_endpoint_tolerance_km=GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM,
+        )
         if state is None:
             continue
         temperature_k, pressure_hpa = state
@@ -263,7 +316,9 @@ def _observer_gas_species_path(
         if rec is None:
             continue
         altitude = observer_los_height_agl_km(float(distance), target_altitude, midpoint, float(earth_radius_km))
-        state = _interp_fast_profile_state(rec, altitude)
+        state = _interp_fast_profile_state_lowest_boundary(
+            rec, altitude, GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM
+        )
         if state is None:
             continue
         temperature_k = float(state["temperature_k"])
@@ -310,6 +365,114 @@ def _observer_gas_species_path(
     return tau, "GLOW_OBSERVER_GAS_PATH_RESOLVED", required, resolved, path_km
 
 
+
+def _observer_cloud_conflict_provenance(
+    target: pd.Series,
+    cloud_layers: pd.DataFrame,
+    target_optics: pd.DataFrame,
+    earth_radius_km: float,
+) -> dict[str, Any]:
+    """Diagnose unresolved Glow observer cloud blockers without inventing COT.
+
+    This helper does not alter the Viewing cloud optical-depth solver.  It only
+    classifies why an already-partial cloud path is unresolved.  In particular,
+    native cloud-fraction/condensate disagreement remains an explicit direct
+    evidence conflict and is never converted to clear sky or tau=0.
+    """
+    result = {
+        "state": "GLOW_OBSERVER_CLOUD_NOT_EVALUATED",
+        "blocker_count": 0,
+        "unresolved_blocker_count": 0,
+        "conflict_blocker_count": 0,
+        "unresolved_layer_ids": "",
+        "conflict_states": "",
+    }
+    if cloud_layers is None or cloud_layers.empty:
+        result["state"] = "GLOW_OBSERVER_CLOUD_EVIDENCE_MISSING"
+        return result
+    try:
+        direction = float(target.get("direction_offset_deg"))
+        distance = float(target.get("target_distance_km"))
+        height = 0.5 * (float(target.get("target_base_km")) + float(target.get("target_top_km")))
+        angle = float(target.get("solar_altitude_deg"))
+        time_value = str(target.get("time"))
+    except Exception:
+        result["state"] = "GLOW_OBSERVER_CLOUD_GEOMETRY_UNRESOLVED"
+        return result
+
+    cand = cloud_layers.copy()
+    if "solar_altitude_deg" in cand:
+        cand = cand[(pd.to_numeric(cand["solar_altitude_deg"], errors="coerce") - angle).abs() < 1e-8]
+    if "direction_offset_deg" in cand:
+        cand = cand[(pd.to_numeric(cand["direction_offset_deg"], errors="coerce") - direction).abs() < 1e-8]
+    if "time" in cand:
+        cand = cand[cand["time"].astype(str) == time_value]
+    transect = cand.copy()
+    cand = cand[pd.to_numeric(cand.get("distance_km"), errors="coerce") < distance - 1e-8]
+    cotmap = _exact_cot_map(cloud_layers, target_optics)
+
+    truth_map: dict[tuple[str, float | None, str], tuple[str, str, str]] = {}
+    if target_optics is not None and not target_optics.empty:
+        for _, row in target_optics.iterrows():
+            key = _evidence_key(row.get("time"), row.get("solar_altitude_deg"), row.get("cloud_layer_id"))
+            truth_map[key] = (
+                str(row.get("target_optical_truth_state") or ""),
+                str(row.get("target_cot_semantics") or ""),
+                str(row.get("resolver_state") or ""),
+            )
+
+    unresolved_ids: list[str] = []
+    conflict_states: list[str] = []
+    for _, blocker in cand.iterrows():
+        bb = _finite(blocker.get("z_base_km")); bt = _finite(blocker.get("z_top_km"))
+        if bb is None or bt is None or bt <= bb:
+            continue
+        try:
+            s0, s1, _, _ = _projected_support_interval(blocker, transect)
+            if not (math.isfinite(float(s0)) and math.isfinite(float(s1))) or float(s1) <= float(s0):
+                continue
+            xs, zz = sample_observer_los_segment(
+                distance, height, max(0.0, float(s0)), min(distance, float(s1)),
+                sample_count=25, radius_km=float(earth_radius_km),
+            )
+        except Exception:
+            continue
+        inside = np.isfinite(zz) & (zz >= float(bb)) & (zz <= float(bt))
+        if not inside.any():
+            continue
+        result["blocker_count"] += 1
+        layer_id = str(blocker.get("layer_id"))
+        evidence_key = _evidence_key(blocker.get("time"), blocker.get("solar_altitude_deg"), layer_id)
+        cotrec = cotmap.get(evidence_key)
+        cf = _finite(blocker.get("cloud_fraction"))
+        if cotrec is not None and cf is not None:
+            continue
+        result["unresolved_blocker_count"] += 1
+        unresolved_ids.append(layer_id)
+        consistency = str(blocker.get("evidence_consistency") or "")
+        truth_state, cot_semantics, resolver_state = truth_map.get(evidence_key, ("", "", ""))
+        is_conflict = (
+            truth_state in {"DIRECT_EVIDENCE_CONFLICT", "MULTISOURCE_DISAGREEMENT"}
+            or cot_semantics == "UNRESOLVED_CONFLICT"
+            or consistency in {"CF_CLOUD_CONDENSATE_ZERO", "CONDENSATE_CLOUD_CF_LOW"}
+            or "CONFLICT" in resolver_state.upper()
+        )
+        if is_conflict:
+            result["conflict_blocker_count"] += 1
+            conflict_states.append("|".join(x for x in (consistency, truth_state, cot_semantics, resolver_state) if x))
+
+    result["unresolved_layer_ids"] = ";".join(sorted(set(unresolved_ids)))
+    result["conflict_states"] = ";".join(sorted(set(conflict_states)))
+    if result["blocker_count"] == 0:
+        result["state"] = "GLOW_OBSERVER_CLOUD_PATH_CLEAR_DIAGNOSTIC"
+    elif result["unresolved_blocker_count"] == 0:
+        result["state"] = "GLOW_OBSERVER_CLOUD_OPTICS_RESOLVED_DIAGNOSTIC"
+    elif result["conflict_blocker_count"] == result["unresolved_blocker_count"]:
+        result["state"] = "GLOW_OBSERVER_CLOUD_DIRECT_EVIDENCE_CONFLICT_PRESERVED"
+    else:
+        result["state"] = "GLOW_OBSERVER_CLOUD_OPTICS_UNRESOLVED_MISSING_PRESERVED"
+    return result
+
 def _sun_component_state(source: pd.Series | None) -> dict[str, bool]:
     if source is None:
         return {k: False for k in ("RAYLEIGH", "GAS", "AEROSOL", "CLOUD", "PRECIPITATION")}
@@ -344,8 +507,12 @@ def build_twilight_glow_phase1_exports(detail: pd.DataFrame) -> tuple[pd.DataFra
         "glow_observer_gas_species_status", "glow_observer_aerosol_status",
         "glow_observer_aerosol_required_segment_count", "glow_observer_aerosol_resolved_segment_count",
         "glow_observer_aerosol_lowest_endpoint_snap_segment_count", "glow_observer_aerosol_endpoint_tolerance_km",
+        "glow_observer_molecular_lowest_endpoint_tolerance_km", "glow_observer_molecular_boundary_policy",
+        "glow_observer_cloud_evidence_state", "glow_observer_cloud_blocker_count",
+        "glow_observer_cloud_unresolved_blocker_count", "glow_observer_cloud_conflict_blocker_count",
+        "glow_observer_cloud_unresolved_layer_ids", "glow_observer_cloud_conflict_states",
         "glow_observer_missing_components",
-        "twilight_glow_extinction_contract",
+        "twilight_glow_extinction_contract", "twilight_glow_deep_range_closure_contract",
     ]
     single_cols = identity + [
         "rayleigh_phase_function_sr", "glow_proxy_state", "glow_proxy_units",
@@ -563,6 +730,8 @@ def build_twilight_glow_branch(
         )
         profiles = gas_index.get(gas_key)
         target = pd.Series({
+            "time": geom.get("time"),
+            "solar_altitude_deg": angle,
             "direction_offset_deg": direction,
             "target_distance_km": geom.get("distance_km"),
             "target_base_km": geom.get("scatter_layer_bottom_km"),
@@ -575,6 +744,28 @@ def build_twilight_glow_branch(
             target, gas_contexts.get(gas_key), float(earth_radius_km)
         )
         local = _local_molecular_state(target, profiles)
+        if observer is not None and str(observer.get("view_cloud_status")) == "VIEW_CLOUD_OPTICS_PARTIAL":
+            cloud_diag = _observer_cloud_conflict_provenance(
+                target,
+                cloud_layers if isinstance(cloud_layers, pd.DataFrame) else pd.DataFrame(),
+                target_optics if isinstance(target_optics, pd.DataFrame) else pd.DataFrame(),
+                float(earth_radius_km),
+            )
+        else:
+            _cloud_status = str(observer.get("view_cloud_status")) if observer is not None else ""
+            _cloud_diag_state = (
+                "GLOW_OBSERVER_CLOUD_PATH_CLEAR_DIAGNOSTIC" if _cloud_status == "VIEW_CLOUD_PATH_CLEAR"
+                else "GLOW_OBSERVER_CLOUD_OPTICS_RESOLVED_DIAGNOSTIC" if _cloud_status == "VIEW_CLOUD_OPTICS_RESOLVED_OCCUPANCY_EXPECTATION"
+                else "GLOW_OBSERVER_CLOUD_EVIDENCE_MISSING"
+            )
+            cloud_diag = {
+                "state": _cloud_diag_state,
+                "blocker_count": int(observer.get("view_cloud_blocker_count", 0) or 0) if observer is not None else 0,
+                "unresolved_blocker_count": 0,
+                "conflict_blocker_count": 0,
+                "unresolved_layer_ids": "",
+                "conflict_states": "",
+            }
         phase = _finite(geom.get("rayleigh_phase_function_sr"))
         direct_fraction = _finite(source.get("v1_direct_solar_fraction")) if source is not None else None
         sun_components = _sun_component_state(source)
@@ -622,6 +813,14 @@ def build_twilight_glow_branch(
             "glow_observer_aerosol_resolved_segment_count": observer.get("view_aerosol_resolved_segment_count") if observer is not None else 0,
             "glow_observer_aerosol_lowest_endpoint_snap_segment_count": observer.get("view_aerosol_lowest_endpoint_snap_segment_count") if observer is not None else 0,
             "glow_observer_aerosol_endpoint_tolerance_km": 0.05,
+            "glow_observer_molecular_lowest_endpoint_tolerance_km": GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM,
+            "glow_observer_molecular_boundary_policy": "LOWEST_NATIVE_PRESSURE_LEVEL_WITHIN_TOLERANCE_ONLY",
+            "glow_observer_cloud_evidence_state": cloud_diag.get("state"),
+            "glow_observer_cloud_blocker_count": cloud_diag.get("blocker_count", 0),
+            "glow_observer_cloud_unresolved_blocker_count": cloud_diag.get("unresolved_blocker_count", 0),
+            "glow_observer_cloud_conflict_blocker_count": cloud_diag.get("conflict_blocker_count", 0),
+            "glow_observer_cloud_unresolved_layer_ids": cloud_diag.get("unresolved_layer_ids", ""),
+            "glow_observer_cloud_conflict_states": cloud_diag.get("conflict_states", ""),
             "glow_observer_missing_components": ";".join(sorted(set(observer_missing))),
             "glow_observer_rayleigh_status": rayleigh_status,
             "glow_observer_rayleigh_required_segment_count": required_segments,
@@ -643,6 +842,7 @@ def build_twilight_glow_branch(
             "twilight_glow_contract": TWILIGHT_GLOW_CONTRACT,
             "twilight_glow_extinction_contract": TWILIGHT_GLOW_EXTINCTION_CONTRACT,
             "twilight_glow_single_scattering_contract": TWILIGHT_GLOW_SINGLE_SCATTERING_CONTRACT,
+            "twilight_glow_deep_range_closure_contract": GLOW_DEEP_RANGE_CLOSURE_CONTRACT,
         })
         temperature_k, pressure_hpa, number_density_m3 = local if local is not None else (None, None, None)
         record["scatter_temperature_k"] = temperature_k

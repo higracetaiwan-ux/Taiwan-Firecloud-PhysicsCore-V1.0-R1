@@ -1,4 +1,20 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.32
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.33
+
+
+## R5.7.33 Twilight Glow Deep-Range Gas/Rayleigh/Cloud Closure
+
+R5.7.32 真實 sunset CASE 將 Glow `Scatter→Observer` 收斂到最後 10/1092 個 Partial。R5.7.33 將其中六個 100 km、z=3.75 km 的 Rayleigh/Gas 個案確認為最低原生 pressure-level 的邊界 touch：第一段 midpoint 約 74.62 m，而最低真實 gas profile 約 75.07 m，只差約 0.45 m。Glow 現在沿用既有 Gas RT 已凍結的 `<=0.01 km` 最低 native profile boundary tolerance；不允許超過 tolerance 或向 profile top 外插。
+
+另外四個 100 km、z=7.75 km CLOUD Partial 是真正的原生光學證據衝突：cloud fraction 存在，但 native condensate 為 0、COT unresolved，`target_optical_truth_state=DIRECT_EVIDENCE_CONFLICT`。R5.7.33 明確輸出 `GLOW_OBSERVER_CLOUD_DIRECT_EVIDENCE_CONFLICT_PRESERVED`，cloud tau 仍保持 Missing，不改成 clear/zero。
+
+新增 Integrity：
+
+- `TWILIGHT_GLOW_OBSERVER_DEEP_RANGE_MOLECULAR_COVERAGE`
+- `TWILIGHT_GLOW_OBSERVER_CLOUD_CONFLICT_PRESERVATION`
+
+R5.7.32 immutable CASE forensic replay：100 km Rayleigh 156/156、gas species 156/156 resolved；四個 cloud conflict 保留。正確預期是 **1088/1092 observer Full + 4 conflict-preserved Partial**，不是用假資料追求 1092/1092。
+
+Field validation 尚待 R5.7.33 新 CASE。
 
 
 ## R5.7.32 Glow Observer-Path Aerosol Coverage Robustness
@@ -20,7 +36,7 @@ Glow observer aerosol 另外允許一個非常小、**Glow-only** 的 lowest-nat
 
 並輸出 Glow observer aerosol required/resolved segment count、lowest-endpoint snap count 與 tolerance provenance。Formation、Viewing、Photography、13 angles、六波段、Route Invariance、R5.7.31 two-leg extinction 公式均不改動。
 
-Working-tree regression：**492 passed / 0 failed**。Field validation 尚待 R5.7.32 新 CASE。
+Working-tree regression：**492 passed / 0 failed**。R5.7.32 真實 CASE 已 field-close：Analysis Integrity 50/50 PASS、CASE Integrity 22/22 PASS、60/80/100 km aerosol 468/468 resolved。
 
 
 ## R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1

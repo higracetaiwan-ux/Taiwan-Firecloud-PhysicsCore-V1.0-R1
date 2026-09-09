@@ -139,6 +139,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     twilight_glow_extinction_phase1_required = bool(result.get("twilight_glow_extinction_phase1_required", False))
     cams_geopotential_normalization_required = bool(result.get("cams_geopotential_normalization_required", False))
     twilight_glow_observer_aerosol_coverage_required = bool(result.get("twilight_glow_observer_aerosol_coverage_required", False))
+    twilight_glow_deep_range_closure_required = bool(result.get("twilight_glow_deep_range_closure_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -298,6 +299,107 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 add("TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE", PASS if bool(finite.all()) else FAIL, "TWILIGHT_GLOW", f"resolved={int(finite.sum())}/{len(long)}", "all 60/80/100 km targets have six-band aerosol optical depth when native CAMS route evidence is ready", "No route expansion or synthetic AOD; this guard catches pressure-level height/unit regressions")
             else:
                 add("TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE", WARN, "TWILIGHT_GLOW", f"targets={len(long)};provider_ready=false", "evaluate only when native CAMS spectral payload is available")
+
+
+    # R5.7.33: close the remaining deep-range molecular boundary touch while
+    # preserving genuine cloud optical conflicts as Missing rather than clear.
+    if twilight_glow_deep_range_closure_required:
+        if twilight_glow_observer_extinction.empty:
+            add(
+                "TWILIGHT_GLOW_OBSERVER_DEEP_RANGE_MOLECULAR_COVERAGE",
+                FAIL,
+                "TWILIGHT_GLOW_EXTINCTION",
+                0,
+                "100 km Glow observer molecular rows present",
+            )
+            add(
+                "TWILIGHT_GLOW_OBSERVER_CLOUD_CONFLICT_PRESERVATION",
+                FAIL,
+                "TWILIGHT_GLOW_EXTINCTION",
+                0,
+                "explicit cloud conflict/missing provenance with no Missing->zero promotion",
+            )
+        else:
+            dist = pd.to_numeric(twilight_glow_observer_extinction.get("distance_km"), errors="coerce")
+            deep = twilight_glow_observer_extinction[dist.eq(100.0)].copy()
+            gas_ready = (
+                not gas.empty
+                and _row_any_numeric_valid_fraction(gas, ["temperature_k", "pressure_hpa"]) >= 0.95
+            )
+            if deep.empty:
+                molecular_status = FAIL
+                molecular_observed = "resolved=0/0"
+            elif gas_ready:
+                ray_ok = deep.get("glow_observer_rayleigh_status", pd.Series("", index=deep.index)).astype(str).eq("GLOW_OBSERVER_RAYLEIGH_PATH_RESOLVED")
+                gas_ok = deep.get("glow_observer_gas_species_status", pd.Series("", index=deep.index)).astype(str).eq("GLOW_OBSERVER_GAS_PATH_RESOLVED")
+                molecular_numeric = pd.Series(True, index=deep.index)
+                for wavelength in SIX_BAND_WAVELENGTHS_NM:
+                    w = int(wavelength)
+                    for component in ("rayleigh", "gas_non_o3", "o3"):
+                        molecular_numeric &= pd.to_numeric(
+                            deep.get(
+                                f"glow_observer_tau_{component}_{w}nm",
+                                pd.Series(float("nan"), index=deep.index),
+                            ),
+                            errors="coerce",
+                        ).notna()
+                complete = ray_ok & gas_ok & molecular_numeric
+                molecular_status = PASS if bool(complete.all()) else FAIL
+                molecular_observed = f"resolved={int(complete.sum())}/{len(deep)};gas_profile_ready=true"
+            else:
+                molecular_status = WARN
+                molecular_observed = f"targets={len(deep)};gas_profile_ready=false"
+            add(
+                "TWILIGHT_GLOW_OBSERVER_DEEP_RANGE_MOLECULAR_COVERAGE",
+                molecular_status,
+                "TWILIGHT_GLOW_EXTINCTION",
+                molecular_observed,
+                "all 100 km Glow observer Rayleigh and six-band gas-species paths resolve when real gas profiles are ready",
+                "R5.7.33 reuses only the frozen <=10 m lowest-native pressure-profile boundary tolerance; no gas extrapolation",
+            )
+
+            cloud_state = twilight_glow_observer_extinction.get(
+                "glow_observer_cloud_evidence_state",
+                pd.Series("", index=twilight_glow_observer_extinction.index),
+            ).fillna("").astype(str)
+            conflict = cloud_state.eq("GLOW_OBSERVER_CLOUD_DIRECT_EVIDENCE_CONFLICT_PRESERVED")
+            unresolved_missing = cloud_state.eq("GLOW_OBSERVER_CLOUD_OPTICS_UNRESOLVED_MISSING_PRESERVED")
+            missing_components = twilight_glow_observer_extinction.get(
+                "glow_observer_missing_components",
+                pd.Series("", index=twilight_glow_observer_extinction.index),
+            ).fillna("").astype(str)
+            cloud_partial = missing_components.str.contains("CLOUD", regex=False)
+            classified = ~cloud_partial | conflict | unresolved_missing
+            promoted = pd.Series(False, index=twilight_glow_observer_extinction.index)
+            for wavelength in SIX_BAND_WAVELENGTHS_NM:
+                w = int(wavelength)
+                tau = pd.to_numeric(
+                    twilight_glow_observer_extinction.get(
+                        f"glow_observer_tau_cloud_{w}nm",
+                        pd.Series(float("nan"), index=twilight_glow_observer_extinction.index),
+                    ),
+                    errors="coerce",
+                )
+                band = twilight_glow_observer_extinction.get(
+                    f"glow_observer_band_evidence_state_{w}nm",
+                    pd.Series("", index=twilight_glow_observer_extinction.index),
+                ).fillna("").astype(str)
+                promoted |= (conflict | unresolved_missing) & (tau.notna() | band.eq("FULL"))
+            provenance_cols = {
+                "glow_observer_cloud_evidence_state",
+                "glow_observer_cloud_unresolved_blocker_count",
+                "glow_observer_cloud_conflict_blocker_count",
+            }
+            schema_ok = provenance_cols.issubset(twilight_glow_observer_extinction.columns)
+            cloud_ok = schema_ok and bool(classified.all()) and not bool(promoted.any())
+            add(
+                "TWILIGHT_GLOW_OBSERVER_CLOUD_CONFLICT_PRESERVATION",
+                PASS if cloud_ok else FAIL,
+                "TWILIGHT_GLOW_EXTINCTION",
+                f"conflict_preserved={int(conflict.sum())};missing_preserved={int(unresolved_missing.sum())};unclassified_partial={int((cloud_partial & ~classified).sum())};promoted={int(promoted.sum())}",
+                "every unresolved cloud blocker is explicitly classified and no conflict/missing cloud tau is promoted to zero/full evidence",
+                "DIRECT_EVIDENCE_CONFLICT remains Partial/Missing; R5.7.33 does not infer COT from cloud fraction or zero condensate",
+            )
 
     add("FORMATION_TABLE_PRESENT", PASS if not formation.empty else FAIL, "FORMATION", _rows(formation), ">0 rows")
     add("VIEWING_SUMMARY_PRESENT", PASS if not viewing.empty else WARN, "VIEWING", _rows(viewing), ">0 rows when viewing targets exist")

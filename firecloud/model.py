@@ -2855,6 +2855,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "twilight_glow_extinction_phase1_required": True,
         "cams_geopotential_normalization_required": True,
         "twilight_glow_observer_aerosol_coverage_required": True,
+        "twilight_glow_deep_range_closure_required": True,
         # R5.7.27.1: hand the already-built Formation-first decision table to
         # the pre-export integrity audit.  R5.7.27 returned/exported this table
         # but omitted it here, so the audit saw a false empty-table failure.
