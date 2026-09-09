@@ -1,19 +1,31 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.29.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.30
 
-## R5.7.29.1 Viewing Precipitation Spool Handoff Hotfix
+## R5.7.30 Independent Twilight Glow Third Branch
 
-R5.7.29 真實部署 CASE 證明 GFS 已完整取得 RWMR/SNMR/GRLE，但
-`viewing_route_snapshot` 在 final aggregation 讀取前被
-`AngleFrameSpool.cleanup()` 刪除，造成 Viewing precipitation evidence 只有表頭，
-所有 target 的 precipitation component 都保持 unresolved。
+R5.7.30 建立與 Formation、Viewing 分離的第三條物理分支：
+`Sun → atmospheric scatter volume → Observer`。它使用既有 13-angle、
+10–100 km、4/5/8/12 km 大氣 reference volumes，逐一保存
+550/575/600/650/700/750 nm 的入射相對照度、散射體至觀測者的
+gas/aerosol/cloud/precipitation extinction、Rayleigh extinction、分子散射係數、
+phase-weighted source coefficient 與單次散射 source proxy。
 
-R5.7.29.1 將 cleanup 移到 Viewing snapshot drain 之後，並把 precipitation table
-交給 Analysis Integrity。新增 target coverage 與 native hydrometeor handoff 兩項
-硬檢查；當 RWMR/SNMR/GRLE 都為 READY，空 evidence table 或
-`VIEW_PRECIPITATION_VOLUME_UNRESOLVED` 不再能被整體 Integrity 誤判為 PASS。
+只有 Sun path、observer path、Rayleigh path、散射幾何與局部分子狀態全部完整時，
+才輸出六波段 source proxy；任一成分 Partial/Missing 時，final tau、transmission 與
+source proxy 必須保持 Missing。此 proxy 沒有被宣稱為絕對天空輻亮度：目前缺少
+aerosol single-scattering albedo／phase function、calibrated angular-volume
+integration 與 multiple scattering，因此相關狀態全部明列為 unresolved。
 
-本 hotfix 不更改任何 extinction 公式、粒徑假設、Full RT 條件、Formation、Glow、
-Photography gate、13 angles、六波段、route resolution 或 provider policy。
+新增 `v1_twilight_glow_scattering_volume_550_750nm.csv`、
+`v1_twilight_glow_summary.csv` 與六項 `TWILIGHT_GLOW_*` Integrity guards。
+Glow 不建立 Canvas、不輸出 decision/score、不改寫 Formation，也不成為 Photography
+modifier。UI、權重、13 angles、route resolution 與 Forecast／Observation 邊界均未改動。
+
+## R5.7.29.1 Viewing precipitation spool-order hotfix
+
+R5.7.29 真實部署 CASE 證明 RWMR、SNMR、GRLE 上游皆 READY，但 Viewing route
+snapshot 在讀回前已被 spool cleanup 移除，使 precipitation evidence 錯誤成為空表。
+R5.7.29.1 改為先讀回合併 native hydrometeor 後的 snapshot，再清理暫存，並新增
+`VIEWING_NATIVE_PRECIPITATION_HANDOFF` Integrity 硬檢查。Missing 仍不視為零。
 
 ## R5.7.29 Viewing Full Six-Band RT Closure
 

@@ -127,9 +127,12 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     formation = _df(result.get("v1_formation"))
     viewing_geometry = _df(result.get("v1_viewing_path_geometry"))
     viewing = _df(result.get("v1_viewing_summary"))
-    viewing_precipitation = _df(result.get("v1_viewing_precipitation_evidence"))
     viewing_spectral = _df(result.get("v1_viewing_spectral_extinction_550_750nm"))
     viewing_spectral_summary = _df(result.get("v1_viewing_spectral_summary"))
+    viewing_precipitation = _df(result.get("v1_viewing_precipitation_evidence"))
+    twilight_glow = _df(result.get("v1_twilight_glow_scattering_volume_550_750nm"))
+    twilight_glow_summary = _df(result.get("v1_twilight_glow_summary"))
+    twilight_glow_required = bool(result.get("twilight_glow_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -255,6 +258,38 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     add("FORMATION_TABLE_PRESENT", PASS if not formation.empty else FAIL, "FORMATION", _rows(formation), ">0 rows")
     add("VIEWING_SUMMARY_PRESENT", PASS if not viewing.empty else WARN, "VIEWING", _rows(viewing), ">0 rows when viewing targets exist")
 
+    # R5.7.29.1 native precipitation handoff guard.  Archive-member presence
+    # alone is insufficient: when all three native GFS hydrometeor families are
+    # READY and eligible Viewing targets exist, the downstream evidence table
+    # must contain their time/angle/target evidence.  Missing remains Missing;
+    # this check never substitutes zero optical depth.
+    _native_precip_fields = {"RWMR", "SNMR", "GRLE"}
+    _ready_precip_fields: set[str] = set()
+    if not gfs_comp.empty and "field" in gfs_comp.columns:
+        _status = gfs_comp.get("status", pd.Series("", index=gfs_comp.index)).astype(str).str.upper()
+        _ready_precip_fields = set(gfs_comp.loc[_status.eq("READY"), "field"].astype(str).str.upper()) & _native_precip_fields
+    _eligible_viewing = False
+    if not viewing_geometry.empty:
+        _eligible_viewing = bool(viewing_geometry.get("photographic_target_eligible", pd.Series(False, index=viewing_geometry.index)).fillna(False).astype(bool).any())
+    if _ready_precip_fields == _native_precip_fields and _eligible_viewing:
+        _precip_rows = _rows(viewing_precipitation)
+        add(
+            "VIEWING_NATIVE_PRECIPITATION_HANDOFF",
+            PASS if _precip_rows > 0 else FAIL,
+            "VIEWING_RT",
+            _precip_rows,
+            ">0 downstream rows when RWMR/SNMR/GRLE are READY and eligible Viewing targets exist",
+            "Upstream native hydrometeor readiness may not coexist with an empty Viewing precipitation evidence table",
+        )
+    else:
+        add(
+            "VIEWING_NATIVE_PRECIPITATION_HANDOFF",
+            NOT_APPLICABLE,
+            "VIEWING_RT",
+            f"ready={sorted(_ready_precip_fields)};eligible_targets={_eligible_viewing}",
+            "all RWMR/SNMR/GRLE READY plus eligible Viewing targets",
+        )
+
     # R5.7.29 Viewing Full Six-Band RT evidence-chain closure.  These checks
     # validate target coverage, six-band schema and arithmetic only; they do not
     # introduce a photographic threshold or alter Formation.
@@ -275,61 +310,6 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add("VIEWING_SIX_BAND_TARGET_COVERAGE",status,"VIEWING_RT",f"expected={len(expected_keys)};observed={len(observed_keys)};missing={len(missing_keys)};extra={len(extra_keys)}","one spectral row per eligible time+angle+target key","Canvas/layer IDs repeat across angles and may never be used as global evidence keys")
     else:
         add("VIEWING_SIX_BAND_TARGET_COVERAGE",WARN,"VIEWING_RT","GEOMETRY_SCHEMA_NOT_AVAILABLE","R5.7.29 viewing target geometry","Legacy/minimal fixtures may omit target geometry")
-
-    # R5.7.29.1 production handoff guard.  Archive-member presence and the
-    # downstream spectral schema cannot prove that the native RWMR/SNMR/GRLE
-    # snapshots survived the runtime spool.  When GFS reports those three
-    # fields READY, every eligible target must have an explicit Viewing
-    # precipitation evidence row; local/invalid geometry remains an explicit
-    # unresolved row rather than disappearing.
-    def _view_precip_keys(df: pd.DataFrame) -> set[tuple[str,float|None,str]]:
-        out=set()
-        if df.empty: return out
-        for _,r in df.iterrows():
-            av=pd.to_numeric(pd.Series([r.get("solar_altitude_deg")]),errors="coerce").iloc[0]
-            out.add((str(r.get("time")),None if pd.isna(av) else round(float(av),8),str(r.get("canvas_id"))))
-        return out
-
-    hydrometeor_ready=False
-    if not gfs_comp.empty and {"field","status"}.issubset(gfs_comp.columns):
-        ready_fields=set(
-            gfs_comp.loc[
-                gfs_comp["status"].astype(str).str.upper().eq("READY"),
-                "field",
-            ].astype(str).str.upper()
-        )
-        hydrometeor_ready={"RWMR","SNMR","GRLE"}.issubset(ready_fields)
-    if not viewing_geometry.empty:
-        eligible=viewing_geometry.get("photographic_target_eligible",pd.Series(False,index=viewing_geometry.index)).fillna(False).astype(bool)
-        expected_precip_keys=_view_precip_keys(viewing_geometry.loc[eligible])
-        observed_precip_keys=_view_precip_keys(viewing_precipitation)
-        missing_precip_keys=expected_precip_keys-observed_precip_keys
-        extra_precip_keys=observed_precip_keys-expected_precip_keys
-        precip_coverage_ok=not missing_precip_keys and not extra_precip_keys
-        add(
-            "VIEWING_PRECIPITATION_TARGET_COVERAGE",
-            PASS if precip_coverage_ok else FAIL,
-            "VIEWING_PRECIPITATION",
-            f"expected={len(expected_precip_keys)};observed={len(observed_precip_keys)};missing={len(missing_precip_keys)};extra={len(extra_precip_keys)}",
-            "one precipitation evidence row per eligible time+angle+canvas key",
-            "An empty header-only table is not evidence coverage",
-        )
-        if hydrometeor_ready:
-            statuses=viewing_precipitation.get("view_precipitation_status",pd.Series(dtype=str)).fillna("").astype(str)
-            native_handoff_ok=(not viewing_precipitation.empty and precip_coverage_ok and not statuses.eq("VIEW_PRECIPITATION_VOLUME_UNRESOLVED").any())
-            add(
-                "VIEWING_NATIVE_HYDROMETEOR_HANDOFF",
-                PASS if native_handoff_ok else FAIL,
-                "VIEWING_PRECIPITATION",
-                f"gfs_ready={hydrometeor_ready};rows={len(viewing_precipitation)};volume_unresolved={int(statuses.eq('VIEW_PRECIPITATION_VOLUME_UNRESOLVED').sum())}",
-                "RWMR/SNMR/GRLE READY implies preserved per-target Viewing precipitation evidence",
-                "Runtime spool cleanup must occur only after viewing_route_snapshot drain",
-            )
-        else:
-            add("VIEWING_NATIVE_HYDROMETEOR_HANDOFF",WARN,"VIEWING_PRECIPITATION",f"gfs_ready={hydrometeor_ready}","explicit provider gap or native hydrometeor evidence")
-    else:
-        add("VIEWING_PRECIPITATION_TARGET_COVERAGE",WARN,"VIEWING_PRECIPITATION","GEOMETRY_SCHEMA_NOT_AVAILABLE","R5.7.29.1 viewing target geometry")
-        add("VIEWING_NATIVE_HYDROMETEOR_HANDOFF",WARN,"VIEWING_PRECIPITATION",f"gfs_ready={hydrometeor_ready}","viewing geometry and provider evidence")
 
     if not viewing_spectral.empty:
         required_status={"view_gas_status","view_aerosol_status","view_cloud_status","view_precipitation_status","viewing_spectral_status","viewing_missing_components","viewing_spectral_contract"}
@@ -373,6 +353,150 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add("VIEWING_SIX_BAND_PHOTOGRAPHY_HANDOFF",PASS if not handoff_missing else FAIL,"PHOTOGRAPHY_DECISION",str(handoff_missing),"six-band Viewing summary preserved in Photography rows","Viewing remains a diagnostic photographability modifier and cannot rewrite Formation")
     else:
         add("VIEWING_SIX_BAND_SUMMARY_COVERAGE",WARN,"VIEWING_RT",0,"summary when viewing spectral targets exist")
+
+    # R5.7.30 independent Sun -> atmosphere -> observer Twilight Glow branch.
+    # These checks constrain evidence coverage and arithmetic only.  They do
+    # not introduce a Glow score, a photographic threshold, or a Formation
+    # handoff.  Absolute sky radiance remains explicitly unresolved.
+    if twilight_glow_required:
+        def _time_angle_keys(df: pd.DataFrame) -> set[tuple[str, float | None]]:
+            keys: set[tuple[str, float | None]] = set()
+            if df.empty:
+                return keys
+            for _, row in df.iterrows():
+                angle = pd.to_numeric(pd.Series([row.get("solar_altitude_deg")]), errors="coerce").iloc[0]
+                keys.add((str(row.get("time")), None if pd.isna(angle) else round(float(angle), 8)))
+            return keys
+
+        expected_angles = _time_angle_keys(formation)
+        observed_angles = _time_angle_keys(twilight_glow_summary)
+        angle_diff = expected_angles.symmetric_difference(observed_angles)
+        add(
+            "TWILIGHT_GLOW_ANGLE_COVERAGE",
+            PASS if expected_angles and not angle_diff else FAIL,
+            "TWILIGHT_GLOW",
+            f"expected={len(expected_angles)};observed={len(observed_angles)};difference={len(angle_diff)}",
+            "same time-angle coverage as Formation",
+            "Glow is an independent third branch but must retain the common 13-angle runtime timeline",
+        )
+
+        key_columns = {"time", "solar_altitude_deg", "glow_volume_id"}
+        duplicate_count = -1
+        if not twilight_glow.empty and key_columns.issubset(twilight_glow.columns):
+            duplicate_count = int(twilight_glow.duplicated(list(key_columns), keep=False).sum())
+        add(
+            "TWILIGHT_GLOW_VOLUME_KEY_UNIQUENESS",
+            PASS if duplicate_count == 0 else FAIL,
+            "TWILIGHT_GLOW",
+            duplicate_count,
+            "0 duplicate time+angle+glow_volume_id rows",
+            "Atmospheric receiver IDs repeat across angles and may not be treated as global keys",
+        )
+
+        required_status = {
+            "glow_proxy_state", "glow_sun_path_state", "glow_observer_path_state",
+            "glow_observer_rayleigh_status", "glow_missing_components",
+            "glow_total_radiance_state", "calibrated_glow_radiance_available",
+            "formation_independent", "viewing_independent", "twilight_glow_contract",
+        }
+        required_bands = {
+            f"glow_{field}_{int(wavelength)}nm"
+            for wavelength in SIX_BAND_WAVELENGTHS_NM
+            for field in (
+                "incident_relative_irradiance",
+                "observer_nonrayleigh_tau",
+                "observer_rayleigh_tau",
+                "observer_total_tau",
+                "observer_total_transmission",
+                "rayleigh_scattering_coefficient_m1",
+                "rayleigh_source_coefficient_m1_sr",
+                "single_scattering_source_proxy",
+                "band_evidence_state",
+            )
+        }
+        missing_glow_columns = sorted((required_status | required_bands) - set(twilight_glow.columns))
+        add(
+            "TWILIGHT_GLOW_SIX_BAND_SCHEMA",
+            PASS if not twilight_glow.empty and not missing_glow_columns else FAIL,
+            "TWILIGHT_GLOW",
+            str(missing_glow_columns),
+            "six explicit incident/path/Rayleigh/source-proxy bands and evidence states",
+        )
+
+        inconsistent = 0
+        if not twilight_glow.empty and not missing_glow_columns:
+            full_states = {
+                "GLOW_RAYLEIGH_SINGLE_SCATTERING_PROXY_READY",
+                "GLOW_NO_DIRECT_SINGLE_SCATTERING_AT_VOLUME",
+            }
+            full_mask = twilight_glow["glow_proxy_state"].astype(str).isin(full_states)
+            for _, row in twilight_glow.loc[full_mask].iterrows():
+                for wavelength in SIX_BAND_WAVELENGTHS_NM:
+                    incident = pd.to_numeric(pd.Series([row.get(f"glow_incident_relative_irradiance_{int(wavelength)}nm")]), errors="coerce").iloc[0]
+                    total_tau = pd.to_numeric(pd.Series([row.get(f"glow_observer_total_tau_{int(wavelength)}nm")]), errors="coerce").iloc[0]
+                    transmission = pd.to_numeric(pd.Series([row.get(f"glow_observer_total_transmission_{int(wavelength)}nm")]), errors="coerce").iloc[0]
+                    coefficient = pd.to_numeric(pd.Series([row.get(f"glow_rayleigh_source_coefficient_m1_sr_{int(wavelength)}nm")]), errors="coerce").iloc[0]
+                    source_proxy = pd.to_numeric(pd.Series([row.get(f"glow_single_scattering_source_proxy_{int(wavelength)}nm")]), errors="coerce").iloc[0]
+                    if any(pd.isna(value) for value in (incident, total_tau, transmission, coefficient, source_proxy)):
+                        inconsistent += 1
+                    elif abs(float(transmission) - math.exp(-float(total_tau))) > 1e-9:
+                        inconsistent += 1
+                    elif abs(float(source_proxy) - max(0.0, float(incident)) * float(transmission) * float(coefficient)) > 1e-15:
+                        inconsistent += 1
+            nonfull_mask = ~full_mask
+            for wavelength in SIX_BAND_WAVELENGTHS_NM:
+                for field in ("observer_total_tau", "observer_total_transmission", "single_scattering_source_proxy"):
+                    values = pd.to_numeric(twilight_glow.get(f"glow_{field}_{int(wavelength)}nm"), errors="coerce")
+                    inconsistent += int((nonfull_mask & values.notna()).sum())
+        add(
+            "TWILIGHT_GLOW_NUMERIC_CLOSURE",
+            PASS if not missing_glow_columns and inconsistent == 0 else FAIL,
+            "TWILIGHT_GLOW",
+            inconsistent,
+            "0 arithmetic inconsistencies and 0 partial rows promoted to a final source proxy",
+            "Missing evidence remains Missing; no fabricated extinction or source strength",
+        )
+
+        forbidden = {
+            column for column in twilight_glow.columns
+            if any(token in column.lower() for token in ("formation_state", "photography_opportunity", "decision", "score"))
+        }
+        independence_ok = (
+            not twilight_glow.empty
+            and not forbidden
+            and twilight_glow.get("formation_independent", pd.Series(False, index=twilight_glow.index)).fillna(False).astype(bool).all()
+            and twilight_glow.get("viewing_independent", pd.Series(False, index=twilight_glow.index)).fillna(False).astype(bool).all()
+        )
+        add(
+            "TWILIGHT_GLOW_BRANCH_INDEPENDENCE",
+            PASS if independence_ok else FAIL,
+            "TWILIGHT_GLOW",
+            f"forbidden_columns={sorted(forbidden)}",
+            "independent diagnostic flags true and no Formation/Photography decision fields",
+        )
+
+        no_radiance_claim = (
+            not twilight_glow.empty
+            and not twilight_glow.get("calibrated_glow_radiance_available", pd.Series(True, index=twilight_glow.index)).fillna(True).astype(bool).any()
+            and twilight_glow.get("glow_total_radiance_state", pd.Series("", index=twilight_glow.index)).astype(str).eq(
+                "NOT_RESOLVED_AEROSOL_SSA_PHASE_AND_MULTIPLE_SCATTERING_REQUIRED"
+            ).all()
+        )
+        add(
+            "TWILIGHT_GLOW_NO_FALSE_RADIANCE_CLAIM",
+            PASS if no_radiance_claim else FAIL,
+            "TWILIGHT_GLOW",
+            bool(no_radiance_claim),
+            "calibrated radiance unavailable until aerosol SSA/phase and multiple scattering are resolved",
+        )
+    else:
+        add(
+            "TWILIGHT_GLOW_BRANCH",
+            NOT_APPLICABLE,
+            "TWILIGHT_GLOW",
+            "not required",
+            "required beginning with R5.7.30",
+        )
 
     # R5.7.27 Formation-first Photography Decision aggregation.  The decision
     # timeline must follow Formation, not the usually sparser Viewing target
@@ -527,6 +651,8 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "v1_viewing_precipitation_evidence.csv",
         "v1_viewing_spectral_extinction_550_750nm.csv",
         "v1_viewing_spectral_summary.csv",
+        "v1_twilight_glow_scattering_volume_550_750nm.csv",
+        "v1_twilight_glow_summary.csv",
         "v1_photography_decision.csv",
         "analysis_integrity_audit.csv",
     }

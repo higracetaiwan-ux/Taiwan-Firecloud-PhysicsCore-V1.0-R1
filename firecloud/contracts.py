@@ -300,6 +300,27 @@ class FormationResult:
 
 
 @dataclass(frozen=True)
+class TwilightGlowResult:
+    """Independent Sun→atmosphere→observer Glow evidence contract.
+
+    The six-band values are an explicitly uncalibrated molecular
+    single-scattering source proxy.  They are not absolute sky radiance and may
+    not create or rewrite Firecloud Formation.  Aerosol source scattering and
+    multiple scattering remain separate evidence states until their required
+    native inputs or calibrated RT are available.
+    """
+    solar_angle_deg: float
+    spectral_single_scattering_source_proxy: Mapping[int, Optional[float]]
+    glow_state: str
+    evidence_completeness: Optional[float]
+    aerosol_scattering_state: str
+    multiple_scattering_state: str
+    calibrated_radiance_available: bool = False
+    confidence: GeometryConfidence = GeometryConfidence.UNKNOWN
+    uncertainty: Tuple[PredictionUncertainty, ...] = ()
+
+
+@dataclass(frozen=True)
 class PhysicsCoreResult:
     """Top-level V1 contract.
 

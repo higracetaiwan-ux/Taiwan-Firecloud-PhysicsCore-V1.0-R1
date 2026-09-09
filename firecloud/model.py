@@ -95,6 +95,7 @@ from .viewing_spectral import (
     attach_viewing_spectral_status,
 )
 from .photography_decision import build_photography_decision
+from .twilight_glow import build_twilight_glow_branch
 from .tier2_scattering_readiness import (
     build_tier2_scattering_readiness, summarize_tier2_scattering_readiness,
     TIER2_SCATTERING_READINESS_COLUMNS, TIER2_SCATTERING_READINESS_SUMMARY_COLUMNS,
@@ -2367,7 +2368,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     physics_completeness_frames.clear()
 
     _agg_step = 0
-    _agg_total = 8
+    _agg_total = 9
     def _aggregation_checkpoint(message: str, **frames):
         nonlocal _agg_step
         _agg_step += 1
@@ -2447,11 +2448,14 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     aerosol_spectral_route_snapshots = _drain_detail_matrix("aerosol_spectral_snapshot", ensure_angle=True)
     cams_native_aerosol_route_snapshots = _drain_detail_matrix("cams_native_aerosol_snapshot", ensure_angle=True)
     gas_profile_route_snapshots = _drain_detail_matrix("gas_profile", ensure_angle=True)
+    # R5.7.29.1: this family is written only to the local angle spool after
+    # native RWMR/SNMR/GRLE are merged.  Drain it before cleanup; R5.7.29
+    # cleaned the spool first, so the later drain was necessarily empty.
+    _view_route_snapshots = _drain_spool_matrix("viewing_route_snapshot")
     _aggregation_checkpoint("光譜與大氣矩陣完成", spectral_rt_voxel_matrix=spectral_rt_voxel_matrix, gas_profile_route_snapshots=gas_profile_route_snapshots)
-    # The regular heavyweight families are now rehydrated, but R5.7.29 also
-    # keeps the native-merged route snapshots in this spool for the independent
-    # Viewing precipitation path.  Do not clean the spool until that family has
-    # been drained below.
+    # All local-temp heavyweight frame families have now been rehydrated into
+    # their final matrices.  Remove the spool directory immediately.
+    _angle_frame_spool.cleanup()
     collect_and_trim()
 
     v1_cloud_layers = _concat_release(v1_cloud_layer_frames)
@@ -2482,11 +2486,6 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # independent six-band viewing extinction branch. No Sun→CloudBase optical
     # quantity is reused here.
     v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
-    _view_route_snapshots = _drain_spool_matrix("viewing_route_snapshot")
-    # R5.7.29.1: every AngleFrameSpool family has now been consumed.  R5.7.29
-    # cleaned the spool before this drain and silently deleted all native
-    # RWMR/SNMR/GRLE Viewing evidence.
-    _angle_frame_spool.cleanup()
     _view_precip_frames=[]
     if not v1_viewing_path_geometry.empty and not _view_route_snapshots.empty:
         for (_vt,_va),_vg in v1_viewing_path_geometry.groupby(["time","solar_altitude_deg"],dropna=False,sort=False):
@@ -2510,6 +2509,39 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_viewing_path_geometry = attach_viewing_spectral_status(v1_viewing_path_geometry, v1_viewing_spectral_extinction)
     v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry, v1_viewing_spectral_summary)
     v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary, v1_viewing_spectral_summary)
+    # R5.7.30 independent third branch: Sun→atmospheric scatter volume→observer.
+    # It reuses the virtual illuminated-atmosphere receivers only as geometry
+    # and upstream evidence. It does not create a Canvas, write Formation, or
+    # claim calibrated sky radiance without aerosol SSA/phase and multiple RT.
+    _glow_t0 = perf_counter()
+    _glow_event_timeline = pd.DataFrame([
+        {"time": _time, "solar_altitude_deg": float(_angle), "solar_azimuth_deg": float(_az)}
+        for _angle, _time, _az in candidates
+    ])
+    v1_twilight_glow_scattering_volume, v1_twilight_glow_summary = build_twilight_glow_branch(
+        red_light_reference=v1_red_light_reference,
+        event_timeline=_glow_event_timeline,
+        cloud_layers=v1_cloud_layers,
+        target_optics=v1_target_canvas_optical_evidence,
+        aerosol_snapshots=aerosol_spectral_route_snapshots,
+        gas_profiles=gas_profile_route_snapshots,
+        route_snapshots=_view_route_snapshots,
+        observer_lat_deg=float(lat),
+        observer_lon_deg=float(lon),
+        observer_alt_km=0.0,
+        earth_radius_km=cfg.earth_radius_km,
+    )
+    performance_rows.append({
+        "stage": "TWILIGHT_GLOW_INDEPENDENT_BRANCH",
+        "elapsed_seconds": perf_counter() - _glow_t0,
+        "cache_status": "RAYLEIGH_SINGLE_SCATTERING_PROXY_NO_RADIANCE_CLAIM",
+        "detail": f"volumes={len(v1_twilight_glow_scattering_volume)};angles={len(v1_twilight_glow_summary)}",
+    })
+    _aggregation_checkpoint(
+        "Glow 第三分支完成",
+        v1_twilight_glow_scattering_volume=v1_twilight_glow_scattering_volume,
+        v1_twilight_glow_summary=v1_twilight_glow_summary,
+    )
     v1_spectral_colour = _concat_release(v1_spectral_colour_frames)
     v1_precipitation_path_evidence = _concat_release(v1_precipitation_path_frames)
     v1_target_canvas_optical_summary = _concat_release(v1_target_canvas_optical_summary_frames, pd.DataFrame(columns=["time", *TARGET_CANVAS_OPTICAL_SUMMARY_COLUMNS]))
@@ -2561,6 +2593,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         _vw = v1_viewing_summary[pd.to_numeric(v1_viewing_summary.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_viewing_summary.empty else pd.DataFrame()
         _pd = v1_photography_decision[pd.to_numeric(v1_photography_decision.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_photography_decision.empty else pd.DataFrame()
         _rl = v1_red_light_availability_summary[pd.to_numeric(v1_red_light_availability_summary.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_red_light_availability_summary.empty else pd.DataFrame()
+        _gl = v1_twilight_glow_summary[pd.to_numeric(v1_twilight_glow_summary.get("solar_altitude_deg"), errors="coerce").eq(_a)].copy() if not v1_twilight_glow_summary.empty else pd.DataFrame()
         _v1_summary_rows.append({
             "time": _time, "solar_altitude_deg": _a, "solar_azimuth_deg": float(_az),
             "cloud_layer_count": int(len(_cl)), "canvas_candidate_count": int(len(_ca)),
@@ -2589,10 +2622,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "primary_canvas_state": (str(_rl.iloc[0]["primary_canvas_state"]) if not _rl.empty else "UNKNOWN"),
             "extended_canvas_state": (str(_rl.iloc[0]["extended_canvas_state"]) if not _rl.empty else "UNKNOWN"),
             "unused_red_light_potential": (float(_rl.iloc[0]["unused_red_light_potential"]) if not _rl.empty and pd.notna(_rl.iloc[0]["unused_red_light_potential"]) else float("nan")),
+            "twilight_glow_state": (str(_gl.iloc[0]["twilight_glow_state"]) if not _gl.empty else "GLOW_EVIDENCE_UNAVAILABLE"),
+            "twilight_glow_evidence_completeness": (float(_gl.iloc[0]["glow_evidence_completeness"]) if not _gl.empty and pd.notna(_gl.iloc[0]["glow_evidence_completeness"]) else float("nan")),
+            "twilight_glow_calibrated_radiance_available": (bool(_gl.iloc[0]["calibrated_glow_radiance_available"]) if not _gl.empty else False),
         })
     v1_core_summary = pd.DataFrame(_v1_summary_rows)
 
-    _aggregation_checkpoint("Viewing / Tier-2 / 摘要完成", v1_viewing_path_geometry=v1_viewing_path_geometry, v1_viewing_spectral_extinction=v1_viewing_spectral_extinction)
+    _aggregation_checkpoint("Viewing / Glow / Tier-2 / 摘要完成", v1_viewing_path_geometry=v1_viewing_path_geometry, v1_viewing_spectral_extinction=v1_viewing_spectral_extinction, v1_twilight_glow_summary=v1_twilight_glow_summary)
     gc.collect()
 
     # V8.4.9.1: the headline summary completeness must reflect the actual
@@ -2795,9 +2831,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_formation": v1_formation,
         "v1_viewing_path_geometry": v1_viewing_path_geometry,
         "v1_viewing_summary": v1_viewing_summary,
-        "v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence,
         "v1_viewing_spectral_extinction_550_750nm": v1_viewing_spectral_extinction,
         "v1_viewing_spectral_summary": v1_viewing_spectral_summary,
+        "v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence,
+        "v1_twilight_glow_scattering_volume_550_750nm": v1_twilight_glow_scattering_volume,
+        "v1_twilight_glow_summary": v1_twilight_glow_summary,
+        "twilight_glow_required": True,
         # R5.7.27.1: hand the already-built Formation-first decision table to
         # the pre-export integrity audit.  R5.7.27 returned/exported this table
         # but omitted it here, so the audit saw a false empty-table failure.
@@ -2873,6 +2912,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence,
         "v1_viewing_spectral_extinction_550_750nm": v1_viewing_spectral_extinction,
         "v1_viewing_spectral_summary": v1_viewing_spectral_summary,
+        "v1_twilight_glow_scattering_volume_550_750nm": v1_twilight_glow_scattering_volume,
+        "v1_twilight_glow_summary": v1_twilight_glow_summary,
         "v1_photography_decision": v1_photography_decision,
         "v1_spectral_colour": v1_spectral_colour,
         "v1_cloud_optical_validation": v1_cloud_optical_validation,

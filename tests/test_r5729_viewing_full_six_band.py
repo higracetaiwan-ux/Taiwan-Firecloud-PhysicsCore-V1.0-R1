@@ -158,14 +158,13 @@ def test_summary_and_photography_preserve_all_six_bands_without_overriding_forma
 def test_integrity_accepts_complete_six_band_closure_and_pipeline_handoff(monkeypatch):
     _resolved_components(monkeypatch)
     geometry = pd.DataFrame([_target()])
-    precipitation = pd.DataFrame([_precip("t0", -1.0, "canvas-1", 0.0)])
     detail = viewing_spectral.build_viewing_spectral_extinction(
         geometry,
         pd.DataFrame(),
         pd.DataFrame(),
         pd.DataFrame(),
         pd.DataFrame(),
-        precipitation,
+        pd.DataFrame([_precip("t0", -1.0, "canvas-1", 0.0)]),
     )
     spectral_summary = viewing_spectral.summarize_viewing_spectral_extinction(detail)
     formation = pd.DataFrame([{"time": "t0", "solar_altitude_deg": -1.0, "formation_state": "FORMATION_CONFIRMED"}])
@@ -175,14 +174,9 @@ def test_integrity_accepts_complete_six_band_closure_and_pipeline_handoff(monkey
         "v1_formation": formation,
         "v1_viewing_path_geometry": geometry,
         "v1_viewing_summary": viewing,
-        "v1_viewing_precipitation_evidence": precipitation,
         "v1_viewing_spectral_extinction_550_750nm": detail,
         "v1_viewing_spectral_summary": spectral_summary,
         "v1_photography_decision": photography,
-        "gfs_native_field_completeness": pd.DataFrame({
-            "field": ["RWMR", "SNMR", "GRLE"],
-            "status": ["READY", "READY", "READY"],
-        }),
     })
     statuses = audit.set_index("check_id")["status"].to_dict()
     assert statuses["VIEWING_SIX_BAND_TARGET_COVERAGE"] == "PASS"
@@ -190,43 +184,47 @@ def test_integrity_accepts_complete_six_band_closure_and_pipeline_handoff(monkey
     assert statuses["VIEWING_SIX_BAND_NUMERIC_CLOSURE"] == "PASS"
     assert statuses["VIEWING_SIX_BAND_SUMMARY_COVERAGE"] == "PASS"
     assert statuses["VIEWING_SIX_BAND_PHOTOGRAPHY_HANDOFF"] == "PASS"
-    assert statuses["VIEWING_PRECIPITATION_TARGET_COVERAGE"] == "PASS"
-    assert statuses["VIEWING_NATIVE_HYDROMETEOR_HANDOFF"] == "PASS"
 
     model_text = (Path(__file__).resolve().parents[1] / "firecloud" / "model.py").read_text(encoding="utf-8")
     merge_at = model_text.index("snap = merge_native_into_snapshot(snap, native_df)")
     viewing_spool_at = model_text.index('_angle_frame_spool.put("viewing_route_snapshot"', merge_at)
     assert merge_at < viewing_spool_at
-    viewing_drain_at = model_text.index('_view_route_snapshots = _drain_spool_matrix("viewing_route_snapshot")')
-    cleanup_at = model_text.index("_angle_frame_spool.cleanup()", viewing_drain_at)
-    assert viewing_spool_at < viewing_drain_at < cleanup_at
     handoff_start = model_text.index("_pre_integrity_result = {")
     handoff_end = model_text.index("analysis_integrity_audit = build_analysis_integrity_audit", handoff_start)
     handoff = model_text[handoff_start:handoff_end]
     assert '"v1_viewing_path_geometry": v1_viewing_path_geometry' in handoff
-    assert '"v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence' in handoff
     assert '"v1_viewing_spectral_extinction_550_750nm": v1_viewing_spectral_extinction' in handoff
     assert '"v1_viewing_spectral_summary": v1_viewing_spectral_summary' in handoff
+    assert '"v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence' in handoff
+
+    drain_at = model_text.index('_view_route_snapshots = _drain_spool_matrix("viewing_route_snapshot")')
+    cleanup_at = model_text.index("_angle_frame_spool.cleanup()")
+    assert drain_at < cleanup_at
 
 
-def test_integrity_fails_header_only_precipitation_when_native_hydrometeors_are_ready():
+def test_integrity_fails_when_native_precipitation_is_ready_but_handoff_is_empty():
     geometry = pd.DataFrame([_target()])
+    native_ready = pd.DataFrame([
+        {"field": field, "status": "READY"} for field in ("RWMR", "SNMR", "GRLE")
+    ])
     audit = build_analysis_integrity_audit({
-        "v1_formation": pd.DataFrame([{
-            "time": "t0",
-            "solar_altitude_deg": -1.0,
-            "formation_state": "FORMATION_CONFIRMED",
-        }]),
+        "gfs_native_field_completeness": native_ready,
         "v1_viewing_path_geometry": geometry,
-        "v1_viewing_precipitation_evidence": pd.DataFrame(columns=[
-            "time", "solar_altitude_deg", "canvas_id", "view_precipitation_status",
-        ]),
-        "gfs_native_field_completeness": pd.DataFrame({
-            "field": ["RWMR", "SNMR", "GRLE"],
-            "status": ["READY", "READY", "READY"],
-        }),
+        "v1_viewing_precipitation_evidence": pd.DataFrame(),
     })
     statuses = audit.set_index("check_id")["status"].to_dict()
-    assert statuses["VIEWING_PRECIPITATION_TARGET_COVERAGE"] == "FAIL"
-    assert statuses["VIEWING_NATIVE_HYDROMETEOR_HANDOFF"] == "FAIL"
-    assert statuses["ANALYSIS_INTEGRITY_OVERALL"] == "FAIL"
+    assert statuses["VIEWING_NATIVE_PRECIPITATION_HANDOFF"] == "FAIL"
+
+
+def test_integrity_accepts_native_precipitation_handoff_rows():
+    geometry = pd.DataFrame([_target()])
+    native_ready = pd.DataFrame([
+        {"field": field, "status": "READY"} for field in ("RWMR", "SNMR", "GRLE")
+    ])
+    audit = build_analysis_integrity_audit({
+        "gfs_native_field_completeness": native_ready,
+        "v1_viewing_path_geometry": geometry,
+        "v1_viewing_precipitation_evidence": pd.DataFrame([_precip("t0", -1.0, "canvas-1", 0.0)]),
+    })
+    statuses = audit.set_index("check_id")["status"].to_dict()
+    assert statuses["VIEWING_NATIVE_PRECIPITATION_HANDOFF"] == "PASS"

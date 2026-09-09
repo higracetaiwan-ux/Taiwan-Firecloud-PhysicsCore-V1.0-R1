@@ -1087,7 +1087,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.29.1 Viewing Precipitation Spool Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.30 Independent Twilight Glow Third Branch + R5.7.29.1 Viewing Precipitation Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -2252,6 +2252,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_viewing_precipitation_evidence.csv", result.get("v1_viewing_precipitation_evidence", pd.DataFrame())),
             ("v1_viewing_spectral_extinction_550_750nm.csv", result.get("v1_viewing_spectral_extinction_550_750nm", pd.DataFrame())),
             ("v1_viewing_spectral_summary.csv", result.get("v1_viewing_spectral_summary", pd.DataFrame())),
+            ("v1_twilight_glow_scattering_volume_550_750nm.csv", result.get("v1_twilight_glow_scattering_volume_550_750nm", pd.DataFrame())),
+            ("v1_twilight_glow_summary.csv", result.get("v1_twilight_glow_summary", pd.DataFrame())),
             ("v1_photography_decision.csv", result.get("v1_photography_decision", pd.DataFrame())),
             ("v1_spectral_colour_550_750nm.csv", result.get("v1_spectral_colour", pd.DataFrame())),
             ("v1_cloud_optical_validation.csv", result.get("v1_cloud_optical_validation", pd.DataFrame())),
@@ -2398,7 +2400,6 @@ if run or st.session_state.analysis_result is not None:
 
 st.divider()
 st.caption(
-    "R5.7.29.1 修正 Viewing route snapshot 在 precipitation aggregation 前被 runtime spool cleanup 刪除的整合漏接，並新增 precipitation target coverage 與 native RWMR/SNMR/GRLE handoff 兩項 Integrity 硬檢查；不改任何 Viewing extinction 公式或 Formation 規則。"
     "R5.7.29 完成獨立 Cloud→Observer Viewing 的 550/575/600/650/700/750 nm 證據閉環：Gas、CAMS aerosol、cloud occupancy-optics 與 forecast-native precipitation 必須在同一 time + solar angle + target identity 全部完整，才輸出 total optical depth 與 transmission；partial component tau 不得升格。Photography 只保留未校準六波段 diagnostic，不能改寫 Formation-first hard gate。"
     "R5.7.28 在 CAMS 單一光譜 AOD 時次缺失時，只允許同一分析已取得、相距不超過一個原生 3 小時 forecast interval 的真實相鄰時次資料，並完整輸出來源時次、時間偏移與 temporal evidence state；不使用固定 Angstrom 或人工 AOD。Red-Light 的 cloud conflict、aerosol temporal evidence、gas 與 precipitation evidence 分欄呈現。"
     "R5.7.27.1 的 Photography Integrity handoff／CASE guard、Formation-first、13-angle、六波段與 R5.7.26 Red-Light Availability 契約均完整保留。"
