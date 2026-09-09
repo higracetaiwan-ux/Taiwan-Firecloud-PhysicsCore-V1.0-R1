@@ -38,6 +38,32 @@ PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_3D_AEROSOL_EXTINCTION_532NM"
 OZONE_PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_3D_OZONE_PRESSURE_LEVELS"
 DEFAULT_PRESSURE_LEVELS_HPA = (1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30)
 
+STANDARD_GRAVITY_M_S2 = 9.80665
+
+def normalize_cams_geopotential_height_m(value: float, units: str | None) -> tuple[float, str]:
+    """Normalize CAMS pressure-level geopotential to geopotential height metres.
+
+    ecCodes currently reports CAMS ``z`` as e.g. ``m**2 s**-2``. Older unit
+    matching missed that spelling and silently treated geopotential as metres,
+    inflating pressure-level heights by ~g0. Unknown units fail closed.
+    """
+    v = float(value)
+    if not math.isfinite(v):
+        return float("nan"), "CAMS_GEOPOTENTIAL_VALUE_NONFINITE"
+    u = str(units or "").strip().lower()
+    compact = re.sub(r"\s+", "", u)
+    compact = (compact.replace("²", "2").replace("⁻", "-")
+               .replace("−", "-").replace("^", ""))
+    geopotential_tokens = (
+        "m**2s**-2", "m2s-2", "m2s**-2", "m**2s-2",
+        "jkg-1", "jkg**-1",
+    )
+    if any(tok in compact for tok in geopotential_tokens):
+        return v / STANDARD_GRAVITY_M_S2, "GEOPOTENTIAL_M2_S2_DIV_G0"
+    if compact in {"m", "metre", "meter", "gpm", "geopotentialmetre", "geopotentialmeter"}:
+        return v, "GEOPOTENTIAL_HEIGHT_METRES_DIRECT"
+    return float("nan"), f"CAMS_GEOPOTENTIAL_UNITS_UNRESOLVED:{u or 'MISSING'}"
+
 
 def decoder_available() -> bool:
     return importlib.util.find_spec("eccodes") is not None
@@ -565,14 +591,14 @@ def decode_grib_to_route(grib_path: str | Path, points: list[dict], pressure_lev
                     if is_o3:
                         recs[p["point_id"]][f"cams_ozone_kgkg_{int(level)}hPa"] = max(0.0, v) if np.isfinite(v) else np.nan
                     if is_geo:
-                        # GRIB geopotential (m2 s-2) is converted to approximate geopotential height.
                         try:
-                            units = str(codes_get(gid, "units")).lower()
+                            units = str(codes_get(gid, "units"))
                         except Exception:
                             units = ""
-                        if "m2" in units or "m^2" in units or "s-2" in units:
-                            v = v / 9.80665
-                        recs[p["point_id"]][f"cams_geopotential_height_m_{int(level)}hPa"] = v
+                        height_m, norm_state = normalize_cams_geopotential_height_m(v, units)
+                        recs[p["point_id"]][f"cams_geopotential_height_m_{int(level)}hPa"] = height_m
+                        recs[p["point_id"]]["cams_geopotential_height_normalization_state"] = norm_state
+                        recs[p["point_id"]]["cams_geopotential_height_source_units"] = units
             finally:
                 codes_release(gid)
     return pd.DataFrame(recs.values())
@@ -673,7 +699,7 @@ def decode_grib_spectral_aod_to_route(grib_path: str | Path, points: list[dict])
 
 def _decode_ozone_only(grib_path: str | Path, points: list[dict], pressure_levels_hpa=DEFAULT_PRESSURE_LEVELS_HPA) -> pd.DataFrame:
     df = decode_grib_to_route(grib_path, points, pressure_levels_hpa)
-    keep = [c for c in df.columns if c in {"point_id","distance_km","direction_offset_deg","lat","lon"} or c.startswith("cams_ozone_kgkg_") or c.startswith("cams_geopotential_height_m_")]
+    keep = [c for c in df.columns if c in {"point_id","distance_km","direction_offset_deg","lat","lon"} or c.startswith("cams_ozone_kgkg_") or c.startswith("cams_geopotential_height_m_") or c in {"cams_geopotential_height_normalization_state","cams_geopotential_height_source_units"}]
     return df[keep].copy() if keep else pd.DataFrame()
 
 
@@ -711,7 +737,7 @@ def fetch_route_native_aerosol_bundle(points: list[dict], valid_time: datetime, 
         request_audit.append(ameta.get("request_audit", {}))
         adf = decode_grib_to_route(path, points)
         a_cols=[c for c in adf.columns if c.startswith("cams_aerext532_m1_")]
-        merged=_merge_on_point(merged, adf[[c for c in adf.columns if c in {"point_id","distance_km","direction_offset_deg","lat","lon","cams_native_aerosol_source"} or c.startswith("cams_aerext532_m1_") or c.startswith("cams_geopotential_height_m_")]])
+        merged=_merge_on_point(merged, adf[[c for c in adf.columns if c in {"point_id","distance_km","direction_offset_deg","lat","lon","cams_native_aerosol_source"} or c.startswith("cams_aerext532_m1_") or c.startswith("cams_geopotential_height_m_") or c in {"cams_geopotential_height_normalization_state","cams_geopotential_height_source_units"}]])
         inv=inspect_grib_message_inventory(path);
         if not inv.empty:
             inv=inv.copy(); inv["request_role"]="NATIVE_AEROSOL_532NM_PRESSURE_LEVEL"; inventory_rows.append(inv)
@@ -904,7 +930,7 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
         if role == "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL":
             path, meta = download_native_subset(points, valid_time, cache_dir=cache_dir)
             df = decode_grib_to_route(path, points)
-            keep = [c for c in df.columns if c in {"point_id","distance_km","direction_offset_deg","lat","lon","cams_native_aerosol_source"} or c.startswith("cams_aerext532_m1_") or c.startswith("cams_geopotential_height_m_")]
+            keep = [c for c in df.columns if c in {"point_id","distance_km","direction_offset_deg","lat","lon","cams_native_aerosol_source"} or c.startswith("cams_aerext532_m1_") or c.startswith("cams_geopotential_height_m_") or c in {"cams_geopotential_height_normalization_state","cams_geopotential_height_source_units"}]
             df = df[keep].copy()
             cols = [c for c in df.columns if c.startswith("cams_aerext532_m1_")]
             inv = inspect_grib_message_inventory(path)

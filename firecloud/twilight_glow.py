@@ -341,7 +341,10 @@ def build_twilight_glow_phase1_exports(detail: pd.DataFrame) -> tuple[pd.DataFra
     observer_cols = identity + [
         "glow_observer_extinction_state", "glow_observer_path_state",
         "glow_observer_path_evidence_complete", "glow_observer_rayleigh_status",
-        "glow_observer_gas_species_status", "glow_observer_missing_components",
+        "glow_observer_gas_species_status", "glow_observer_aerosol_status",
+        "glow_observer_aerosol_required_segment_count", "glow_observer_aerosol_resolved_segment_count",
+        "glow_observer_aerosol_lowest_endpoint_snap_segment_count", "glow_observer_aerosol_endpoint_tolerance_km",
+        "glow_observer_missing_components",
         "twilight_glow_extinction_contract",
     ]
     single_cols = identity + [
@@ -534,6 +537,7 @@ def build_twilight_glow_branch(
         gas_profiles if isinstance(gas_profiles, pd.DataFrame) else pd.DataFrame(),
         precipitation,
         earth_radius_km=float(earth_radius_km),
+        aerosol_lowest_endpoint_tolerance_km=0.05,
     )
     source_map = {
         _key(row.get("time"), row.get("solar_altitude_deg"), row.get("reference_receiver_id")): row
@@ -613,6 +617,11 @@ def build_twilight_glow_branch(
             "glow_observer_path_state": observer.get("viewing_spectral_status") if observer is not None else "GLOW_OBSERVER_PATH_MISSING",
             "glow_observer_path_evidence_complete": observer_full,
             "glow_observer_extinction_state": "GLOW_SCATTER_TO_OBSERVER_FULL_SIX_BAND_EXTINCTION" if observer_full else ("GLOW_SCATTER_TO_OBSERVER_PARTIAL_EXTINCTION" if observer is not None else "GLOW_SCATTER_TO_OBSERVER_EXTINCTION_UNRESOLVED"),
+            "glow_observer_aerosol_status": observer.get("view_aerosol_status") if observer is not None else "GLOW_OBSERVER_AEROSOL_MISSING",
+            "glow_observer_aerosol_required_segment_count": observer.get("view_aerosol_required_segment_count") if observer is not None else 0,
+            "glow_observer_aerosol_resolved_segment_count": observer.get("view_aerosol_resolved_segment_count") if observer is not None else 0,
+            "glow_observer_aerosol_lowest_endpoint_snap_segment_count": observer.get("view_aerosol_lowest_endpoint_snap_segment_count") if observer is not None else 0,
+            "glow_observer_aerosol_endpoint_tolerance_km": 0.05,
             "glow_observer_missing_components": ";".join(sorted(set(observer_missing))),
             "glow_observer_rayleigh_status": rayleigh_status,
             "glow_observer_rayleigh_required_segment_count": required_segments,

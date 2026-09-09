@@ -1,4 +1,26 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.31
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.32
+
+
+## R5.7.32 Glow Observer-Path Aerosol Coverage Robustness
+
+R5.7.31 真實 sunset CASE 將 Glow `Scatter→Observer` 的主要缺口定位到 CAMS native aerosol vertical geometry：CAMS GRIB `z` 的實際單位是 `m**2 s**-2`（geopotential），舊 decoder 的單位字串比對沒有涵蓋 ecCodes 這個拼法，因此曾把 geopotential 直接當 metres，將 1000/500/30 hPa 高度約放大 9.80665 倍。
+
+R5.7.32 在 provider decode 時正式正規化：
+
+- `m**2 s**-2` / 同義 geopotential units → 除以 `g0=9.80665 m s^-2` → geopotential height metres；
+- `m` / `gpm` 類 height units → 直接使用；
+- 未知 units → fail-close 為 Missing，不再保留可能錯誤的數值。
+
+Glow observer aerosol 另外允許一個非常小、**Glow-only** 的 lowest-native-level endpoint snap：當長距離 observer ray 的 segment midpoint 只比最低 CAMS pressure surface 低 `<=0.05 km` 時，可使用最近的最低 native `aerext532`；這不會擴大 route、不會用 AOD 外插，也不改 Viewing 預設 strict contract。R5.7.31 field evidence 離線重播顯示：60/80/100 km long-range targets 從原先大量 Partial 恢復為 **468/468 aerosol resolved**，其中只有 6 個 100 km targets 使用 endpoint snap。
+
+新增 Integrity：
+
+- `CAMS_GEOPOTENTIAL_HEIGHT_NORMALIZATION`
+- `TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE`
+
+並輸出 Glow observer aerosol required/resolved segment count、lowest-endpoint snap count 與 tolerance provenance。Formation、Viewing、Photography、13 angles、六波段、Route Invariance、R5.7.31 two-leg extinction 公式均不改動。
+
+Working-tree regression：**492 passed / 0 failed**。Field validation 尚待 R5.7.32 新 CASE。
 
 
 ## R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1

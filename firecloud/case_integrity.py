@@ -137,6 +137,8 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     twilight_glow_summary = _df(result.get("v1_twilight_glow_summary"))
     twilight_glow_required = bool(result.get("twilight_glow_required", False))
     twilight_glow_extinction_phase1_required = bool(result.get("twilight_glow_extinction_phase1_required", False))
+    cams_geopotential_normalization_required = bool(result.get("cams_geopotential_normalization_required", False))
+    twilight_glow_observer_aerosol_coverage_required = bool(result.get("twilight_glow_observer_aerosol_coverage_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -258,6 +260,44 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", FAIL, "CAMS_AEROSOL", 0.0, "spectral aerosol payload or explicit provider failure", "Canvas spectral paths report AEROSOL missing while aerosol route payload is empty")
     else:
         add("CAMS_AEROSOL_SPECTRAL_PAYLOAD_VALIDITY", WARN, "CAMS_AEROSOL", 0.0, "payload when required by target spectral RT")
+
+    # R5.7.32: CAMS `z` is geopotential. ecCodes may report units as
+    # `m**2 s**-2`; treating those raw values as metres inflates pressure-level
+    # height by ~g0 and causes false long-range aerosol path gaps.  Audit both
+    # explicit decoder provenance and pressure-level plausibility.
+    if cams_geopotential_normalization_required:
+        if aerosol_spectral.empty:
+            add("CAMS_GEOPOTENTIAL_HEIGHT_NORMALIZATION", WARN, "CAMS_AEROSOL", 0, "normalized CAMS aerosol payload when provider is available", "No aerosol snapshot: preserve provider missing rather than fabricating height")
+        else:
+            state = aerosol_spectral.get("cams_geopotential_height_normalization_state", pd.Series("", index=aerosol_spectral.index)).fillna("").astype(str)
+            norm_ok = state.isin({"GEOPOTENTIAL_M2_S2_DIV_G0", "GEOPOTENTIAL_HEIGHT_METRES_DIRECT"})
+            cols = [c for c in ["cams_geopotential_height_m_1000hPa", "cams_geopotential_height_m_500hPa", "cams_geopotential_height_m_30hPa"] if c in aerosol_spectral.columns]
+            plausible = False
+            detail = ""
+            if len(cols) == 3:
+                z1000 = pd.to_numeric(aerosol_spectral[cols[0]], errors="coerce")
+                z500 = pd.to_numeric(aerosol_spectral[cols[1]], errors="coerce")
+                z30 = pd.to_numeric(aerosol_spectral[cols[2]], errors="coerce")
+                valid = z1000.notna() & z500.notna() & z30.notna()
+                if valid.any():
+                    med = (float(z1000[valid].median()), float(z500[valid].median()), float(z30[valid].median()))
+                    ordered = float(((z1000[valid] < z500[valid]) & (z500[valid] < z30[valid])).mean())
+                    plausible = (-1500.0 <= med[0] <= 3000.0 and 3000.0 <= med[1] <= 8000.0 and 15000.0 <= med[2] <= 35000.0 and ordered >= 0.95)
+                    detail = f"median_m_1000={med[0]:.3f};500={med[1]:.3f};30={med[2]:.3f};ordered_fraction={ordered:.6f}"
+            ok = bool(norm_ok.all()) and plausible
+            add("CAMS_GEOPOTENTIAL_HEIGHT_NORMALIZATION", PASS if ok else FAIL, "CAMS_AEROSOL", f"provenance={float(norm_ok.mean()):.6f};{detail}", "recognized geopotential units normalized to metres and pressure-level heights physically plausible", "R5.7.32 fail-closes unknown geopotential units; m**2 s**-2 must be divided by g0")
+
+        if twilight_glow_observer_aerosol_coverage_required and not twilight_glow_observer_extinction.empty:
+            dist = pd.to_numeric(twilight_glow_observer_extinction.get("distance_km"), errors="coerce")
+            long = twilight_glow_observer_extinction[dist.isin([60.0, 80.0, 100.0])].copy()
+            provider_ready = (not aerosol_spectral.empty and _row_any_numeric_valid_fraction(aerosol_spectral, [f"aod{int(w)}" for w in SIX_BAND_WAVELENGTHS_NM]) >= 0.95)
+            if long.empty:
+                add("TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE", FAIL, "TWILIGHT_GLOW", 0, "60/80/100 km Glow observer targets present")
+            elif provider_ready:
+                finite = pd.concat([pd.to_numeric(long.get(f"glow_observer_tau_aerosol_{int(w)}nm"), errors="coerce").notna().rename(str(w)) for w in SIX_BAND_WAVELENGTHS_NM], axis=1).all(axis=1)
+                add("TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE", PASS if bool(finite.all()) else FAIL, "TWILIGHT_GLOW", f"resolved={int(finite.sum())}/{len(long)}", "all 60/80/100 km targets have six-band aerosol optical depth when native CAMS route evidence is ready", "No route expansion or synthetic AOD; this guard catches pressure-level height/unit regressions")
+            else:
+                add("TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE", WARN, "TWILIGHT_GLOW", f"targets={len(long)};provider_ready=false", "evaluate only when native CAMS spectral payload is available")
 
     add("FORMATION_TABLE_PRESENT", PASS if not formation.empty else FAIL, "FORMATION", _rows(formation), ">0 rows")
     add("VIEWING_SUMMARY_PRESENT", PASS if not viewing.empty else WARN, "VIEWING", _rows(viewing), ">0 rows when viewing targets exist")
