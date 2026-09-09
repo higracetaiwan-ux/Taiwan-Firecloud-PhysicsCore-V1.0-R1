@@ -30,6 +30,17 @@ HYDROMETEOR_MICROPHYSICS = {
     "graupel": {"prefix":"graupel_kgkg_", "radius_um":700.0, "density_kgm3":400.0},
 }
 
+VIEWING_PRECIPITATION_COLUMNS = [
+    "time",
+    "solar_altitude_deg",
+    "canvas_id",
+    "view_precipitation_status",
+    "view_precipitation_path_km",
+    "view_precipitation_intersection_count",
+    *[f"view_tau_precip_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM],
+    "note",
+]
+
 
 def _finite(v):
     try:
@@ -226,9 +237,8 @@ def build_precipitation_path_evidence(canvases, route_snapshot: pd.DataFrame | N
 
 def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_snapshot: pd.DataFrame | None, *, earth_radius_km: float=6371.0) -> pd.DataFrame:
     """Cloud->Observer native-hydrometeor extinction, independent of Formation."""
-    cols=["time","solar_altitude_deg","canvas_id","view_precipitation_status","view_precipitation_path_km","view_precipitation_intersection_count",*[f"view_tau_precip_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM],"note"]
     if viewing_targets is None or viewing_targets.empty:
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=VIEWING_PRECIPITATION_COLUMNS)
     cells_by_dir,meta=_prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
     rows=[]
     for _,r in viewing_targets.iterrows():
@@ -262,4 +272,4 @@ def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_sn
         rec={**base,"view_precipitation_status":status,"view_precipitation_path_km":path_km,"view_precipitation_intersection_count":hits,"note":"FORECAST_NATIVE_3D_HYDROMETEOR_VIEW_PATH;NO_SURFACE_RATE_TO_TAU;LARGE_PARTICLE_GREY_TIER1"}
         for wl in SIX_BAND_WAVELENGTHS_NM: rec[f"view_tau_precip_{int(wl)}nm"]=val
         rows.append(rec)
-    return pd.DataFrame(rows,columns=cols)
+    return pd.DataFrame(rows,columns=VIEWING_PRECIPITATION_COLUMNS)

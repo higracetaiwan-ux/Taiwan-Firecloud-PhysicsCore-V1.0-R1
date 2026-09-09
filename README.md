@@ -1,4 +1,25 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.28
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.29
+
+## R5.7.29 Viewing Full Six-Band RT Closure
+
+R5.7.29 專門收斂獨立的 **Cloud→Observer Viewing** 六波段證據鏈。每個可攝影
+target 現在必須在 550/575/600/650/700/750 nm 明列 Gas、CAMS aerosol、
+cloud occupancy-optics 與 forecast-native precipitation optical depth；只有四個
+component 在同一 time + solar angle + target identity 都完整時，才輸出 total
+optical depth 與 transmission。Partial component tau 只保留為 diagnostic，絕不
+升格成完整 Viewing transmission。
+
+target cloud COT 與 Viewing precipitation 都改以 time + solar angle + object ID
+綁定，防止各角度重複的 layer/canvas ID 串錯證據。GFS RWMR/SNMR/GRLE 現在
+在 native merge 後才進入 Viewing snapshot；local target 亦保留明確 unresolved
+row，不再從 target coverage 消失。Photography Decision 保存全部六波段 mean
+transmission 與 completeness，但仍是未校準 diagnostic，不能改寫 Formation-first
+hard gate。
+
+Analysis Integrity 新增 target coverage、six-band schema、numeric closure、summary
+coverage 與 Photography handoff 五項檢查；CASE 必須封存 Viewing precipitation、
+spectral detail 與 spectral summary。Formation、Glow、UI、權重、13 angles、route
+resolution 與 Forecast／Observation 邊界均未改動。
 
 ## R5.7.28 Red-Light Evidence Robustness
 

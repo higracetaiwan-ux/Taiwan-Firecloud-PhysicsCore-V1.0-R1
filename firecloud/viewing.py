@@ -12,8 +12,9 @@ This module remains deliberately independent of Formation:
 * cloud fraction is only a viewing occupancy proxy, never COT;
 * missing geometry/occupancy is never converted to clear sky.
 
-R5.6.1 is still Viewing Tier-1. Full Cloud→Observer spectral extinction
-(aerosol/haze/fog/precipitation/cloud COT) remains a separate later tier.
+R5.6.1 introduced Viewing geometry. R5.7.29 keeps that geometry frozen and
+allows the independent Cloud→Observer six-band evidence branch to attach its
+status without rewriting the geometric obstruction result.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import math
 import numpy as np
 import pandas as pd
 from .config import EARTH_RADIUS_KM
+from .contracts import SIX_BAND_WAVELENGTHS_NM
 from .shared_geometry.ray import (observer_los_height_agl_km, sample_observer_los_segment,
                                   sampled_segment_path_km)
 
@@ -236,7 +238,7 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
                          "low_cloud_blocker_count":0,"mid_cloud_blocker_count":0,"high_cloud_blocker_count":0,
                          "projected_support_blocker_count":0,"view_obstruction_fraction_proxy":np.nan,
                          "view_geometry_state":"VIEW_GEOMETRY_NOT_EVALUATED_LOCAL_TARGET","viewing_geometry_method":"PROJECTED_VOLUME_SUPPORT",
-                         "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED","viewing_confidence":"LOW",
+                         "viewing_path_spectral_status":"VIEW_SPECTRAL_PENDING","viewing_confidence":"LOW",
                          "blocker_layer_ids":"","blocker_support_intervals_km":"",
                          "note":"FORMATION_UNCHANGED;VIEWING_ONLY;LOCAL_OR_INCOMPLETE_TARGET"})
             continue
@@ -294,18 +296,29 @@ def build_viewing_path_geometry(cloud_layers: pd.DataFrame, canvases: pd.DataFra
                      "high_cloud_blocker_count":high,"projected_support_blocker_count":len(support_blockers),
                      "view_obstruction_fraction_proxy":obstruction,"view_geometry_state":state,
                      "viewing_geometry_method":"ANGULAR_FOOTPRINT_PROJECTED_VOLUME_WITH_CONTINUOUS_CF_CACHED",
-                     "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED","viewing_confidence":conf,
+                     "viewing_path_spectral_status":"VIEW_SPECTRAL_PENDING","viewing_confidence":conf,
                      "blocker_layer_ids":";".join(str(x) for x in sorted(blockers, key=str)),
                      "blocker_support_intervals_km":";".join(f"{k}:{supports[k]}" for k in sorted(supports)),
                      "note":"FORMATION_UNCHANGED;CLOUD_TO_OBSERVER_PROJECTED_VOLUME;CF_OCCUPANCY_PROXY_NOT_COT;MISSING_OCCUPANCY_NOT_CLEAR;UNCALIBRATED_THRESHOLDS;R573_CACHED_TRANSECT"})
     return pd.DataFrame(rows,columns=cols)
 
-def summarize_viewing_path(viewing: pd.DataFrame) -> pd.DataFrame:
+def summarize_viewing_path(viewing: pd.DataFrame, spectral_summary: pd.DataFrame | None = None) -> pd.DataFrame:
+    spectral_cols=[
+        "viewing_rt_completeness","full_viewing_rt_target_count","partial_viewing_rt_target_count","unresolved_viewing_rt_target_count",
+        *[f"mean_view_transmission_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM],
+        *[f"viewing_rt_completeness_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM],
+        "viewing_missing_components","viewing_spectral_contract",
+    ]
     cols=["time","solar_altitude_deg","target_count","photographic_target_count","evaluated_target_count",
           "clear_target_count","minor_obstruction_target_count","partial_obstruction_target_count","severe_obstruction_target_count",
           "mean_view_obstruction_fraction_proxy","max_view_obstruction_fraction_proxy","viewing_state",
-          "viewing_path_spectral_status","viewing_summary_scope","note"]
+          "viewing_path_spectral_status",*spectral_cols,"viewing_summary_scope","note"]
     if viewing is None or viewing.empty: return pd.DataFrame(columns=cols)
+    spectral_by_key={}
+    if spectral_summary is not None and not spectral_summary.empty:
+        for _,sr in spectral_summary.iterrows():
+            av=_finite(sr.get("solar_altitude_deg"))
+            spectral_by_key[(str(sr.get("time")),None if av is None else round(av,8))]=sr
     rows=[]; keys=[k for k in ["time","solar_altitude_deg"] if k in viewing.columns]
     groups=viewing.groupby(keys,dropna=False) if keys else [((),viewing)]
     for key,g0 in groups:
@@ -324,16 +337,21 @@ def summarize_viewing_path(viewing: pd.DataFrame) -> pd.DataFrame:
         elif unknown_intersection: state="VIEWING_PARTIAL_DATA"
         elif mean>0.0: state="VIEWING_MINOR_OBSTRUCTION"
         else: state="VIEWING_GEOMETRY_GOOD"
+        valskey=key if isinstance(key,tuple) else (key,)
+        group_values=dict(zip(keys,valskey)) if keys else {}
+        av=_finite(group_values.get("solar_altitude_deg"))
+        srec=spectral_by_key.get((str(group_values.get("time")),None if av is None else round(av,8)))
         row={"target_count":len(g0),"photographic_target_count":len(g),"evaluated_target_count":int(evaluated.sum()),
              "clear_target_count":int((states=="VIEW_GEOMETRICALLY_CLEAR").sum()),
              "minor_obstruction_target_count":int((states=="VIEW_MINOR_OBSTRUCTION").sum()),
              "partial_obstruction_target_count":int((states=="VIEW_PARTIAL_OBSTRUCTION").sum()),
              "severe_obstruction_target_count":int((states=="VIEW_SEVERE_OBSTRUCTION").sum()),
              "mean_view_obstruction_fraction_proxy":mean,"max_view_obstruction_fraction_proxy":mx,"viewing_state":state,
-             "viewing_path_spectral_status":"VIEW_SPECTRAL_RT_NOT_YET_RESOLVED",
+             "viewing_path_spectral_status":str(srec.get("viewing_spectral_state")) if srec is not None else "VIEW_SPECTRAL_UNRESOLVED",
              "viewing_summary_scope":"PHOTOGRAPHIC_TARGETS_BASE_GE_2KM;FOREGROUND_LOW_CLOUDS_AS_BLOCKERS_ONLY",
-             "note":"FORMATION_INDEPENDENT;ANGULAR_FOOTPRINT_PROJECTED_VOLUME_TIER2;LOW_CLOUD_TARGETS_EXCLUDED_FROM_SUMMARY;NO_VIEWING_SPECTRAL_EXTINCTION_YET"}
-        if keys:
-            valskey=key if isinstance(key,tuple) else (key,); row.update(dict(zip(keys,valskey)))
+             "note":"FORMATION_INDEPENDENT;ANGULAR_FOOTPRINT_PROJECTED_VOLUME_TIER2;LOW_CLOUD_TARGETS_EXCLUDED_FROM_SUMMARY;R5729_SIX_BAND_VIEWING_STATUS_ATTACHED"}
+        for c in spectral_cols:
+            row[c]=srec.get(c,np.nan) if srec is not None else np.nan
+        row.update(group_values)
         rows.append(row)
     return pd.DataFrame(rows,columns=cols)

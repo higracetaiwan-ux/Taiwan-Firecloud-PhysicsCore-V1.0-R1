@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from .contracts import SIX_BAND_WAVELENGTHS_NM
 
 
 FORMATION_CONFIRMED_STATES = {"FORMATION_CONFIRMED", "CONFIRMED"}
@@ -73,7 +74,8 @@ def build_photography_decision(
 ) -> pd.DataFrame:
     cols = [
         "time", "solar_altitude_deg", "formation_state", "formation_gate_state",
-        "viewing_state", "viewing_spectral_state", "mean_view_transmission_650nm",
+        "viewing_state", "viewing_spectral_state", "viewing_rt_completeness",
+        *[f"mean_view_transmission_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM],
         "viewing_decision_role", "photography_spectral_modifier",
         "photography_outcome", "photography_opportunity", "reason", "note",
     ]
@@ -107,12 +109,19 @@ def build_photography_decision(
     if viewing_spectral_summary is not None and not viewing_spectral_summary.empty:
         sk = [k for k in ["time", "solar_altitude_deg"] if k in merged.columns and k in viewing_spectral_summary.columns]
         if sk:
-            keep = sk + [c for c in ["viewing_spectral_state", "mean_view_transmission_650nm"] if c in viewing_spectral_summary.columns]
+            keep = sk + [c for c in [
+                "viewing_spectral_state", "viewing_rt_completeness",
+                *[f"mean_view_transmission_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM],
+            ] if c in viewing_spectral_summary.columns]
             merged = merged.merge(viewing_spectral_summary[keep].drop_duplicates(sk), on=sk, how="left")
     if "viewing_spectral_state" not in merged:
         merged["viewing_spectral_state"] = np.nan
-    if "mean_view_transmission_650nm" not in merged:
-        merged["mean_view_transmission_650nm"] = np.nan
+    if "viewing_rt_completeness" not in merged:
+        merged["viewing_rt_completeness"] = np.nan
+    for wl in SIX_BAND_WAVELENGTHS_NM:
+        col=f"mean_view_transmission_{int(wl)}nm"
+        if col not in merged:
+            merged[col] = np.nan
 
     rows = []
     for _, r in merged.iterrows():
@@ -141,7 +150,16 @@ def build_photography_decision(
         else:
             ss = "VIEW_SPECTRAL_UNRESOLVED"
 
-        t650 = r.get("mean_view_transmission_650nm")
+        spectral_values={f"mean_view_transmission_{int(w)}nm":r.get(f"mean_view_transmission_{int(w)}nm") for w in SIX_BAND_WAVELENGTHS_NM}
+        spectral_completeness=r.get("viewing_rt_completeness")
+        if ss == "VIEW_SPECTRAL_READY":
+            spectral_modifier="FULL_SIX_BAND_VIEWING_RT_DIAGNOSTIC_ONLY_UNCALIBRATED"
+        elif ss == "VIEW_SPECTRAL_PARTIAL":
+            spectral_modifier="PARTIAL_SIX_BAND_VIEWING_RT_DIAGNOSTIC_ONLY_UNCALIBRATED"
+        elif ss == "VIEW_SPECTRAL_NOT_APPLICABLE_NO_TARGET":
+            spectral_modifier="VIEW_SPECTRAL_NOT_APPLICABLE_NO_TARGET"
+        else:
+            spectral_modifier="MISSING_SIX_BAND_VIEWING_EVIDENCE"
 
         # Formation hard gate is evaluated before any Viewing interpretation.
         # Viewing evidence is preserved in the row but becomes diagnostic-only.
@@ -199,9 +217,10 @@ def build_photography_decision(
             "formation_gate_state": formation_gate_state,
             "viewing_state": vs,
             "viewing_spectral_state": ss,
-            "mean_view_transmission_650nm": t650,
+            "viewing_rt_completeness": spectral_completeness,
+            **spectral_values,
             "viewing_decision_role": viewing_role,
-            "photography_spectral_modifier": "DIAGNOSTIC_ONLY_UNCALIBRATED",
+            "photography_spectral_modifier": spectral_modifier,
             "photography_outcome": outcome,
             "photography_opportunity": opp,
             "reason": reason,

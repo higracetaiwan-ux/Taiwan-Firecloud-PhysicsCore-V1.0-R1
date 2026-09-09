@@ -25,7 +25,7 @@ def test_viewing_branch_detects_intervening_cloud_without_touching_formation_inp
     assert r["intervening_blocker_count"] >= 1
     assert r["view_geometry_state"] in {"VIEW_PARTIAL_OBSTRUCTION", "VIEW_SEVERE_OBSTRUCTION"}
     assert "FORMATION_UNCHANGED" in r["note"]
-    assert r["viewing_path_spectral_status"] == "VIEW_SPECTRAL_RT_NOT_YET_RESOLVED"
+    assert r["viewing_path_spectral_status"] == "VIEW_SPECTRAL_PENDING"
 
 
 def test_viewing_summary_remains_separate_from_formation():

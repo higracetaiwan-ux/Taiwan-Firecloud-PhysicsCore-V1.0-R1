@@ -78,7 +78,11 @@ from .target_canvas_optics import (
 from .secondary_target_optics import validate_secondary_forecast_optical_evidence, match_secondary_to_canvases
 from .formation_prerequisites import build_formation_prerequisite_table
 from .optical_validation import build_cloud_optical_validation_table
-from .precipitation import build_precipitation_path_evidence, build_viewing_precipitation_evidence
+from .precipitation import (
+    VIEWING_PRECIPITATION_COLUMNS,
+    build_precipitation_path_evidence,
+    build_viewing_precipitation_evidence,
+)
 from .spectroscopy_readiness import build_six_band_spectroscopy_readiness
 from .formation_gates import build_formation_gate_table
 from .penumbra_red import build_earth_shadow_penumbra_matrix, build_canvas_penumbra_red_illumination
@@ -86,7 +90,10 @@ from .illuminated_canvas_retreat import build_illuminated_canvas_retreat, build_
 from .red_window import build_canvas_spectral_evolution, build_canvas_peak_windows
 from .canvas_optical_suitability import build_canvas_optical_suitability, summarize_canvas_optical_suitability
 from .viewing import build_viewing_path_geometry, summarize_viewing_path
-from .viewing_spectral import build_viewing_spectral_extinction, summarize_viewing_spectral_extinction
+from .viewing_spectral import (
+    build_viewing_spectral_extinction, summarize_viewing_spectral_extinction,
+    attach_viewing_spectral_status,
+)
 from .photography_decision import build_photography_decision
 from .tier2_scattering_readiness import (
     build_tier2_scattering_readiness, summarize_tier2_scattering_readiness,
@@ -1780,21 +1787,6 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         if snap is None or snap.empty:
             # Defensive fallback only; normal R5.7.24 path is the local spool.
             snap = interpolate_route_at_time(hourly, t)
-        if snap is not None and not snap.empty:
-            # R5.7.2: interpolate_route_at_time() already returns a `time`
-            # column.  Re-inserting it raises ValueError: cannot insert time,
-            # already exists.  Update existing metadata columns in-place and
-            # only insert when absent; then reorder for stable CASE output.
-            _vsnap = snap.copy()
-            _vsnap["time"] = t
-            if "solar_altitude_deg" in _vsnap.columns:
-                _vsnap["solar_altitude_deg"] = float(angle)
-            else:
-                _vsnap.insert(1 if "time" in _vsnap.columns else 0, "solar_altitude_deg", float(angle))
-            _front = [c for c in ("time", "solar_altitude_deg") if c in _vsnap.columns]
-            _vsnap = _vsnap[_front + [c for c in _vsnap.columns if c not in _front]]
-            _angle_frame_spool.put("viewing_route_snapshot", float(angle), _vsnap)
-            del _vsnap
         _angle_progress(candidate_index, 0.04, f"{label}：合併 GFS 原生雲微物理…")
         native_meta = {"native_status": "UNAVAILABLE", **native_provider_status()}
         cache_key = None
@@ -1806,6 +1798,22 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 snap = merge_native_into_snapshot(snap, native_df)
         except Exception as exc:
             native_meta = {**native_meta, "native_status": "FAILED", "native_error": f"{type(exc).__name__}: {exc}"}
+        if snap is not None and not snap.empty:
+            # R5.7.29: the Viewing precipitation path must consume the same
+            # forecast-native RWMR/SNMR/GRLE evidence as the angle physics.
+            # Spooling before merge_native_into_snapshot silently removed all
+            # native hydrometeor columns and made the exported Viewing
+            # precipitation table empty/unresolved.
+            _vsnap = snap.copy()
+            _vsnap["time"] = t
+            if "solar_altitude_deg" in _vsnap.columns:
+                _vsnap["solar_altitude_deg"] = float(angle)
+            else:
+                _vsnap.insert(1 if "time" in _vsnap.columns else 0, "solar_altitude_deg", float(angle))
+            _front = [c for c in ("time", "solar_altitude_deg") if c in _vsnap.columns]
+            _vsnap = _vsnap[_front + [c for c in _vsnap.columns if c not in _front]]
+            _angle_frame_spool.put("viewing_route_snapshot", float(angle), _vsnap)
+            del _vsnap
         _angle_progress(candidate_index, 0.10, f"{label}：建立 V1.0 CloudScene／Canvas-specific 光路…")
         _v1 = build_r2_geometry_tables(
             snap, DEFAULT_PRESSURE_LEVELS_HPA,
@@ -2473,7 +2481,6 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # independent six-band viewing extinction branch. No Sun→CloudBase optical
     # quantity is reused here.
     v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
-    v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry)
     _view_route_snapshots = _drain_spool_matrix("viewing_route_snapshot")
     _view_precip_frames=[]
     if not v1_viewing_path_geometry.empty and not _view_route_snapshots.empty:
@@ -2481,7 +2488,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             _rs=_view_route_snapshots[(_view_route_snapshots["time"].astype(str)==str(_vt)) & (pd.to_numeric(_view_route_snapshots["solar_altitude_deg"],errors="coerce").sub(float(_va)).abs()<1e-8)]
             _vp=build_viewing_precipitation_evidence(_vg,_rs,earth_radius_km=cfg.earth_radius_km)
             if not _vp.empty: _view_precip_frames.append(_vp)
-    v1_viewing_precipitation_evidence = _concat_release(_view_precip_frames)
+    v1_viewing_precipitation_evidence = _concat_release(
+        _view_precip_frames,
+        pd.DataFrame(columns=VIEWING_PRECIPITATION_COLUMNS),
+    )
     # Aggregate target-cloud optical evidence before the Viewing spectral branch
     # consumes it. This variable must exist on every pipeline path, including
     # fully-missing target-optics cases.
@@ -2492,6 +2502,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         v1_viewing_precipitation_evidence, earth_radius_km=cfg.earth_radius_km,
     )
     v1_viewing_spectral_summary = summarize_viewing_spectral_extinction(v1_viewing_spectral_extinction)
+    v1_viewing_path_geometry = attach_viewing_spectral_status(v1_viewing_path_geometry, v1_viewing_spectral_extinction)
+    v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry, v1_viewing_spectral_summary)
     v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary, v1_viewing_spectral_summary)
     v1_spectral_colour = _concat_release(v1_spectral_colour_frames)
     v1_precipitation_path_evidence = _concat_release(v1_precipitation_path_frames)
@@ -2776,7 +2788,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "cams_request_audit": _cams_audit_df,
         "aerosol_spectral_route_snapshots": aerosol_spectral_route_snapshots,
         "v1_formation": v1_formation,
+        "v1_viewing_path_geometry": v1_viewing_path_geometry,
         "v1_viewing_summary": v1_viewing_summary,
+        "v1_viewing_spectral_extinction_550_750nm": v1_viewing_spectral_extinction,
+        "v1_viewing_spectral_summary": v1_viewing_spectral_summary,
         # R5.7.27.1: hand the already-built Formation-first decision table to
         # the pre-export integrity audit.  R5.7.27 returned/exported this table
         # but omitted it here, so the audit saw a false empty-table failure.

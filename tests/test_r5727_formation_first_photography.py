@@ -127,6 +127,9 @@ def test_case_integrity_requires_photography_decision_member():
         "gfs_native_field_completeness.csv",
         "v1_formation.csv",
         "v1_viewing_summary.csv",
+        "v1_viewing_precipitation_evidence.csv",
+        "v1_viewing_spectral_extinction_550_750nm.csv",
+        "v1_viewing_spectral_summary.csv",
         "v1_photography_decision.csv",
         "analysis_integrity_audit.csv",
     ]

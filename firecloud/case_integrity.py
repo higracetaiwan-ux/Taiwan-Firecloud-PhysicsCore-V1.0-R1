@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any, Iterable, Mapping
 
+import math
 import pandas as pd
+
+from .contracts import SIX_BAND_WAVELENGTHS_NM
 
 
 PASS = "PASS"
@@ -122,7 +125,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     cams_req = _df(result.get("cams_request_audit"))
     aerosol_spectral = _df(result.get("aerosol_spectral_route_snapshots"))
     formation = _df(result.get("v1_formation"))
+    viewing_geometry = _df(result.get("v1_viewing_path_geometry"))
     viewing = _df(result.get("v1_viewing_summary"))
+    viewing_spectral = _df(result.get("v1_viewing_spectral_extinction_550_750nm"))
+    viewing_spectral_summary = _df(result.get("v1_viewing_spectral_summary"))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -247,6 +253,70 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
 
     add("FORMATION_TABLE_PRESENT", PASS if not formation.empty else FAIL, "FORMATION", _rows(formation), ">0 rows")
     add("VIEWING_SUMMARY_PRESENT", PASS if not viewing.empty else WARN, "VIEWING", _rows(viewing), ">0 rows when viewing targets exist")
+
+    # R5.7.29 Viewing Full Six-Band RT evidence-chain closure.  These checks
+    # validate target coverage, six-band schema and arithmetic only; they do not
+    # introduce a photographic threshold or alter Formation.
+    def _view_target_keys(df: pd.DataFrame) -> set[tuple[str,float|None,str,str]]:
+        out=set()
+        if df.empty: return out
+        for _,r in df.iterrows():
+            av=pd.to_numeric(pd.Series([r.get("solar_altitude_deg")]),errors="coerce").iloc[0]
+            out.add((str(r.get("time")),None if pd.isna(av) else round(float(av),8),str(r.get("canvas_id")),str(r.get("cloud_layer_id"))))
+        return out
+
+    if not viewing_geometry.empty:
+        eligible=viewing_geometry.get("photographic_target_eligible",pd.Series(False,index=viewing_geometry.index)).fillna(False).astype(bool)
+        expected_keys=_view_target_keys(viewing_geometry.loc[eligible])
+        observed_keys=_view_target_keys(viewing_spectral)
+        missing_keys=expected_keys-observed_keys; extra_keys=observed_keys-expected_keys
+        status=PASS if not missing_keys and not extra_keys else FAIL
+        add("VIEWING_SIX_BAND_TARGET_COVERAGE",status,"VIEWING_RT",f"expected={len(expected_keys)};observed={len(observed_keys)};missing={len(missing_keys)};extra={len(extra_keys)}","one spectral row per eligible time+angle+target key","Canvas/layer IDs repeat across angles and may never be used as global evidence keys")
+    else:
+        add("VIEWING_SIX_BAND_TARGET_COVERAGE",WARN,"VIEWING_RT","GEOMETRY_SCHEMA_NOT_AVAILABLE","R5.7.29 viewing target geometry","Legacy/minimal fixtures may omit target geometry")
+
+    if not viewing_spectral.empty:
+        required_status={"view_gas_status","view_aerosol_status","view_cloud_status","view_precipitation_status","viewing_spectral_status","viewing_missing_components","viewing_spectral_contract"}
+        required_bands={
+            f"view_tau_{component}_{int(wl)}nm"
+            for wl in SIX_BAND_WAVELENGTHS_NM
+            for component in ("gas","aerosol","cloud","precip","total")
+        } | {f"view_transmission_{int(wl)}nm" for wl in SIX_BAND_WAVELENGTHS_NM} | {f"view_band_evidence_state_{int(wl)}nm" for wl in SIX_BAND_WAVELENGTHS_NM}
+        missing_cols=sorted((required_status|required_bands)-set(viewing_spectral.columns))
+        add("VIEWING_SIX_BAND_SCHEMA",PASS if not missing_cols else FAIL,"VIEWING_RT",str(missing_cols),"all six gas/aerosol/cloud/precip/total/transmission/evidence columns","Six bands remain explicit and component-separated")
+        inconsistent=0
+        if not missing_cols:
+            for _,r in viewing_spectral[viewing_spectral["viewing_spectral_status"].astype(str).eq("VIEW_FULL_SIX_BAND_RT")].iterrows():
+                for wl in SIX_BAND_WAVELENGTHS_NM:
+                    vals=[pd.to_numeric(pd.Series([r.get(f"view_tau_{c}_{int(wl)}nm")]),errors="coerce").iloc[0] for c in ("gas","aerosol","cloud","precip")]
+                    total=pd.to_numeric(pd.Series([r.get(f"view_tau_total_{int(wl)}nm")]),errors="coerce").iloc[0]
+                    trans=pd.to_numeric(pd.Series([r.get(f"view_transmission_{int(wl)}nm")]),errors="coerce").iloc[0]
+                    if any(pd.isna(v) for v in vals) or pd.isna(total) or pd.isna(trans) or abs(float(total)-sum(float(v) for v in vals))>1e-9 or abs(float(trans)-math.exp(-float(total)))>1e-9:
+                        inconsistent+=1
+            nonfull=~viewing_spectral["viewing_spectral_status"].astype(str).eq("VIEW_FULL_SIX_BAND_RT")
+            false_total=0
+            for wl in SIX_BAND_WAVELENGTHS_NM:
+                total=pd.to_numeric(viewing_spectral.get(f"view_tau_total_{int(wl)}nm"),errors="coerce")
+                false_total+=int((nonfull & total.notna()).sum())
+            inconsistent+=false_total
+        add("VIEWING_SIX_BAND_NUMERIC_CLOSURE",PASS if not missing_cols and inconsistent==0 else FAIL,"VIEWING_RT",inconsistent,"0 inconsistent Full rows and 0 partial rows promoted to total transmission","Partial component tau remains diagnostic and cannot become a full transmission")
+    elif not viewing_geometry.empty:
+        eligible=viewing_geometry.get("photographic_target_eligible",pd.Series(False,index=viewing_geometry.index)).fillna(False).astype(bool)
+        add("VIEWING_SIX_BAND_SCHEMA",FAIL if eligible.any() else ALLOWED_EMPTY,"VIEWING_RT",0,"spectral rows when eligible targets exist")
+
+    if not viewing_spectral_summary.empty:
+        expected_summary_keys={(k[0],k[1]) for k in _view_target_keys(viewing_spectral)}
+        observed_summary_keys=set()
+        for _,r in viewing_spectral_summary.iterrows():
+            av=pd.to_numeric(pd.Series([r.get("solar_altitude_deg")]),errors="coerce").iloc[0]
+            observed_summary_keys.add((str(r.get("time")),None if pd.isna(av) else round(float(av),8)))
+        diff=expected_summary_keys.symmetric_difference(observed_summary_keys)
+        add("VIEWING_SIX_BAND_SUMMARY_COVERAGE",PASS if not diff else FAIL,"VIEWING_RT",len(diff),"0 missing/extra time-angle summaries")
+        handoff_cols={"viewing_spectral_state","viewing_rt_completeness",*[f"mean_view_transmission_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM]}
+        handoff_missing=sorted(handoff_cols-set(photography.columns)) if not photography.empty else sorted(handoff_cols)
+        add("VIEWING_SIX_BAND_PHOTOGRAPHY_HANDOFF",PASS if not handoff_missing else FAIL,"PHOTOGRAPHY_DECISION",str(handoff_missing),"six-band Viewing summary preserved in Photography rows","Viewing remains a diagnostic photographability modifier and cannot rewrite Formation")
+    else:
+        add("VIEWING_SIX_BAND_SUMMARY_COVERAGE",WARN,"VIEWING_RT",0,"summary when viewing spectral targets exist")
 
     # R5.7.27 Formation-first Photography Decision aggregation.  The decision
     # timeline must follow Formation, not the usually sparser Viewing target
@@ -398,6 +468,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "gfs_native_field_completeness.csv",
         "v1_formation.csv",
         "v1_viewing_summary.csv",
+        "v1_viewing_precipitation_evidence.csv",
+        "v1_viewing_spectral_extinction_550_750nm.csv",
+        "v1_viewing_spectral_summary.csv",
         "v1_photography_decision.csv",
         "analysis_integrity_audit.csv",
     }
