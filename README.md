@@ -1,5 +1,11 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.33
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.33.1
 
+
+## R5.7.33.1 Native 3D Aerosol Readiness Integrity Hotfix
+
+R5.7.33 真實 sunset CASE 首次同時觸發 R5.7.28 `REAL_ONE_SIDED_TEMPORAL_FALLBACK` 與 CAMS native 3-D aerosol timeout。舊 `TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE` 以 spectral column AOD 是否可用判斷 native 3-D route readiness，導致合法的 spectral fallback 把缺失的 native `aerext532` 錯判為 provider-ready，產生假 hard FAIL。R5.7.33.1 將 guard 改為逐 `time + solar_altitude_deg` 檢查 `cams_native_aerosol_source + cams_aerext532_m1_*`；只有 native 3-D 真正 READY 的 long-range targets 才要求六波段 aerosol tau 完整。native timeout targets 保持 Missing，不由 spectral fallback 提升。Physics、Formation、Viewing、Glow extinction 與 Photography 均未改動。
+
+Working-tree regression: **501/501 PASS**.
 
 ## R5.7.33 Twilight Glow Deep-Range Gas/Rayleigh/Cloud Closure
 

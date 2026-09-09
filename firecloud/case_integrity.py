@@ -291,14 +291,61 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         if twilight_glow_observer_aerosol_coverage_required and not twilight_glow_observer_extinction.empty:
             dist = pd.to_numeric(twilight_glow_observer_extinction.get("distance_km"), errors="coerce")
             long = twilight_glow_observer_extinction[dist.isin([60.0, 80.0, 100.0])].copy()
-            provider_ready = (not aerosol_spectral.empty and _row_any_numeric_valid_fraction(aerosol_spectral, [f"aod{int(w)}" for w in SIX_BAND_WAVELENGTHS_NM]) >= 0.95)
             if long.empty:
                 add("TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE", FAIL, "TWILIGHT_GLOW", 0, "60/80/100 km Glow observer targets present")
-            elif provider_ready:
-                finite = pd.concat([pd.to_numeric(long.get(f"glow_observer_tau_aerosol_{int(w)}nm"), errors="coerce").notna().rename(str(w)) for w in SIX_BAND_WAVELENGTHS_NM], axis=1).all(axis=1)
-                add("TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE", PASS if bool(finite.all()) else FAIL, "TWILIGHT_GLOW", f"resolved={int(finite.sum())}/{len(long)}", "all 60/80/100 km targets have six-band aerosol optical depth when native CAMS route evidence is ready", "No route expansion or synthetic AOD; this guard catches pressure-level height/unit regressions")
             else:
-                add("TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE", WARN, "TWILIGHT_GLOW", f"targets={len(long)};provider_ready=false", "evaluate only when native CAMS spectral payload is available")
+                # R5.7.33.1: readiness must follow the native 3-D aerosol chain,
+                # not the column-AOD chain.  R5.7.28 permits a real adjacent-time
+                # fallback for spectral column AOD only; that fallback must never
+                # make a missing native aerext532 profile look provider-ready.
+                native_cols = [c for c in aerosol_spectral.columns if c.startswith("cams_aerext532_m1_")]
+                key_cols = [c for c in ("time", "solar_altitude_deg") if c in aerosol_spectral.columns and c in long.columns]
+                ready_keys: set[tuple[str, float]] = set()
+                if not aerosol_spectral.empty and native_cols and len(key_cols) == 2:
+                    work = aerosol_spectral.copy()
+                    work["__time_key"] = work["time"].astype(str)
+                    work["__angle_key"] = pd.to_numeric(work["solar_altitude_deg"], errors="coerce").round(8)
+                    for (t_key, a_key), grp in work.groupby(["__time_key", "__angle_key"], dropna=False):
+                        if pd.isna(a_key):
+                            continue
+                        src = grp.get("cams_native_aerosol_source", pd.Series("", index=grp.index)).fillna("").astype(str).str.strip()
+                        source_fraction = float(src.ne("").mean()) if len(src) else 0.0
+                        native_fraction = _row_any_numeric_valid_fraction(grp, native_cols)
+                        if source_fraction >= 0.95 and native_fraction >= 0.95:
+                            ready_keys.add((str(t_key), float(a_key)))
+
+                long["__time_key"] = long.get("time", pd.Series("", index=long.index)).astype(str)
+                long["__angle_key"] = pd.to_numeric(long.get("solar_altitude_deg"), errors="coerce").round(8)
+                native_ready = pd.Series(
+                    [(str(t), float(a)) in ready_keys if pd.notna(a) else False for t, a in zip(long["__time_key"], long["__angle_key"])],
+                    index=long.index,
+                    dtype=bool,
+                )
+                required = long.loc[native_ready].copy()
+                unavailable = int((~native_ready).sum())
+
+                if required.empty:
+                    add(
+                        "TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE",
+                        WARN,
+                        "TWILIGHT_GLOW",
+                        f"provider_ready_targets=0/{len(long)};native_unavailable={unavailable}",
+                        "evaluate six-band long-range aerosol coverage only where native CAMS 3-D aerosol evidence is ready",
+                        "R5.7.33.1 keeps spectral-column fallback separate from native 3-D aerosol readiness; provider Missing remains Missing",
+                    )
+                else:
+                    finite = pd.concat([
+                        pd.to_numeric(required.get(f"glow_observer_tau_aerosol_{int(w)}nm"), errors="coerce").notna().rename(str(w))
+                        for w in SIX_BAND_WAVELENGTHS_NM
+                    ], axis=1).all(axis=1)
+                    add(
+                        "TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE",
+                        PASS if bool(finite.all()) else FAIL,
+                        "TWILIGHT_GLOW",
+                        f"resolved={int(finite.sum())}/{len(required)};native_unavailable={unavailable}/{len(long)}",
+                        "all provider-ready 60/80/100 km targets have six-band aerosol optical depth; native-unavailable targets remain Missing",
+                        "No route expansion or synthetic AOD; R5.7.28 spectral fallback does not promote a timed-out native 3-D aerosol chain",
+                    )
 
 
     # R5.7.33: close the remaining deep-range molecular boundary touch while

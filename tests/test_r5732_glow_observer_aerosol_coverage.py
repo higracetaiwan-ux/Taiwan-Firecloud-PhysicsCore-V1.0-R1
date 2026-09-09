@@ -16,6 +16,8 @@ def _aerosol_payload(raw_heights=False):
             'cams_geopotential_height_m_1000hPa':70.0*scale,
             'cams_geopotential_height_m_500hPa':5800.0*scale,
             'cams_geopotential_height_m_30hPa':24000.0*scale,
+            'cams_native_aerosol_source':'CAMS_GLOBAL_FORECAST_NATIVE_3D_AEROSOL_EXTINCTION_532NM',
+            'cams_aerext532_m1_1000hPa':1.0e-4,
         }
         for w in SIX_BAND_WAVELENGTHS_NM:
             r[f'aod{int(w)}']=0.2
@@ -109,3 +111,35 @@ def test_glow_endpoint_snap_is_opt_in_and_does_not_weaken_default_viewing_contra
     assert strict_meta['lowest_endpoint_snap_segment_count']==0
     assert glow_status=='VIEW_AEROSOL_3D_RESOLVED'
     assert glow_meta['lowest_endpoint_snap_segment_count']==1
+
+
+def test_r57331_integrity_does_not_treat_spectral_aod_fallback_as_native_3d_ready():
+    aerosol = pd.concat([_aerosol_payload(False), _aerosol_payload(False)], ignore_index=True)
+    aerosol.loc[:3, 'time'] = 't0'
+    aerosol.loc[:3, 'solar_altitude_deg'] = -2.0
+    aerosol.loc[4:, 'time'] = 't1'
+    aerosol.loc[4:, 'solar_altitude_deg'] = -5.5
+    aerosol.loc[4:, 'cams_native_aerosol_source'] = None
+    aerosol.loc[4:, 'cams_aerext532_m1_1000hPa'] = None
+    for w in SIX_BAND_WAVELENGTHS_NM:
+        aerosol.loc[4:, f'aod{int(w)}'] = 0.2
+    aerosol.loc[4:, 'spectral_aod_temporal_evidence_state'] = 'REAL_ONE_SIDED_TEMPORAL_FALLBACK'
+
+    glow0 = _glow_long_range(True)
+    glow0['time'] = 't0'
+    glow0['solar_altitude_deg'] = -2.0
+    glow1 = _glow_long_range(False)
+    glow1['time'] = 't1'
+    glow1['solar_altitude_deg'] = -5.5
+    glow = pd.concat([glow0, glow1], ignore_index=True)
+
+    audit = build_analysis_integrity_audit({
+        'aerosol_spectral_route_snapshots': aerosol,
+        'v1_twilight_glow_scatter_to_observer_extinction_550_750nm': glow,
+        'cams_geopotential_normalization_required': True,
+        'twilight_glow_observer_aerosol_coverage_required': True,
+    })
+    row = audit[audit['check_id'].eq('TWILIGHT_GLOW_OBSERVER_AEROSOL_LONG_RANGE_COVERAGE')].iloc[0]
+    assert row['status'] == 'PASS'
+    assert 'resolved=3/3' in str(row['observed'])
+    assert 'native_unavailable=3/6' in str(row['observed'])
