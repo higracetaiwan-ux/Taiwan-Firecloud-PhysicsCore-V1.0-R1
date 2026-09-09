@@ -1,4 +1,37 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.30.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.31
+
+
+## R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1
+
+R5.7.31 延續已 field-pass 的獨立 Twilight Glow 第三分支，只補齊 Glow 自己的兩段
+六波段 extinction evidence：`Sun → Atmospheric Scatter Volume` 與
+`Scatter Volume → Observer`。Formation 的 `Sun→CloudBase`、Viewing 的
+`Cloud→Observer`、Photography Formation-first hard gate 均不改動。
+
+每個 atmospheric scattering volume 現在都明列 550/575/600/650/700/750 nm 的
+Rayleigh、non-O3 gas、O3、aerosol、cloud、precipitation optical depth，只有所有
+component evidence 在同一 time + solar angle + glow volume identity 完整時，才建立
+`tau_total` 與 `exp(-tau_total)` transmission。O3 從 HITRAN gas total 中獨立拆出，
+non-O3 gas 定義為 O2+H2O，避免 575 nm Chappuis absorption 被重複計算。
+
+新增 CASE evidence：
+
+- `v1_twilight_glow_sun_to_scatter_extinction_550_750nm.csv`
+- `v1_twilight_glow_scatter_to_observer_extinction_550_750nm.csv`
+- `v1_twilight_glow_single_scattering_550_750nm.csv`
+
+並新增 target coverage、six-band schema、Sun-path numeric closure、observer-path
+numeric closure、single-scattering numeric closure Integrity。Partial/Missing component tau
+可以保留為 diagnostic，但不得升格為 total transmission 或 final source proxy。
+
+本版仍只輸出 **uncalibrated Rayleigh single-scattering spectral proxy**。Aerosol
+single-scattering albedo、aerosol phase function、multiple scattering、surface coupling 與
+絕對 radiometric calibration 尚未完成，因此
+`calibrated_glow_radiance_available=False` 必須維持。Glow 不建立 Canvas、不修改
+Formation/Viewing/Photography，也不能把「無火燒雲但有霞光」改寫成 Firecloud GO。
+
+Working-tree regression：**486 passed / 0 failed**。正式 FULL-CLEAN 解壓回歸與 SHA256
+見本版 Release Notes。
 
 
 ## R5.7.30.1 Integrity Regression Restore + Packaging Continuity Hotfix

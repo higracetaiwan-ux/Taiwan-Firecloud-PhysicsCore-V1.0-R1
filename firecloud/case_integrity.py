@@ -131,8 +131,12 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     viewing_spectral_summary = _df(result.get("v1_viewing_spectral_summary"))
     viewing_precipitation = _df(result.get("v1_viewing_precipitation_evidence"))
     twilight_glow = _df(result.get("v1_twilight_glow_scattering_volume_550_750nm"))
+    twilight_glow_sun_extinction = _df(result.get("v1_twilight_glow_sun_to_scatter_extinction_550_750nm"))
+    twilight_glow_observer_extinction = _df(result.get("v1_twilight_glow_scatter_to_observer_extinction_550_750nm"))
+    twilight_glow_single_scattering = _df(result.get("v1_twilight_glow_single_scattering_550_750nm"))
     twilight_glow_summary = _df(result.get("v1_twilight_glow_summary"))
     twilight_glow_required = bool(result.get("twilight_glow_required", False))
+    twilight_glow_extinction_phase1_required = bool(result.get("twilight_glow_extinction_phase1_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -480,6 +484,190 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "Missing evidence remains Missing; no fabricated extinction or source strength",
         )
 
+        if twilight_glow_extinction_phase1_required:
+            # R5.7.31 closes both six-band extinction legs explicitly.  Coverage
+            # and arithmetic are verified on the exported evidence tables so CASE
+            # consumers cannot silently lose a subset while the composite table
+            # remains present.
+            def _volume_keys(df: pd.DataFrame) -> set[tuple[str, float | None, str]]:
+                keys: set[tuple[str, float | None, str]] = set()
+                if df.empty:
+                    return keys
+                for _, row in df.iterrows():
+                    angle = pd.to_numeric(pd.Series([row.get("solar_altitude_deg")]), errors="coerce").iloc[0]
+                    keys.add((
+                        str(row.get("time")),
+                        None if pd.isna(angle) else round(float(angle), 8),
+                        str(row.get("glow_volume_id")),
+                    ))
+                return keys
+
+            expected_volume_keys = _volume_keys(twilight_glow)
+            sun_volume_keys = _volume_keys(twilight_glow_sun_extinction)
+            observer_volume_keys = _volume_keys(twilight_glow_observer_extinction)
+            single_volume_keys = _volume_keys(twilight_glow_single_scattering)
+            sun_diff = expected_volume_keys.symmetric_difference(sun_volume_keys)
+            observer_diff = expected_volume_keys.symmetric_difference(observer_volume_keys)
+            single_diff = expected_volume_keys.symmetric_difference(single_volume_keys)
+            add(
+                "TWILIGHT_GLOW_SUN_TO_SCATTER_TARGET_COVERAGE",
+                PASS if expected_volume_keys and not sun_diff else FAIL,
+                "TWILIGHT_GLOW_EXTINCTION",
+                f"expected={len(expected_volume_keys)};observed={len(sun_volume_keys)};difference={len(sun_diff)}",
+                "exact time+angle+glow-volume coverage",
+            )
+            add(
+                "TWILIGHT_GLOW_SCATTER_TO_OBSERVER_TARGET_COVERAGE",
+                PASS if expected_volume_keys and not observer_diff else FAIL,
+                "TWILIGHT_GLOW_EXTINCTION",
+                f"expected={len(expected_volume_keys)};observed={len(observer_volume_keys)};difference={len(observer_diff)}",
+                "exact time+angle+glow-volume coverage",
+            )
+
+            sun_required = {
+                "glow_sun_extinction_state", "glow_sun_missing_components",
+                "twilight_glow_extinction_contract",
+                *{f"glow_sun_{field}_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM for field in (
+                    "tau_rayleigh", "tau_gas_non_o3", "tau_o3", "tau_aerosol",
+                    "tau_cloud", "tau_precip", "tau_total", "transmission",
+                    "incident_relative_irradiance", "reference_incident_relative_irradiance",
+                    "band_evidence_state",
+                )},
+            }
+            observer_required = {
+                "glow_observer_extinction_state", "glow_observer_gas_species_status",
+                "glow_observer_missing_components", "twilight_glow_extinction_contract",
+                *{f"glow_observer_{field}_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM for field in (
+                    "tau_rayleigh", "tau_gas_non_o3", "tau_o3", "tau_aerosol",
+                    "tau_cloud", "tau_precip", "tau_total", "transmission",
+                    "band_evidence_state",
+                )},
+            }
+            single_required = {
+                "glow_proxy_state", "glow_result_role", "calibrated_glow_radiance_available",
+                "twilight_glow_single_scattering_contract",
+                *{f"glow_{field}_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM for field in (
+                    "sun_incident_relative_irradiance", "rayleigh_source_coefficient_m1_sr",
+                    "observer_transmission", "single_scattering_source_proxy", "band_evidence_state",
+                )},
+            }
+            phase1_missing_columns = sorted(
+                (sun_required - set(twilight_glow_sun_extinction.columns))
+                | (observer_required - set(twilight_glow_observer_extinction.columns))
+                | (single_required - set(twilight_glow_single_scattering.columns))
+            )
+            add(
+                "TWILIGHT_GLOW_SIX_BAND_EXTINCTION_SCHEMA",
+                PASS if not phase1_missing_columns and not sun_diff and not observer_diff and not single_diff else FAIL,
+                "TWILIGHT_GLOW_EXTINCTION",
+                str(phase1_missing_columns),
+                "six explicit component taus, total tau, transmission, and evidence states on both path legs",
+            )
+
+            sun_inconsistent = 0
+            if not twilight_glow_sun_extinction.empty and not (sun_required - set(twilight_glow_sun_extinction.columns)):
+                for _, row in twilight_glow_sun_extinction.iterrows():
+                    fsun = pd.to_numeric(pd.Series([row.get("glow_direct_solar_fraction")]), errors="coerce").iloc[0]
+                    for wavelength in SIX_BAND_WAVELENGTHS_NM:
+                        w = int(wavelength)
+                        state = str(row.get(f"glow_sun_band_evidence_state_{w}nm") or "")
+                        components = [
+                            pd.to_numeric(pd.Series([row.get(f"glow_sun_tau_{name}_{w}nm")]), errors="coerce").iloc[0]
+                            for name in ("rayleigh", "gas_non_o3", "o3", "aerosol", "cloud", "precip")
+                        ]
+                        total = pd.to_numeric(pd.Series([row.get(f"glow_sun_tau_total_{w}nm")]), errors="coerce").iloc[0]
+                        trans = pd.to_numeric(pd.Series([row.get(f"glow_sun_transmission_{w}nm")]), errors="coerce").iloc[0]
+                        incident = pd.to_numeric(pd.Series([row.get(f"glow_sun_incident_relative_irradiance_{w}nm")]), errors="coerce").iloc[0]
+                        reference_incident = pd.to_numeric(pd.Series([row.get(f"glow_sun_reference_incident_relative_irradiance_{w}nm")]), errors="coerce").iloc[0]
+                        if state == "FULL":
+                            if pd.isna(fsun) or any(pd.isna(v) for v in components) or any(pd.isna(v) for v in (total, trans, incident)):
+                                sun_inconsistent += 1
+                                continue
+                            expected_total = sum(float(v) for v in components)
+                            if abs(float(total) - expected_total) > 1e-9:
+                                sun_inconsistent += 1
+                            elif abs(float(trans) - math.exp(-float(total))) > 1e-9:
+                                sun_inconsistent += 1
+                            elif abs(float(incident) - max(0.0, float(fsun)) * float(trans)) > 1e-12:
+                                sun_inconsistent += 1
+                            elif not pd.isna(reference_incident) and abs(float(incident) - float(reference_incident)) > 1e-9:
+                                sun_inconsistent += 1
+                        elif any(not pd.isna(v) for v in (total, trans, incident)):
+                            sun_inconsistent += 1
+            add(
+                "TWILIGHT_GLOW_SUN_PATH_NUMERIC_CLOSURE",
+                PASS if not phase1_missing_columns and sun_inconsistent == 0 else FAIL,
+                "TWILIGHT_GLOW_EXTINCTION",
+                sun_inconsistent,
+                "0 component-sum / exp(-tau) / Fsun*transmission inconsistencies; partial bands keep final values Missing",
+            )
+
+            observer_inconsistent = 0
+            if not twilight_glow_observer_extinction.empty and not (observer_required - set(twilight_glow_observer_extinction.columns)):
+                for _, row in twilight_glow_observer_extinction.iterrows():
+                    for wavelength in SIX_BAND_WAVELENGTHS_NM:
+                        w = int(wavelength)
+                        state = str(row.get(f"glow_observer_band_evidence_state_{w}nm") or "")
+                        components = [
+                            pd.to_numeric(pd.Series([row.get(f"glow_observer_tau_{name}_{w}nm")]), errors="coerce").iloc[0]
+                            for name in ("rayleigh", "gas_non_o3", "o3", "aerosol", "cloud", "precip")
+                        ]
+                        total = pd.to_numeric(pd.Series([row.get(f"glow_observer_tau_total_{w}nm")]), errors="coerce").iloc[0]
+                        trans = pd.to_numeric(pd.Series([row.get(f"glow_observer_transmission_{w}nm")]), errors="coerce").iloc[0]
+                        if state == "FULL":
+                            if any(pd.isna(v) for v in components) or any(pd.isna(v) for v in (total, trans)):
+                                observer_inconsistent += 1
+                                continue
+                            expected_total = sum(float(v) for v in components)
+                            if abs(float(total) - expected_total) > 1e-9:
+                                observer_inconsistent += 1
+                            elif abs(float(trans) - math.exp(-float(total))) > 1e-9:
+                                observer_inconsistent += 1
+                        elif any(not pd.isna(v) for v in (total, trans)):
+                            observer_inconsistent += 1
+            add(
+                "TWILIGHT_GLOW_OBSERVER_PATH_NUMERIC_CLOSURE",
+                PASS if not phase1_missing_columns and observer_inconsistent == 0 else FAIL,
+                "TWILIGHT_GLOW_EXTINCTION",
+                observer_inconsistent,
+                "0 component-sum / exp(-tau) inconsistencies; partial bands keep total/transmission Missing",
+            )
+
+            single_inconsistent = 0
+            if not twilight_glow_single_scattering.empty and not (single_required - set(twilight_glow_single_scattering.columns)):
+                full_states = {"FULL_RAYLEIGH_PROXY", "FULL_ZERO_DIRECT_SOLAR"}
+                for _, row in twilight_glow_single_scattering.iterrows():
+                    for wavelength in SIX_BAND_WAVELENGTHS_NM:
+                        w = int(wavelength)
+                        state = str(row.get(f"glow_band_evidence_state_{w}nm") or "")
+                        incident = pd.to_numeric(pd.Series([row.get(f"glow_sun_incident_relative_irradiance_{w}nm")]), errors="coerce").iloc[0]
+                        coeff = pd.to_numeric(pd.Series([row.get(f"glow_rayleigh_source_coefficient_m1_sr_{w}nm")]), errors="coerce").iloc[0]
+                        trans = pd.to_numeric(pd.Series([row.get(f"glow_observer_transmission_{w}nm")]), errors="coerce").iloc[0]
+                        proxy = pd.to_numeric(pd.Series([row.get(f"glow_single_scattering_source_proxy_{w}nm")]), errors="coerce").iloc[0]
+                        if state in full_states:
+                            if any(pd.isna(v) for v in (incident, coeff, trans, proxy)):
+                                single_inconsistent += 1
+                            elif abs(float(proxy) - max(0.0, float(incident)) * float(trans) * float(coeff)) > 1e-15:
+                                single_inconsistent += 1
+                        elif not pd.isna(proxy):
+                            single_inconsistent += 1
+            add(
+                "TWILIGHT_GLOW_SINGLE_SCATTERING_NUMERIC_CLOSURE",
+                PASS if not phase1_missing_columns and single_inconsistent == 0 else FAIL,
+                "TWILIGHT_GLOW",
+                single_inconsistent,
+                "0 source-proxy inconsistencies and no partial band promoted to a final proxy",
+            )
+
+        else:
+            add(
+                "TWILIGHT_GLOW_FULL_EXTINCTION_PHASE1",
+                NOT_APPLICABLE,
+                "TWILIGHT_GLOW_EXTINCTION",
+                "not required",
+                "required beginning with R5.7.31",
+            )
+
         forbidden = {
             column for column in twilight_glow.columns
             if any(token in column.lower() for token in ("formation_state", "photography_opportunity", "decision", "score"))
@@ -675,6 +863,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "v1_viewing_spectral_extinction_550_750nm.csv",
         "v1_viewing_spectral_summary.csv",
         "v1_twilight_glow_scattering_volume_550_750nm.csv",
+        "v1_twilight_glow_sun_to_scatter_extinction_550_750nm.csv",
+        "v1_twilight_glow_scatter_to_observer_extinction_550_750nm.csv",
+        "v1_twilight_glow_single_scattering_550_750nm.csv",
         "v1_twilight_glow_summary.csv",
         "v1_photography_decision.csv",
         "analysis_integrity_audit.csv",

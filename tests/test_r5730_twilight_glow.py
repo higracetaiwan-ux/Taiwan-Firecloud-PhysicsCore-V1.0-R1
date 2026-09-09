@@ -39,7 +39,18 @@ def _red_reference(timeline):
             "red_light_path_state": "RED_LIGHT_PATH_FULL",
             "red_light_path_evidence_complete": True,
         }
+        row["red_light_cloud_evidence_state"] = "FULL"
+        row["red_light_aerosol_evidence_state"] = "FULL_EXACT_VALID_TIME"
+        row["red_light_gas_evidence_state"] = "FULL"
+        row["red_light_precipitation_evidence_state"] = "FULL"
+        row["resolved_upstream_cloud_tau"] = 0.1
+        precip_tau = math.log(2.0) - 0.1 - 0.1 - 0.2 - 0.1
         for wavelength in SIX_BAND_WAVELENGTHS_NM:
+            row[f"rayleigh_tau_{int(wavelength)}nm"] = 0.1
+            row[f"aerosol_tau_{int(wavelength)}nm"] = 0.1
+            row[f"gas_tau_{int(wavelength)}nm"] = 0.2
+            row[f"gas_tau_o3_{int(wavelength)}nm"] = 0.05
+            row[f"tau_precip_{int(wavelength)}nm"] = precip_tau
             row[f"red_light_availability_{int(wavelength)}nm"] = 0.5
         rows.append(row)
     return pd.DataFrame(rows)
@@ -75,8 +86,18 @@ def _full_observer_rt(targets, *_args, **_kwargs):
             "canvas_id": target["canvas_id"],
             "viewing_spectral_status": "VIEW_FULL_SIX_BAND_RT",
         }
+        row.update({
+            "view_gas_status": "VIEW_GAS_RT_RESOLVED",
+            "view_aerosol_status": "VIEW_AEROSOL_3D_RESOLVED",
+            "view_cloud_status": "VIEW_CLOUD_PATH_CLEAR",
+            "view_precipitation_status": "VIEW_PRECIPITATION_OPTICS_RESOLVED",
+        })
         for wavelength in SIX_BAND_WAVELENGTHS_NM:
-            row[f"view_tau_total_{int(wavelength)}nm"] = 0.1
+            row[f"view_tau_gas_{int(wavelength)}nm"] = 0.1
+            row[f"view_tau_aerosol_{int(wavelength)}nm"] = 0.02
+            row[f"view_tau_cloud_{int(wavelength)}nm"] = 0.0
+            row[f"view_tau_precip_{int(wavelength)}nm"] = 0.0
+            row[f"view_tau_total_{int(wavelength)}nm"] = 0.12
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -85,6 +106,15 @@ def _complete_branch(monkeypatch, angles=(-4.0,)):
     timeline = _timeline(angles)
     monkeypatch.setattr(twilight_glow, "_observer_precipitation", lambda *_a, **_k: pd.DataFrame())
     monkeypatch.setattr(twilight_glow, "build_viewing_spectral_extinction", _full_observer_rt)
+    monkeypatch.setattr(
+        twilight_glow,
+        "_observer_gas_species_path",
+        lambda *_a, **_k: (
+            {int(w): {"o3": 0.02, "non_o3": 0.08, "total": 0.1} for w in SIX_BAND_WAVELENGTHS_NM},
+            "GLOW_OBSERVER_GAS_PATH_RESOLVED",
+            1, 1, 10.0,
+        ),
+    )
     detail, summary = twilight_glow.build_twilight_glow_branch(
         red_light_reference=_red_reference(timeline),
         event_timeline=timeline,
@@ -137,6 +167,15 @@ def test_missing_observer_rt_stays_partial_without_final_proxy(monkeypatch):
     timeline = _timeline()
     monkeypatch.setattr(twilight_glow, "_observer_precipitation", lambda *_a, **_k: pd.DataFrame())
     monkeypatch.setattr(twilight_glow, "build_viewing_spectral_extinction", lambda *_a, **_k: pd.DataFrame())
+    monkeypatch.setattr(
+        twilight_glow,
+        "_observer_gas_species_path",
+        lambda *_a, **_k: (
+            {int(w): {"o3": 0.02, "non_o3": 0.08, "total": 0.1} for w in SIX_BAND_WAVELENGTHS_NM},
+            "GLOW_OBSERVER_GAS_PATH_RESOLVED",
+            1, 1, 10.0,
+        ),
+    )
     detail, _ = twilight_glow.build_twilight_glow_branch(
         red_light_reference=_red_reference(timeline),
         event_timeline=timeline,

@@ -95,7 +95,7 @@ from .viewing_spectral import (
     attach_viewing_spectral_status,
 )
 from .photography_decision import build_photography_decision
-from .twilight_glow import build_twilight_glow_branch
+from .twilight_glow import build_twilight_glow_branch, build_twilight_glow_phase1_exports
 from .tier2_scattering_readiness import (
     build_tier2_scattering_readiness, summarize_tier2_scattering_readiness,
     TIER2_SCATTERING_READINESS_COLUMNS, TIER2_SCATTERING_READINESS_SUMMARY_COLUMNS,
@@ -2531,16 +2531,28 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         observer_alt_km=0.0,
         earth_radius_km=cfg.earth_radius_km,
     )
+    (
+        v1_twilight_glow_sun_to_scatter_extinction,
+        v1_twilight_glow_scatter_to_observer_extinction,
+        v1_twilight_glow_single_scattering,
+    ) = build_twilight_glow_phase1_exports(v1_twilight_glow_scattering_volume)
     performance_rows.append({
         "stage": "TWILIGHT_GLOW_INDEPENDENT_BRANCH",
         "elapsed_seconds": perf_counter() - _glow_t0,
         "cache_status": "RAYLEIGH_SINGLE_SCATTERING_PROXY_NO_RADIANCE_CLAIM",
-        "detail": f"volumes={len(v1_twilight_glow_scattering_volume)};angles={len(v1_twilight_glow_summary)}",
+        "detail": (
+            f"volumes={len(v1_twilight_glow_scattering_volume)};angles={len(v1_twilight_glow_summary)};"
+            f"sun_extinction_rows={len(v1_twilight_glow_sun_to_scatter_extinction)};"
+            f"observer_extinction_rows={len(v1_twilight_glow_scatter_to_observer_extinction)}"
+        ),
     })
     _aggregation_checkpoint(
         "Glow 第三分支完成",
         v1_twilight_glow_scattering_volume=v1_twilight_glow_scattering_volume,
         v1_twilight_glow_summary=v1_twilight_glow_summary,
+        v1_twilight_glow_sun_to_scatter_extinction=v1_twilight_glow_sun_to_scatter_extinction,
+        v1_twilight_glow_scatter_to_observer_extinction=v1_twilight_glow_scatter_to_observer_extinction,
+        v1_twilight_glow_single_scattering=v1_twilight_glow_single_scattering,
     )
     v1_spectral_colour = _concat_release(v1_spectral_colour_frames)
     v1_precipitation_path_evidence = _concat_release(v1_precipitation_path_frames)
@@ -2835,8 +2847,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_viewing_spectral_summary": v1_viewing_spectral_summary,
         "v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence,
         "v1_twilight_glow_scattering_volume_550_750nm": v1_twilight_glow_scattering_volume,
+        "v1_twilight_glow_sun_to_scatter_extinction_550_750nm": v1_twilight_glow_sun_to_scatter_extinction,
+        "v1_twilight_glow_scatter_to_observer_extinction_550_750nm": v1_twilight_glow_scatter_to_observer_extinction,
+        "v1_twilight_glow_single_scattering_550_750nm": v1_twilight_glow_single_scattering,
         "v1_twilight_glow_summary": v1_twilight_glow_summary,
         "twilight_glow_required": True,
+        "twilight_glow_extinction_phase1_required": True,
         # R5.7.27.1: hand the already-built Formation-first decision table to
         # the pre-export integrity audit.  R5.7.27 returned/exported this table
         # but omitted it here, so the audit saw a false empty-table failure.
@@ -2913,6 +2929,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_viewing_spectral_extinction_550_750nm": v1_viewing_spectral_extinction,
         "v1_viewing_spectral_summary": v1_viewing_spectral_summary,
         "v1_twilight_glow_scattering_volume_550_750nm": v1_twilight_glow_scattering_volume,
+        "v1_twilight_glow_sun_to_scatter_extinction_550_750nm": v1_twilight_glow_sun_to_scatter_extinction,
+        "v1_twilight_glow_scatter_to_observer_extinction_550_750nm": v1_twilight_glow_scatter_to_observer_extinction,
+        "v1_twilight_glow_single_scattering_550_750nm": v1_twilight_glow_single_scattering,
         "v1_twilight_glow_summary": v1_twilight_glow_summary,
         "v1_photography_decision": v1_photography_decision,
         "v1_spectral_colour": v1_spectral_colour,

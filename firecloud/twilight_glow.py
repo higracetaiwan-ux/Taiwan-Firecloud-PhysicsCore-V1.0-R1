@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
-from .gas_rt import BOLTZMANN
+from .gas_rt import BOLTZMANN, prepare_gas_rt_context, _interp_fast_profile_state, _sigma_fast
 from .precipitation import build_viewing_precipitation_evidence
 from .shared_geometry import destination_point, directional_scattering_geometry
 from .shared_geometry.ray import observer_los_height_agl_km
@@ -31,7 +31,9 @@ from .spectral_rt import rayleigh_vertical_optical_depth
 from .viewing_spectral import build_viewing_spectral_extinction
 
 
-TWILIGHT_GLOW_CONTRACT = "R5.7.30_INDEPENDENT_TWILIGHT_GLOW_RAYLEIGH_SINGLE_SCATTERING_V1"
+TWILIGHT_GLOW_CONTRACT = "R5.7.31_TWILIGHT_GLOW_FULL_SIX_BAND_EXTINCTION_PHASE1_V1"
+TWILIGHT_GLOW_EXTINCTION_CONTRACT = "R5.7.31_SUN_SCATTER_OBSERVER_SIX_BAND_EXTINCTION_V1"
+TWILIGHT_GLOW_SINGLE_SCATTERING_CONTRACT = "R5.7.31_RAYLEIGH_SINGLE_SCATTERING_SPECTRAL_PROXY_V1"
 GLOW_VOLUME_DOMAIN = "FORWARD_ATMOSPHERE_10_100KM_4_12KM"
 GLOW_PROXY_UNITS = "RELATIVE_INCIDENT_IRRADIANCE_PER_M_SR"
 NO_TOTAL_RADIANCE_CLAIM = "NOT_RESOLVED_AEROSOL_SSA_PHASE_AND_MULTIPLE_SCATTERING_REQUIRED"
@@ -192,6 +194,192 @@ def _local_molecular_state(
         return None
     temperature_k, pressure_hpa = state
     return temperature_k, pressure_hpa, pressure_hpa * 100.0 / (BOLTZMANN * temperature_k)
+
+
+def _gas_context_index(gas_profiles: pd.DataFrame) -> dict[tuple[str, float | None, float | None], Any]:
+    """Prepare one HITRAN gas context per time/angle/direction route.
+
+    This is Glow-only evidence plumbing.  It reuses the same frozen HITRAN
+    coefficients and profile interpolation as the independent Viewing branch,
+    but does not write any Viewing result back into Formation or Photography.
+    """
+    out: dict[tuple[str, float | None, float | None], Any] = {}
+    if gas_profiles is None or gas_profiles.empty:
+        return out
+    q = gas_profiles.copy()
+    q["solar_altitude_deg"] = pd.to_numeric(q.get("solar_altitude_deg"), errors="coerce").round(8)
+    q["direction_offset_deg"] = pd.to_numeric(q.get("direction_offset_deg"), errors="coerce").round(8)
+    tser = q.get("time", pd.Series("", index=q.index)).astype(str)
+    for keys, group in q.groupby([tser, "solar_altitude_deg", "direction_offset_deg"], dropna=False, sort=False):
+        time_value, angle, direction = keys
+        key = (
+            str(time_value),
+            None if pd.isna(angle) else round(float(angle), 8),
+            None if pd.isna(direction) else round(float(direction), 8),
+        )
+        out[key] = prepare_gas_rt_context(group.copy())
+    return out
+
+
+def _observer_gas_species_path(
+    target: pd.Series,
+    prepared_context: Any,
+    earth_radius_km: float,
+) -> tuple[dict[int, dict[str, float]] | None, str, int, int, float]:
+    """Integrate O3 and non-O3 molecular absorption on Scatter->Observer.
+
+    The total gas optical depth is intentionally decomposed as O3 + (O2+H2O)
+    so the Chappuis contribution remains explicit without double counting.
+    """
+    distance = _finite(target.get("target_distance_km"))
+    base = _finite(target.get("target_base_km"))
+    top = _finite(target.get("target_top_km"))
+    direction = _finite(target.get("direction_offset_deg"))
+    if None in (distance, base, top, direction) or distance <= 0.0 or top <= base:
+        return None, "GLOW_OBSERVER_GAS_GEOMETRY_UNRESOLVED", 0, 0, 0.0
+    ctx = prepared_context
+    if ctx is None or not getattr(ctx, "valid", False):
+        return None, "GLOW_OBSERVER_GAS_CONTEXT_MISSING", 0, 0, 0.0
+    drec = ctx.prepared_profile.get(float(direction))
+    if drec is None:
+        return None, "GLOW_OBSERVER_GAS_DIRECTION_MISSING", 0, 0, 0.0
+    distances = [float(x) for x in drec["distances"] if float(x) <= float(distance) + 1e-8]
+    if not distances or distances[0] > 1e-6:
+        return None, "GLOW_OBSERVER_GAS_OBSERVER_ENDPOINT_MISSING", 0, 0, 0.0
+    if distances[-1] < float(distance) - 1e-8:
+        distances.append(float(distance))
+    target_altitude = 0.5 * (float(base) + float(top))
+    tau = {int(w): {"o3": 0.0, "non_o3": 0.0, "total": 0.0} for w in SIX_BAND_WAVELENGTHS_NM}
+    required = 0
+    resolved = 0
+    path_km = 0.0
+    for d0, d1 in zip(distances[:-1], distances[1:]):
+        if d1 <= d0:
+            continue
+        required += 1
+        midpoint = 0.5 * (d0 + d1)
+        nearest = min(drec["distances"], key=lambda x: abs(float(x) - midpoint))
+        rec = drec["profiles"].get(float(nearest))
+        if rec is None:
+            continue
+        altitude = observer_los_height_agl_km(float(distance), target_altitude, midpoint, float(earth_radius_km))
+        state = _interp_fast_profile_state(rec, altitude)
+        if state is None:
+            continue
+        temperature_k = float(state["temperature_k"])
+        pressure_hpa = float(state["pressure_hpa"])
+        if not (math.isfinite(temperature_k) and math.isfinite(pressure_hpa) and temperature_k > 0.0 and pressure_hpa > 0.0):
+            continue
+        n_air = pressure_hpa * 100.0 / (BOLTZMANN * temperature_k)
+        densities = {
+            "O2": float(state["o2_mole_fraction"]) * n_air,
+            "H2O": float(state["h2o_mole_fraction"]) * n_air,
+            "O3": float(state["o3_mole_fraction"]) * n_air,
+        }
+        if not all(math.isfinite(v) and v >= 0.0 for v in densities.values()):
+            continue
+        z0 = observer_los_height_agl_km(float(distance), target_altitude, d0, float(earth_radius_km))
+        z1 = observer_los_height_agl_km(float(distance), target_altitude, d1, float(earth_radius_km))
+        path_m = math.hypot((d1 - d0) * 1000.0, (z1 - z0) * 1000.0)
+        local: dict[int, dict[str, float]] = {}
+        ok = True
+        for wavelength in SIX_BAND_WAVELENGTHS_NM:
+            species_tau: dict[str, float] = {}
+            for gas_name, density in densities.items():
+                sigma = _sigma_fast(ctx.lut, gas_name, int(wavelength), temperature_k, pressure_hpa)
+                if not math.isfinite(float(sigma)):
+                    ok = False
+                    break
+                species_tau[gas_name] = max(0.0, float(sigma) * float(density) * path_m)
+            if not ok:
+                break
+            o3_tau = species_tau["O3"]
+            non_o3_tau = species_tau["O2"] + species_tau["H2O"]
+            local[int(wavelength)] = {"o3": o3_tau, "non_o3": non_o3_tau, "total": o3_tau + non_o3_tau}
+        if not ok:
+            continue
+        for wavelength, values in local.items():
+            for component, value in values.items():
+                tau[wavelength][component] += value
+        resolved += 1
+        path_km += path_m / 1000.0
+    if required == 0:
+        return None, "GLOW_OBSERVER_GAS_PATH_UNRESOLVED", required, resolved, path_km
+    if resolved < required:
+        return (tau if resolved else None), "GLOW_OBSERVER_GAS_PATH_PARTIAL", required, resolved, path_km
+    return tau, "GLOW_OBSERVER_GAS_PATH_RESOLVED", required, resolved, path_km
+
+
+def _sun_component_state(source: pd.Series | None) -> dict[str, bool]:
+    if source is None:
+        return {k: False for k in ("RAYLEIGH", "GAS", "AEROSOL", "CLOUD", "PRECIPITATION")}
+    aerosol_state = str(source.get("red_light_aerosol_evidence_state") or "")
+    return {
+        "RAYLEIGH": all(_finite(source.get(f"rayleigh_tau_{int(w)}nm")) is not None for w in SIX_BAND_WAVELENGTHS_NM),
+        "GAS": str(source.get("red_light_gas_evidence_state") or "") == "FULL",
+        "AEROSOL": aerosol_state.startswith("FULL_"),
+        "CLOUD": str(source.get("red_light_cloud_evidence_state") or "") == "FULL",
+        "PRECIPITATION": str(source.get("red_light_precipitation_evidence_state") or "") == "FULL",
+    }
+
+
+def build_twilight_glow_phase1_exports(detail: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Project the composite Glow evidence into three explicit R5.7.31 tables."""
+    if detail is None or detail.empty:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    identity = [
+        "time", "solar_altitude_deg", "solar_azimuth_deg", "glow_volume_id",
+        "reference_receiver_id", "direction_offset_deg", "distance_km",
+        "scatter_altitude_km", "scatter_layer_bottom_km", "scatter_layer_top_km",
+        "target_lat", "target_lon", "scattering_angle_deg",
+    ]
+    sun_cols = identity + [
+        "glow_direct_solar_fraction", "glow_sun_extinction_state",
+        "glow_sun_path_state", "glow_sun_path_evidence_complete",
+        "glow_sun_missing_components", "twilight_glow_extinction_contract",
+    ]
+    observer_cols = identity + [
+        "glow_observer_extinction_state", "glow_observer_path_state",
+        "glow_observer_path_evidence_complete", "glow_observer_rayleigh_status",
+        "glow_observer_gas_species_status", "glow_observer_missing_components",
+        "twilight_glow_extinction_contract",
+    ]
+    single_cols = identity + [
+        "rayleigh_phase_function_sr", "glow_proxy_state", "glow_proxy_units",
+        "glow_result_role", "formation_independent", "viewing_independent",
+        "calibrated_glow_radiance_available", "glow_total_radiance_state",
+        "glow_missing_components", "twilight_glow_single_scattering_contract",
+    ]
+    for wavelength in SIX_BAND_WAVELENGTHS_NM:
+        w = int(wavelength)
+        sun_cols.extend([
+            f"glow_sun_tau_rayleigh_{w}nm", f"glow_sun_tau_gas_non_o3_{w}nm",
+            f"glow_sun_tau_o3_{w}nm", f"glow_sun_tau_aerosol_{w}nm",
+            f"glow_sun_tau_cloud_{w}nm", f"glow_sun_tau_precip_{w}nm",
+            f"glow_sun_tau_total_{w}nm", f"glow_sun_transmission_{w}nm",
+            f"glow_sun_incident_relative_irradiance_{w}nm",
+            f"glow_sun_reference_incident_relative_irradiance_{w}nm",
+            f"glow_sun_band_evidence_state_{w}nm",
+        ])
+        observer_cols.extend([
+            f"glow_observer_tau_rayleigh_{w}nm", f"glow_observer_tau_gas_non_o3_{w}nm",
+            f"glow_observer_tau_o3_{w}nm", f"glow_observer_tau_aerosol_{w}nm",
+            f"glow_observer_tau_cloud_{w}nm", f"glow_observer_tau_precip_{w}nm",
+            f"glow_observer_tau_total_{w}nm", f"glow_observer_transmission_{w}nm",
+            f"glow_observer_band_evidence_state_{w}nm",
+        ])
+        single_cols.extend([
+            f"glow_sun_incident_relative_irradiance_{w}nm",
+            f"glow_rayleigh_scattering_coefficient_m1_{w}nm",
+            f"glow_rayleigh_source_coefficient_m1_sr_{w}nm",
+            f"glow_observer_transmission_{w}nm",
+            f"glow_single_scattering_source_proxy_{w}nm",
+            f"glow_band_evidence_state_{w}nm",
+        ])
+    def project(columns: list[str]) -> pd.DataFrame:
+        available = [c for c in columns if c in detail.columns]
+        return detail[available].copy()
+    return project(sun_cols), project(observer_cols), project(single_cols)
 
 
 def build_twilight_glow_geometry(
@@ -356,6 +544,7 @@ def build_twilight_glow_branch(
         for _, row in observer_spectral.iterrows()
     }
     gas_index = _gas_profile_index(gas_profiles)
+    gas_contexts = _gas_context_index(gas_profiles)
     rows: list[dict[str, Any]] = []
     for _, geom in geometry.iterrows():
         angle = _finite(geom.get("solar_altitude_deg"))
@@ -370,6 +559,7 @@ def build_twilight_glow_branch(
         )
         profiles = gas_index.get(gas_key)
         target = pd.Series({
+            "direction_offset_deg": direction,
             "target_distance_km": geom.get("distance_km"),
             "target_base_km": geom.get("scatter_layer_bottom_km"),
             "target_top_km": geom.get("scatter_layer_top_km"),
@@ -377,15 +567,33 @@ def build_twilight_glow_branch(
         rayleigh_tau, rayleigh_status, required_segments, resolved_segments = _rayleigh_observer_path(
             target, profiles, float(earth_radius_km)
         )
+        observer_gas_species, observer_gas_species_status, gas_required_segments, gas_resolved_segments, gas_path_km = _observer_gas_species_path(
+            target, gas_contexts.get(gas_key), float(earth_radius_km)
+        )
         local = _local_molecular_state(target, profiles)
         phase = _finite(geom.get("rayleigh_phase_function_sr"))
         direct_fraction = _finite(source.get("v1_direct_solar_fraction")) if source is not None else None
-        upstream_full = bool(source.get("red_light_path_evidence_complete", False)) if source is not None else False
-        observer_full = bool(observer is not None and str(observer.get("viewing_spectral_status")) == "VIEW_FULL_SIX_BAND_RT")
+        sun_components = _sun_component_state(source)
+        upstream_full = bool(source is not None and source.get("red_light_path_evidence_complete", False) and all(sun_components.values()))
+        viewing_row_full = bool(observer is not None and str(observer.get("viewing_spectral_status")) == "VIEW_FULL_SIX_BAND_RT")
+        observer_species_full = observer_gas_species_status == "GLOW_OBSERVER_GAS_PATH_RESOLVED"
         geometry_full = str(geom.get("glow_geometry_state")) == "GLOW_SCATTERING_GEOMETRY_READY"
         rayleigh_full = rayleigh_status == "GLOW_OBSERVER_RAYLEIGH_PATH_RESOLVED"
         local_full = local is not None and phase is not None
-        full_proxy = upstream_full and observer_full and geometry_full and rayleigh_full and local_full
+
+        sun_missing = [component for component, ready in sun_components.items() if not ready]
+        observer_component_state = {
+            "RAYLEIGH": rayleigh_full,
+            "GAS_SPECIES": observer_species_full,
+            "GAS": bool(observer is not None and str(observer.get("view_gas_status")) == "VIEW_GAS_RT_RESOLVED"),
+            "AEROSOL": bool(observer is not None and str(observer.get("view_aerosol_status")) == "VIEW_AEROSOL_3D_RESOLVED"),
+            "CLOUD": bool(observer is not None and str(observer.get("view_cloud_status")) in {"VIEW_CLOUD_PATH_CLEAR", "VIEW_CLOUD_OPTICS_RESOLVED_OCCUPANCY_EXPECTATION"}),
+            "PRECIPITATION": bool(observer is not None and str(observer.get("view_precipitation_status")) == "VIEW_PRECIPITATION_OPTICS_RESOLVED"),
+        }
+        observer_full = viewing_row_full and all(observer_component_state.values())
+        observer_missing = [component for component, ready in observer_component_state.items() if not ready]
+        full_proxy = upstream_full and observer_full and geometry_full and local_full
+
         missing = []
         if not upstream_full:
             missing.append("SUN_TO_SCATTER_EXTINCTION")
@@ -393,8 +601,6 @@ def build_twilight_glow_branch(
             missing.append("SCATTER_TO_OBSERVER_EXTINCTION")
         if not geometry_full:
             missing.append("SCATTERING_GEOMETRY")
-        if not rayleigh_full:
-            missing.append("OBSERVER_RAYLEIGH_PATH")
         if not local_full:
             missing.append("LOCAL_MOLECULAR_STATE")
         record = geom.to_dict()
@@ -402,11 +608,19 @@ def build_twilight_glow_branch(
             "glow_direct_solar_fraction": direct_fraction,
             "glow_sun_path_state": source.get("red_light_path_state") if source is not None else "GLOW_SUN_PATH_MISSING",
             "glow_sun_path_evidence_complete": upstream_full,
+            "glow_sun_extinction_state": "GLOW_SUN_TO_SCATTER_FULL_SIX_BAND_EXTINCTION" if upstream_full else ("GLOW_SUN_TO_SCATTER_PARTIAL_EXTINCTION" if source is not None else "GLOW_SUN_TO_SCATTER_EXTINCTION_UNRESOLVED"),
+            "glow_sun_missing_components": ";".join(sorted(set(sun_missing))),
             "glow_observer_path_state": observer.get("viewing_spectral_status") if observer is not None else "GLOW_OBSERVER_PATH_MISSING",
             "glow_observer_path_evidence_complete": observer_full,
+            "glow_observer_extinction_state": "GLOW_SCATTER_TO_OBSERVER_FULL_SIX_BAND_EXTINCTION" if observer_full else ("GLOW_SCATTER_TO_OBSERVER_PARTIAL_EXTINCTION" if observer is not None else "GLOW_SCATTER_TO_OBSERVER_EXTINCTION_UNRESOLVED"),
+            "glow_observer_missing_components": ";".join(sorted(set(observer_missing))),
             "glow_observer_rayleigh_status": rayleigh_status,
             "glow_observer_rayleigh_required_segment_count": required_segments,
             "glow_observer_rayleigh_resolved_segment_count": resolved_segments,
+            "glow_observer_gas_species_status": observer_gas_species_status,
+            "glow_observer_gas_species_required_segment_count": gas_required_segments,
+            "glow_observer_gas_species_resolved_segment_count": gas_resolved_segments,
+            "glow_observer_gas_species_path_km": gas_path_km,
             "glow_local_molecular_state": "RESOLVED" if local_full else "MISSING_OR_PARTIAL",
             "glow_aerosol_scattering_state": NO_AEROSOL_SOURCE_CLAIM,
             "glow_multiple_scattering_state": NO_MULTIPLE_SCATTERING_CLAIM,
@@ -418,46 +632,114 @@ def build_twilight_glow_branch(
             "viewing_independent": True,
             "calibrated_glow_radiance_available": False,
             "twilight_glow_contract": TWILIGHT_GLOW_CONTRACT,
+            "twilight_glow_extinction_contract": TWILIGHT_GLOW_EXTINCTION_CONTRACT,
+            "twilight_glow_single_scattering_contract": TWILIGHT_GLOW_SINGLE_SCATTERING_CONTRACT,
         })
         temperature_k, pressure_hpa, number_density_m3 = local if local is not None else (None, None, None)
         record["scatter_temperature_k"] = temperature_k
         record["scatter_pressure_hpa"] = pressure_hpa
         record["scatter_molecular_number_density_m3"] = number_density_m3
         for wavelength in SIX_BAND_WAVELENGTHS_NM:
-            incident = _finite(source.get(f"red_light_availability_{int(wavelength)}nm")) if source is not None else None
-            view_nonray_tau = _finite(observer.get(f"view_tau_total_{int(wavelength)}nm")) if observer is not None else None
-            ray_tau = rayleigh_tau.get(int(wavelength)) if rayleigh_tau is not None else None
+            w = int(wavelength)
+            # Sun -> scatter: decompose the already-computed Red-Light reference
+            # path into explicit six-band physical components.  gas_tau includes
+            # O3, so O3 is subtracted before the non-O3 gas term is published.
+            sun_ray = _finite(source.get(f"rayleigh_tau_{w}nm")) if source is not None else None
+            sun_aer = _finite(source.get(f"aerosol_tau_{w}nm")) if source is not None else None
+            sun_gas_total = _finite(source.get(f"gas_tau_{w}nm")) if source is not None else None
+            sun_o3 = _finite(source.get(f"gas_tau_o3_{w}nm")) if source is not None else None
+            sun_gas_non_o3 = max(0.0, sun_gas_total - sun_o3) if sun_gas_total is not None and sun_o3 is not None else None
+            sun_cloud = _finite(source.get("resolved_upstream_cloud_tau")) if source is not None else None
+            sun_precip = _finite(source.get(f"tau_precip_{w}nm")) if source is not None else None
+            sun_band_full = upstream_full and all(v is not None for v in (sun_ray, sun_gas_non_o3, sun_o3, sun_aer, sun_cloud, sun_precip))
+            sun_total_tau = (
+                max(0.0, sun_ray + sun_gas_non_o3 + sun_o3 + sun_aer + sun_cloud + sun_precip)
+                if sun_band_full else None
+            )
+            sun_transmission = math.exp(-sun_total_tau) if sun_total_tau is not None else None
+            sun_incident = (
+                max(0.0, float(direct_fraction)) * float(sun_transmission)
+                if sun_band_full and direct_fraction is not None else None
+            )
+            reference_incident = _finite(source.get(f"red_light_availability_{w}nm")) if source is not None else None
+
+            # Scatter -> observer: reuse the independent Viewing path component
+            # evidence, add explicit Rayleigh extinction, and independently
+            # decompose HITRAN gas into O3 and O2+H2O.
+            view_gas_total = _finite(observer.get(f"view_tau_gas_{w}nm")) if observer is not None else None
+            view_aer = _finite(observer.get(f"view_tau_aerosol_{w}nm")) if observer is not None else None
+            view_cloud = _finite(observer.get(f"view_tau_cloud_{w}nm")) if observer is not None else None
+            view_precip = _finite(observer.get(f"view_tau_precip_{w}nm")) if observer is not None else None
+            view_ray = rayleigh_tau.get(w) if rayleigh_tau is not None else None
+            species = observer_gas_species.get(w) if observer_gas_species is not None else None
+            view_o3 = _finite(species.get("o3")) if species is not None else None
+            view_gas_non_o3 = _finite(species.get("non_o3")) if species is not None else None
+            observer_band_full = observer_full and all(v is not None for v in (view_ray, view_gas_non_o3, view_o3, view_aer, view_cloud, view_precip, view_gas_total))
+            # Species breakdown must close to the frozen Viewing total gas tau.
+            gas_species_closes = bool(
+                observer_band_full
+                and abs((float(view_gas_non_o3) + float(view_o3)) - float(view_gas_total)) <= 1e-9
+            )
+            if observer_band_full and not gas_species_closes:
+                observer_band_full = False
+            observer_total_tau = (
+                max(0.0, view_ray + view_gas_non_o3 + view_o3 + view_aer + view_cloud + view_precip)
+                if observer_band_full else None
+            )
+            observer_transmission = math.exp(-observer_total_tau) if observer_total_tau is not None else None
+
             beta = (
-                rayleigh_cross_section_m2(int(wavelength)) * float(number_density_m3)
+                rayleigh_cross_section_m2(w) * float(number_density_m3)
                 if number_density_m3 is not None else None
             )
             beta_phase = beta * float(phase) if beta is not None and phase is not None else None
-            observer_total_tau = (
-                max(0.0, float(view_nonray_tau) + float(ray_tau))
-                if view_nonray_tau is not None and ray_tau is not None and full_proxy else None
-            )
-            observer_transmission = math.exp(-observer_total_tau) if observer_total_tau is not None else None
+            band_full_proxy = full_proxy and sun_band_full and observer_band_full and beta_phase is not None
             source_proxy = (
-                max(0.0, float(incident)) * float(observer_transmission) * float(beta_phase)
-                if full_proxy and incident is not None and observer_transmission is not None and beta_phase is not None else None
+                max(0.0, float(sun_incident)) * float(observer_transmission) * float(beta_phase)
+                if band_full_proxy and sun_incident is not None and observer_transmission is not None else None
             )
-            record[f"glow_incident_relative_irradiance_{int(wavelength)}nm"] = incident
-            record[f"glow_observer_nonrayleigh_tau_{int(wavelength)}nm"] = view_nonray_tau
-            record[f"glow_observer_rayleigh_tau_{int(wavelength)}nm"] = ray_tau
-            record[f"glow_observer_total_tau_{int(wavelength)}nm"] = observer_total_tau
-            record[f"glow_observer_total_transmission_{int(wavelength)}nm"] = observer_transmission
-            record[f"glow_rayleigh_scattering_coefficient_m1_{int(wavelength)}nm"] = beta
-            record[f"glow_rayleigh_source_coefficient_m1_sr_{int(wavelength)}nm"] = beta_phase
-            record[f"glow_single_scattering_source_proxy_{int(wavelength)}nm"] = source_proxy
-            record[f"glow_band_evidence_state_{int(wavelength)}nm"] = (
-                "FULL_ZERO_DIRECT_SOLAR" if full_proxy and (direct_fraction is None or direct_fraction <= 0.0)
-                else ("FULL_RAYLEIGH_PROXY" if full_proxy else "MISSING")
+
+            record[f"glow_sun_tau_rayleigh_{w}nm"] = sun_ray
+            record[f"glow_sun_tau_gas_non_o3_{w}nm"] = sun_gas_non_o3
+            record[f"glow_sun_tau_o3_{w}nm"] = sun_o3
+            record[f"glow_sun_tau_aerosol_{w}nm"] = sun_aer
+            record[f"glow_sun_tau_cloud_{w}nm"] = sun_cloud
+            record[f"glow_sun_tau_precip_{w}nm"] = sun_precip
+            record[f"glow_sun_tau_total_{w}nm"] = sun_total_tau
+            record[f"glow_sun_transmission_{w}nm"] = sun_transmission
+            record[f"glow_sun_incident_relative_irradiance_{w}nm"] = sun_incident
+            record[f"glow_sun_reference_incident_relative_irradiance_{w}nm"] = reference_incident
+            record[f"glow_sun_band_evidence_state_{w}nm"] = "FULL" if sun_band_full else "MISSING"
+
+            record[f"glow_observer_tau_rayleigh_{w}nm"] = view_ray
+            record[f"glow_observer_tau_gas_non_o3_{w}nm"] = view_gas_non_o3
+            record[f"glow_observer_tau_o3_{w}nm"] = view_o3
+            record[f"glow_observer_tau_aerosol_{w}nm"] = view_aer
+            record[f"glow_observer_tau_cloud_{w}nm"] = view_cloud
+            record[f"glow_observer_tau_precip_{w}nm"] = view_precip
+            record[f"glow_observer_tau_total_{w}nm"] = observer_total_tau
+            record[f"glow_observer_transmission_{w}nm"] = observer_transmission
+            record[f"glow_observer_band_evidence_state_{w}nm"] = "FULL" if observer_band_full else "MISSING"
+
+            # Backward-compatible R5.7.30 composite aliases remain available.
+            record[f"glow_incident_relative_irradiance_{w}nm"] = sun_incident
+            record[f"glow_observer_nonrayleigh_tau_{w}nm"] = (view_gas_total + view_aer + view_cloud + view_precip) if band_full_proxy else None
+            record[f"glow_observer_rayleigh_tau_{w}nm"] = view_ray
+            record[f"glow_observer_total_tau_{w}nm"] = observer_total_tau if band_full_proxy else None
+            record[f"glow_observer_total_transmission_{w}nm"] = observer_transmission if band_full_proxy else None
+            record[f"glow_rayleigh_scattering_coefficient_m1_{w}nm"] = beta
+            record[f"glow_rayleigh_source_coefficient_m1_sr_{w}nm"] = beta_phase
+            record[f"glow_single_scattering_source_proxy_{w}nm"] = source_proxy
+            record[f"glow_band_evidence_state_{w}nm"] = (
+                "FULL_ZERO_DIRECT_SOLAR" if band_full_proxy and direct_fraction is not None and direct_fraction <= 0.0
+                else ("FULL_RAYLEIGH_PROXY" if band_full_proxy else "MISSING")
             )
-        if full_proxy and direct_fraction is not None and direct_fraction > 0.0:
+        all_band_full = all(record.get(f"glow_band_evidence_state_{int(w)}nm") in {"FULL_RAYLEIGH_PROXY", "FULL_ZERO_DIRECT_SOLAR"} for w in SIX_BAND_WAVELENGTHS_NM)
+        if all_band_full and direct_fraction is not None and direct_fraction > 0.0:
             record["glow_proxy_state"] = "GLOW_RAYLEIGH_SINGLE_SCATTERING_PROXY_READY"
-        elif full_proxy:
+        elif all_band_full:
             record["glow_proxy_state"] = "GLOW_NO_DIRECT_SINGLE_SCATTERING_AT_VOLUME"
-        elif any(_finite(record.get(f"glow_incident_relative_irradiance_{int(w)}nm")) is not None for w in SIX_BAND_WAVELENGTHS_NM):
+        elif any(_finite(record.get(f"glow_sun_incident_relative_irradiance_{int(w)}nm")) is not None for w in SIX_BAND_WAVELENGTHS_NM):
             record["glow_proxy_state"] = "GLOW_RAYLEIGH_SINGLE_SCATTERING_PROXY_PARTIAL"
         else:
             record["glow_proxy_state"] = "GLOW_RAYLEIGH_SINGLE_SCATTERING_UNRESOLVED"

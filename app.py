@@ -1087,7 +1087,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.30.1 Integrity Regression Restore + R5.7.30 Independent Twilight Glow Third Branch + R5.7.29.1 Viewing Precipitation Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1 + R5.7.30.1 Integrity Regression Restore + R5.7.30 Independent Twilight Glow Third Branch + R5.7.29.1 Viewing Precipitation Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -2253,6 +2253,9 @@ if run or st.session_state.analysis_result is not None:
             ("v1_viewing_spectral_extinction_550_750nm.csv", result.get("v1_viewing_spectral_extinction_550_750nm", pd.DataFrame())),
             ("v1_viewing_spectral_summary.csv", result.get("v1_viewing_spectral_summary", pd.DataFrame())),
             ("v1_twilight_glow_scattering_volume_550_750nm.csv", result.get("v1_twilight_glow_scattering_volume_550_750nm", pd.DataFrame())),
+            ("v1_twilight_glow_sun_to_scatter_extinction_550_750nm.csv", result.get("v1_twilight_glow_sun_to_scatter_extinction_550_750nm", pd.DataFrame())),
+            ("v1_twilight_glow_scatter_to_observer_extinction_550_750nm.csv", result.get("v1_twilight_glow_scatter_to_observer_extinction_550_750nm", pd.DataFrame())),
+            ("v1_twilight_glow_single_scattering_550_750nm.csv", result.get("v1_twilight_glow_single_scattering_550_750nm", pd.DataFrame())),
             ("v1_twilight_glow_summary.csv", result.get("v1_twilight_glow_summary", pd.DataFrame())),
             ("v1_photography_decision.csv", result.get("v1_photography_decision", pd.DataFrame())),
             ("v1_spectral_colour_550_750nm.csv", result.get("v1_spectral_colour", pd.DataFrame())),
@@ -2400,6 +2403,7 @@ if run or st.session_state.analysis_result is not None:
 
 st.divider()
 st.caption(
+    "R5.7.31 將 Twilight Glow 的 Sun→Scatter 與 Scatter→Observer 兩段 extinction 明確拆成 550/575/600/650/700/750 nm 六波段 component optical depth；O3 與非 O3 gas 分離避免重複計數，partial evidence 不得升格為 total transmission，最終仍只輸出未校準 single-scattering spectral proxy。"
     "R5.7.30.1 恢復 R5.7.29.1 已 field-pass 的 Viewing precipitation target coverage 與 native hydrometeor handoff 兩項 Integrity 硬檢查；不允許只因下游表格大於 0 rows 就視為完整，並恢復 R5.7.29.1 versioned release/spec 文件。"
     "R5.7.30 建立獨立 Sun→atmospheric scatter volume→Observer Twilight Glow 第三分支；目前只輸出未校準 Rayleigh single-scattering source proxy，不宣稱絕對天空輻亮度，也不修改 Formation、Viewing 或 Photography。"
     "R5.7.29.1 修正 Viewing route snapshot 在 precipitation aggregation 前被 runtime spool cleanup 刪除的整合漏接，並新增 precipitation target coverage 與 native RWMR/SNMR/GRLE handoff 兩項 Integrity 硬檢查；不改任何 Viewing extinction 公式或 Formation 規則。"
