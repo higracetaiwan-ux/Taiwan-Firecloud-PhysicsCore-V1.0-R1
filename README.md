@@ -1,4 +1,11 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.33.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.34
+
+## R5.7.34 CAMS ADS Stateful Deadline / Request-ID Recovery
+
+R5.7.34 replaces the flat 90-second CAMS ADS wait with a state-aware remote-job contract. The official ECMWF Data Stores client is used for asynchronous `submit`, durable opaque `request_id`, `get_remote(request_id)` reattachment and download after success. Local queue/running/total wait deadlines are separate; a timeout stops local waiting but does not cancel the remote ADS request. Request IDs are persisted with a deterministic request fingerprint, and the next identical role/time/request reattaches instead of blindly submitting a duplicate. Missing remains Missing; no CAMS science inputs, angles, bands or Formation/Viewing/Glow rules are changed.
+
+Default stateful waits: queue 75 s, running 120 s, total 180 s. The external worker watchdog is a last-resort 210 s hard ceiling.
+
 
 
 ## R5.7.33.1 Native 3D Aerosol Readiness Integrity Hotfix

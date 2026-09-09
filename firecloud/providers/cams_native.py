@@ -32,6 +32,7 @@ import numpy as np
 import pandas as pd
 
 from ..runtime_hardening import stamp_cache_artifact, cache_provenance, runtime_cache_mode, CACHE_MODE_COLD
+from .cams_ads_stateful import AdsStatefulTimeout, AdsStatefulFailure, retrieve_with_stateful_deadline
 
 DATASET = "cams-global-atmospheric-composition-forecasts"
 PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_3D_AEROSOL_EXTINCTION_532NM"
@@ -116,6 +117,38 @@ def _make_cdsapi_client():
     if key:
         return cdsapi.Client(url=url, key=key)
     return cdsapi.Client()
+
+def datastores_client_available() -> bool:
+    """Return whether the official asynchronous ECMWF Data Stores client exists."""
+    return importlib.util.find_spec("ecmwf.datastores") is not None
+
+
+def _make_datastores_client():
+    """Create the official async-capable ECMWF Data Stores client.
+
+    R5.7.34 uses this API because it exposes submit/get_remote/request_id, which
+    makes durable request-ID recovery possible.  Credentials are resolved from
+    the same ADS/CDSAPI sources as the legacy cdsapi path.
+    """
+    from ecmwf.datastores import Client
+    url, key, _source = _credential_env()
+    if key:
+        return Client(url=url, key=key)
+    return Client()
+
+
+def _stateful_ads_deadlines() -> tuple[float, float, float, float]:
+    """Return queue, running, total and poll deadlines for one remote ADS job."""
+    def envf(name: str, default: float) -> float:
+        try:
+            return max(0.1, float(os.getenv(name, str(default))))
+        except Exception:
+            return float(default)
+    queue = envf("FIRECLOUD_CAMS_ADS_QUEUE_GRACE_SECONDS", 75.0)
+    running = envf("FIRECLOUD_CAMS_ADS_RUNNING_GRACE_SECONDS", 120.0)
+    total = envf("FIRECLOUD_CAMS_ADS_TOTAL_DEADLINE_SECONDS", 180.0)
+    poll = envf("FIRECLOUD_CAMS_ADS_POLL_SECONDS", 2.0)
+    return queue, running, total, poll
 
 
 def native_aerosol_provider_status() -> dict:
@@ -423,13 +456,30 @@ def _retrieve_request(points: list[dict], valid_time: datetime, role: str, reque
         "area_nwse": str(request.get("area")),
         "status": "CACHE_HIT" if out.exists() and out.stat().st_size >= 1000 else "REQUESTING",
         "error": "",
+        "ads_stateful_recovery_enabled": bool(datastores_client_available()),
     }
     try:
         if not out.exists() or out.stat().st_size < 1000:
             out.parent.mkdir(parents=True, exist_ok=True)
             tmp = out.with_name(f".{out.name}.{os.getpid()}.{uuid.uuid4().hex}.partial")
             try:
-                _make_cdsapi_client().retrieve(DATASET, request, str(tmp))
+                if datastores_client_available():
+                    queue_grace, running_grace, total_deadline, poll_seconds = _stateful_ads_deadlines()
+                    state_meta = retrieve_with_stateful_deadline(
+                        client=_make_datastores_client(), dataset=DATASET, request=request,
+                        target=tmp, role=role, cache_dir=(cache_dir or _default_cache_dir()),
+                        queue_grace_seconds=queue_grace, running_grace_seconds=running_grace,
+                        total_deadline_seconds=total_deadline, poll_seconds=poll_seconds,
+                    )
+                    audit.update(state_meta)
+                    audit["ads_queue_grace_seconds"] = queue_grace
+                    audit["ads_running_grace_seconds"] = running_grace
+                    audit["ads_total_deadline_seconds"] = total_deadline
+                else:
+                    # Compatibility fallback only. Production requirements pin
+                    # ecmwf-datastores-client so the stateful path is expected.
+                    _make_cdsapi_client().retrieve(DATASET, request, str(tmp))
+                    audit["ads_stateful_fallback"] = "LEGACY_CDSAPI_BLOCKING_NO_REQUEST_ID_RECOVERY"
                 if not tmp.exists() or tmp.stat().st_size < 1000:
                     raise RuntimeError("CAMS ADS retrieval did not produce a valid temporary GRIB file")
                 os.replace(tmp, out)
@@ -443,6 +493,20 @@ def _retrieve_request(points: list[dict], valid_time: datetime, role: str, reque
             raise RuntimeError("CAMS ADS retrieval did not produce a valid GRIB file")
         prov = cache_provenance(out, provider="CAMS_ADS", role=str(role), cache_status=audit["status"])
         audit.update({k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}})
+    except AdsStatefulTimeout as exc:
+        audit["status"] = "TIMEOUT_DEFERRED"
+        audit["error"] = str(exc)
+        audit.update(exc.audit_fields)
+        meta["request_audit"] = audit
+        exc.audit_fields.update(audit)
+        raise
+    except AdsStatefulFailure as exc:
+        audit["status"] = "FAILED"
+        audit["error"] = str(exc)
+        audit.update(getattr(exc, "audit_fields", {}) or {})
+        meta["request_audit"] = audit
+        exc.audit_fields.update(audit)
+        raise
     except Exception as exc:
         audit["status"] = "FAILED"
         audit["error"] = f"{type(exc).__name__}: {exc}"
@@ -459,6 +523,9 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
 
 def download_ozone_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
     return _retrieve_request(points, valid_time, "O3_PRESSURE_LEVEL", build_ads_ozone_request, cache_dir)
+
+def download_spectral_aod_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
+    return _retrieve_request(points, valid_time, "SPECTRAL_COLUMN_AOD", build_ads_spectral_aod_request, cache_dir)
 
 def _message_identity(gid, codes_get) -> dict:
     out = {}
@@ -950,43 +1017,27 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
                               "error": "" if cols else "CAMS_PRESSURE_LEVEL_OZONE_NOT_FOUND_IN_GRIB"})
             return
         if role == "SPECTRAL_COLUMN_AOD":
-            request, smeta = build_ads_spectral_aod_request(points, valid_time)
-            out = _request_cache_path("spectral_column_aod", smeta, points, cache_dir)
-            audit={"request_role":role,"dataset":DATASET,"date":request.get("date"),"time":request.get("time"),
-                   "leadtime_hour":request.get("leadtime_hour"),"type":request.get("type"),
-                   "variable":_safe_join_request_values(request.get("variable")),"pressure_level":"",
-                   "area_nwse":str(request.get("area")),
-                   "status":"CACHE_HIT" if out.exists() and out.stat().st_size>=1000 else "REQUESTING","error":""}
-            if not out.exists() or out.stat().st_size < 1000:
-                out.parent.mkdir(parents=True, exist_ok=True)
-                tmp=out.with_name(f".{out.name}.{os.getpid()}.{uuid.uuid4().hex}.partial")
-                try:
-                    _make_cdsapi_client().retrieve(DATASET, request, str(tmp))
-                    if not tmp.exists() or tmp.stat().st_size < 1000:
-                        raise RuntimeError("CAMS spectral AOD retrieval did not produce a valid temporary GRIB file")
-                    os.replace(tmp,out)
-                finally:
-                    if tmp.exists():
-                        try: tmp.unlink()
-                        except Exception: pass
-                audit["status"]="OK"
-                stamp_cache_artifact(out,provider="CAMS_ADS",role="SPECTRAL_COLUMN_AOD",schema="CAMS_RAW_GRIB_V1",qc_state="CACHE_READY")
-            if not out.exists() or out.stat().st_size < 1000:
-                raise RuntimeError("CAMS spectral AOD retrieval did not produce a valid GRIB file")
-            prov=cache_provenance(out,provider="CAMS_ADS",role="SPECTRAL_COLUMN_AOD",cache_status=audit["status"])
-            audit.update({k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}})
+            out, smeta = download_spectral_aod_subset(points, valid_time, cache_dir=cache_dir)
             df=decode_grib_spectral_aod_to_route(out, points)
             have=[c for c in ("aod550","aod645","aod670","aod800") if c in df and df[c].notna().any()]
             inv=inspect_grib_message_inventory(out)
-            smeta["request_audit"] = audit
             _write_cams_worker_result(result_path, {"role": role, "status": "OK" if len(have)>=2 else "INCOMPLETE", "df": df,
                               "meta": smeta, "columns": have, "rows": len(df),
                               "inventory": inv.to_dict(orient="records") if not inv.empty else [],
                               "error": "" if len(have)>=2 else "CAMS_SPECTRAL_AOD_INCOMPLETE"})
             return
         raise ValueError(f"Unknown CAMS role: {role}")
+    except AdsStatefulTimeout as exc:
+        audit = dict(getattr(exc, "audit_fields", {}) or {})
+        audit.setdefault("request_role", role)
+        payload={"role": role, "status": "TIMEOUT_DEFERRED", "df": pd.DataFrame(),
+                 "meta": {"request_audit": audit}, "inventory": [], "error": str(exc)}
+        try: _write_cams_worker_result(result_path, payload)
+        except Exception: pass
     except Exception as exc:
-        payload={"role": role, "status": "FAILED", "df": pd.DataFrame(), "meta": {},
+        audit = dict(getattr(exc, "audit_fields", {}) or {})
+        if audit: audit.setdefault("request_role", role)
+        payload={"role": role, "status": "FAILED", "df": pd.DataFrame(), "meta": {"request_audit": audit} if audit else {},
                  "inventory": [], "error": f"{type(exc).__name__}: {exc}"}
         try:
             _write_cams_worker_result(result_path, payload)
@@ -998,7 +1049,7 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
 
 def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
                             cache_dir: str | Path | None = None,
-                            deadline_seconds: float = 90.0,
+                            deadline_seconds: float = 210.0,
                             heartbeat_callback=None) -> dict:
     """Run one CAMS ADS role in a dedicated *external* Python worker.
 
@@ -1330,15 +1381,15 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
     """
     if deadline_seconds is None:
         try:
-            deadline_seconds=float(os.getenv("FIRECLOUD_CAMS_DEADLINE_SECONDS","90"))
+            deadline_seconds=float(os.getenv("FIRECLOUD_CAMS_DEADLINE_SECONDS","210"))
         except Exception:
-            deadline_seconds=90.0
+            deadline_seconds=210.0
     deadline_seconds=max(0.2,float(deadline_seconds))
     spectral_role="SPECTRAL_COLUMN_AOD"
     roles=["O3_PRESSURE_LEVEL",spectral_role,"NATIVE_AEROSOL_532NM_PRESSURE_LEVEL"]
     base_meta={**native_aerosol_provider_status(), **{f"ozone_{k}":v for k,v in native_ozone_provider_status().items() if k not in {"provider","dataset"}}}
     meta=dict(base_meta)
-    meta["cams_prefetch_policy"]="PERSISTENT_CACHE_FIRST_SERIAL_FILE_IPC_ADS_ROLES_WITH_BOUNDED_RETRY"
+    meta["cams_prefetch_policy"]="PERSISTENT_CACHE_FIRST_SERIAL_STATEFUL_ADS_REQUEST_ID_RECOVERY"
     meta["cams_scheduler_mode"]="SERIAL_EXTERNAL_SUBPROCESS_FILE_IPC_ROLES"
     meta["cams_cache_dir"]=str(Path(cache_dir).expanduser() if cache_dir else _default_cache_dir())
     meta["cams_prefetch_deadline_seconds"]=deadline_seconds
@@ -1562,8 +1613,8 @@ def _fetch_cams_role_adaptive(points: list[dict], valid_time: datetime, role: st
     analysis.  Missing children remain Missing; no spatial fabrication occurs.
     """
     if deadline_seconds is None:
-        try: deadline_seconds=float(os.getenv("FIRECLOUD_CAMS_DEADLINE_SECONDS","90"))
-        except Exception: deadline_seconds=90.0
+        try: deadline_seconds=float(os.getenv("FIRECLOUD_CAMS_DEADLINE_SECONDS","210"))
+        except Exception: deadline_seconds=210.0
     deadline_seconds=max(0.2,float(deadline_seconds))
     if max_depth is None:
         try: max_depth=max(0,int(os.getenv("FIRECLOUD_CAMS_ADAPTIVE_MAX_DEPTH","3")))
