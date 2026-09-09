@@ -2448,9 +2448,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     cams_native_aerosol_route_snapshots = _drain_detail_matrix("cams_native_aerosol_snapshot", ensure_angle=True)
     gas_profile_route_snapshots = _drain_detail_matrix("gas_profile", ensure_angle=True)
     _aggregation_checkpoint("光譜與大氣矩陣完成", spectral_rt_voxel_matrix=spectral_rt_voxel_matrix, gas_profile_route_snapshots=gas_profile_route_snapshots)
-    # All local-temp heavyweight frame families have now been rehydrated into
-    # their final matrices.  Remove the spool directory immediately.
-    _angle_frame_spool.cleanup()
+    # The regular heavyweight families are now rehydrated, but R5.7.29 also
+    # keeps the native-merged route snapshots in this spool for the independent
+    # Viewing precipitation path.  Do not clean the spool until that family has
+    # been drained below.
     collect_and_trim()
 
     v1_cloud_layers = _concat_release(v1_cloud_layer_frames)
@@ -2482,6 +2483,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # quantity is reused here.
     v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
     _view_route_snapshots = _drain_spool_matrix("viewing_route_snapshot")
+    # R5.7.29.1: every AngleFrameSpool family has now been consumed.  R5.7.29
+    # cleaned the spool before this drain and silently deleted all native
+    # RWMR/SNMR/GRLE Viewing evidence.
+    _angle_frame_spool.cleanup()
     _view_precip_frames=[]
     if not v1_viewing_path_geometry.empty and not _view_route_snapshots.empty:
         for (_vt,_va),_vg in v1_viewing_path_geometry.groupby(["time","solar_altitude_deg"],dropna=False,sort=False):
@@ -2790,6 +2795,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_formation": v1_formation,
         "v1_viewing_path_geometry": v1_viewing_path_geometry,
         "v1_viewing_summary": v1_viewing_summary,
+        "v1_viewing_precipitation_evidence": v1_viewing_precipitation_evidence,
         "v1_viewing_spectral_extinction_550_750nm": v1_viewing_spectral_extinction,
         "v1_viewing_spectral_summary": v1_viewing_spectral_summary,
         # R5.7.27.1: hand the already-built Formation-first decision table to

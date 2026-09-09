@@ -1,4 +1,19 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.29
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.29.1
+
+## R5.7.29.1 Viewing Precipitation Spool Handoff Hotfix
+
+R5.7.29 真實部署 CASE 證明 GFS 已完整取得 RWMR/SNMR/GRLE，但
+`viewing_route_snapshot` 在 final aggregation 讀取前被
+`AngleFrameSpool.cleanup()` 刪除，造成 Viewing precipitation evidence 只有表頭，
+所有 target 的 precipitation component 都保持 unresolved。
+
+R5.7.29.1 將 cleanup 移到 Viewing snapshot drain 之後，並把 precipitation table
+交給 Analysis Integrity。新增 target coverage 與 native hydrometeor handoff 兩項
+硬檢查；當 RWMR/SNMR/GRLE 都為 READY，空 evidence table 或
+`VIEW_PRECIPITATION_VOLUME_UNRESOLVED` 不再能被整體 Integrity 誤判為 PASS。
+
+本 hotfix 不更改任何 extinction 公式、粒徑假設、Full RT 條件、Formation、Glow、
+Photography gate、13 angles、六波段、route resolution 或 provider policy。
 
 ## R5.7.29 Viewing Full Six-Band RT Closure
 

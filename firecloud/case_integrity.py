@@ -127,6 +127,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     formation = _df(result.get("v1_formation"))
     viewing_geometry = _df(result.get("v1_viewing_path_geometry"))
     viewing = _df(result.get("v1_viewing_summary"))
+    viewing_precipitation = _df(result.get("v1_viewing_precipitation_evidence"))
     viewing_spectral = _df(result.get("v1_viewing_spectral_extinction_550_750nm"))
     viewing_spectral_summary = _df(result.get("v1_viewing_spectral_summary"))
     photography = _df(result.get("v1_photography_decision"))
@@ -274,6 +275,61 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add("VIEWING_SIX_BAND_TARGET_COVERAGE",status,"VIEWING_RT",f"expected={len(expected_keys)};observed={len(observed_keys)};missing={len(missing_keys)};extra={len(extra_keys)}","one spectral row per eligible time+angle+target key","Canvas/layer IDs repeat across angles and may never be used as global evidence keys")
     else:
         add("VIEWING_SIX_BAND_TARGET_COVERAGE",WARN,"VIEWING_RT","GEOMETRY_SCHEMA_NOT_AVAILABLE","R5.7.29 viewing target geometry","Legacy/minimal fixtures may omit target geometry")
+
+    # R5.7.29.1 production handoff guard.  Archive-member presence and the
+    # downstream spectral schema cannot prove that the native RWMR/SNMR/GRLE
+    # snapshots survived the runtime spool.  When GFS reports those three
+    # fields READY, every eligible target must have an explicit Viewing
+    # precipitation evidence row; local/invalid geometry remains an explicit
+    # unresolved row rather than disappearing.
+    def _view_precip_keys(df: pd.DataFrame) -> set[tuple[str,float|None,str]]:
+        out=set()
+        if df.empty: return out
+        for _,r in df.iterrows():
+            av=pd.to_numeric(pd.Series([r.get("solar_altitude_deg")]),errors="coerce").iloc[0]
+            out.add((str(r.get("time")),None if pd.isna(av) else round(float(av),8),str(r.get("canvas_id"))))
+        return out
+
+    hydrometeor_ready=False
+    if not gfs_comp.empty and {"field","status"}.issubset(gfs_comp.columns):
+        ready_fields=set(
+            gfs_comp.loc[
+                gfs_comp["status"].astype(str).str.upper().eq("READY"),
+                "field",
+            ].astype(str).str.upper()
+        )
+        hydrometeor_ready={"RWMR","SNMR","GRLE"}.issubset(ready_fields)
+    if not viewing_geometry.empty:
+        eligible=viewing_geometry.get("photographic_target_eligible",pd.Series(False,index=viewing_geometry.index)).fillna(False).astype(bool)
+        expected_precip_keys=_view_precip_keys(viewing_geometry.loc[eligible])
+        observed_precip_keys=_view_precip_keys(viewing_precipitation)
+        missing_precip_keys=expected_precip_keys-observed_precip_keys
+        extra_precip_keys=observed_precip_keys-expected_precip_keys
+        precip_coverage_ok=not missing_precip_keys and not extra_precip_keys
+        add(
+            "VIEWING_PRECIPITATION_TARGET_COVERAGE",
+            PASS if precip_coverage_ok else FAIL,
+            "VIEWING_PRECIPITATION",
+            f"expected={len(expected_precip_keys)};observed={len(observed_precip_keys)};missing={len(missing_precip_keys)};extra={len(extra_precip_keys)}",
+            "one precipitation evidence row per eligible time+angle+canvas key",
+            "An empty header-only table is not evidence coverage",
+        )
+        if hydrometeor_ready:
+            statuses=viewing_precipitation.get("view_precipitation_status",pd.Series(dtype=str)).fillna("").astype(str)
+            native_handoff_ok=(not viewing_precipitation.empty and precip_coverage_ok and not statuses.eq("VIEW_PRECIPITATION_VOLUME_UNRESOLVED").any())
+            add(
+                "VIEWING_NATIVE_HYDROMETEOR_HANDOFF",
+                PASS if native_handoff_ok else FAIL,
+                "VIEWING_PRECIPITATION",
+                f"gfs_ready={hydrometeor_ready};rows={len(viewing_precipitation)};volume_unresolved={int(statuses.eq('VIEW_PRECIPITATION_VOLUME_UNRESOLVED').sum())}",
+                "RWMR/SNMR/GRLE READY implies preserved per-target Viewing precipitation evidence",
+                "Runtime spool cleanup must occur only after viewing_route_snapshot drain",
+            )
+        else:
+            add("VIEWING_NATIVE_HYDROMETEOR_HANDOFF",WARN,"VIEWING_PRECIPITATION",f"gfs_ready={hydrometeor_ready}","explicit provider gap or native hydrometeor evidence")
+    else:
+        add("VIEWING_PRECIPITATION_TARGET_COVERAGE",WARN,"VIEWING_PRECIPITATION","GEOMETRY_SCHEMA_NOT_AVAILABLE","R5.7.29.1 viewing target geometry")
+        add("VIEWING_NATIVE_HYDROMETEOR_HANDOFF",WARN,"VIEWING_PRECIPITATION",f"gfs_ready={hydrometeor_ready}","viewing geometry and provider evidence")
 
     if not viewing_spectral.empty:
         required_status={"view_gas_status","view_aerosol_status","view_cloud_status","view_precipitation_status","viewing_spectral_status","viewing_missing_components","viewing_spectral_contract"}
