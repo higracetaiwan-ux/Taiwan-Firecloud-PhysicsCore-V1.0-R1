@@ -1,4 +1,13 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.37
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.38
+
+## R5.7.38 CAMS Post-success Download Recovery
+
+R5.7.38 專門處理 ADS remote job 已 `successful`、但檔案下載節點暫時回傳 502/503/429 等錯誤而造成長時間停滯的情況。所有 download retry 都沿用同一個 request ID，不重新 submit CAMS job；每次嘗試重新取得 Results/location，預設最多 4 次，2 秒起始 backoff、12 秒上限。signed download URL 不寫入 CASE 或 journal。
+
+新增 `ads_download_attempts`、`ads_download_retry_count`、`ads_download_url_refresh_count`、`ads_download_elapsed_seconds` 等 telemetry，以及 `CAMS_POST_SUCCESS_DOWNLOAD_RECOVERY_TELEMETRY` Integrity。R5.7.34 phased deadline 與 R5.7.37 Near-Surface Molecular Boundary Closure 均保持不變。
+
+發行驗證：working tree **542/542 PASS**；FULL-CLEAN 解壓後 **542/542 PASS**；正式封包已完成。R5.7.38 Field Validation 仍需新 CASE。
+
 
 ## R5.7.37 Near-Surface Molecular Boundary Closure
 
@@ -6,7 +15,7 @@ R5.7.37 專門處理 Twilight Glow `Scatter→Observer` 路徑在近地層出現
 
 任何必要證據缺失時不建立 anchor；Missing 仍為 Missing，不向下外插 pressure-level O₃、不使用固定 O₃、不以放寬 tolerance 取得假 PASS。CASE Integrity 另新增 anchor provenance、固定 10 m tolerance 與實際 bridge provenance 檢查。
 
-發行驗證：working tree **533/533 PASS**；FULL-CLEAN 解壓後 **533/533 PASS**；封包 **506 個檔案成員、0 cache/pyc**。Field Validation 仍需以 R5.7.37 新 CASE 完成。
+發行驗證：working tree **533/533 PASS**；FULL-CLEAN 解壓後 **533/533 PASS**；封包 **506 個檔案成員、0 cache/pyc**。R5.7.37 已於 2026-09-10 sunset CASE 完成 Field Validation：Analysis Integrity **61/61 PASS**、CASE Integrity **23/23 PASS**、100 km / 3.75 km molecular coverage **156/156**。
 
 ## R5.7.36 Formation Canvas Eligibility / Low-Cloud Role Separation
 

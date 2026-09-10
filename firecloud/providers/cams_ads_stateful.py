@@ -16,8 +16,12 @@ from pathlib import Path
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
+import shutil
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from typing import Any, Callable
 
 
@@ -25,6 +29,7 @@ TERMINAL_SUCCESS = {"successful", "succeeded", "completed", "complete"}
 TERMINAL_FAILURE = {"failed", "unavailable", "cancelled", "canceled"}
 QUEUE_STATES = {"accepted", "queued", "pending", "submitted"}
 RUNNING_STATES = {"running", "in_progress", "in progress", "processing"}
+TRANSIENT_DOWNLOAD_HTTP_STATUS = {408, 429, 500, 502, 503, 504}
 
 
 def utc_now_iso() -> str:
@@ -140,19 +145,261 @@ def _refresh_remote(client: Any, request_id: str, current: Any) -> Any:
     return current
 
 
-def _download_remote(client: Any, remote: Any, request_id: str, target: Path) -> None:
-    downloader = getattr(remote, "download", None)
-    if callable(downloader):
-        downloader(str(target))
-        return
-    client_download = getattr(client, "download_results", None)
-    if callable(client_download):
-        client_download(request_id, str(target))
-        return
-    raise AdsStatefulFailure(
-        "ADS_REMOTE_DOWNLOAD_METHOD_UNAVAILABLE",
-        audit_fields={"ads_request_id": request_id, "ads_remote_status": normalized_remote_status(remote)},
-    )
+def _positive_env_float(name: str, default: float, minimum: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except Exception:
+        value = float(default)
+    return max(float(minimum), value)
+
+
+def _positive_env_int(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except Exception:
+        value = int(default)
+    return max(int(minimum), value)
+
+
+def _download_recovery_policy() -> tuple[int, float, float, float]:
+    """Return bounded post-success download retry settings.
+
+    R5.7.38 intentionally keeps this policy separate from ADS queue/running
+    deadlines.  The remote job is already terminal-successful at this point,
+    so a transient download-node failure must never trigger another submit.
+    """
+    attempts = _positive_env_int("FIRECLOUD_CAMS_DOWNLOAD_MAX_ATTEMPTS", 4)
+    initial = _positive_env_float("FIRECLOUD_CAMS_DOWNLOAD_INITIAL_BACKOFF_SECONDS", 2.0, 0.1)
+    maximum = _positive_env_float("FIRECLOUD_CAMS_DOWNLOAD_MAX_BACKOFF_SECONDS", 12.0, initial)
+    timeout = _positive_env_float("FIRECLOUD_CAMS_DOWNLOAD_HTTP_TIMEOUT_SECONDS", 45.0, 1.0)
+    return attempts, initial, maximum, timeout
+
+
+def _results_object(client: Any, remote: Any, request_id: str) -> Any | None:
+    getter = getattr(client, "get_results", None)
+    if callable(getter):
+        return getter(request_id)
+    getter = getattr(remote, "get_results", None)
+    if callable(getter):
+        return getter()
+    return None
+
+
+def _results_location(results: Any) -> str:
+    if results is None:
+        return ""
+    value = getattr(results, "location", None)
+    if callable(value):
+        value = value()
+    return str(value or "").strip()
+
+
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    if not isinstance(exc, HTTPError):
+        return None
+    headers = getattr(exc, "headers", None)
+    if headers is None:
+        return None
+    try:
+        value = headers.get("Retry-After")
+        if value is None:
+            return None
+        parsed = float(value)
+        return parsed if parsed > 0 else None
+    except Exception:
+        return None
+
+
+def _http_status_from_exception(exc: BaseException) -> int:
+    if isinstance(exc, HTTPError):
+        try:
+            return int(getattr(exc, "code", 0) or 0)
+        except Exception:
+            return 0
+    for value in (getattr(exc, "status_code", None), getattr(getattr(exc, "response", None), "status_code", None)):
+        try:
+            if value is not None:
+                return int(value)
+        except Exception:
+            pass
+    return 0
+
+
+def _safe_download_error_text(exc: BaseException) -> str:
+    # Signed result URLs may contain temporary access material.  Even when a
+    # third-party exception embeds the URL in its message, never persist it.
+    text = f"{type(exc).__name__}: {exc}"
+    return re.sub(r"https?://[^\s]+", "<redacted-download-url>", text, flags=re.IGNORECASE)
+
+
+def _transient_download_error(exc: BaseException) -> bool:
+    status = _http_status_from_exception(exc)
+    if status:
+        return status in TRANSIENT_DOWNLOAD_HTTP_STATUS
+    if isinstance(exc, (URLError, TimeoutError, ConnectionError, OSError)):
+        return True
+    # requests/httpx-style connection exceptions do not necessarily inherit
+    # Python's built-in ConnectionError.  Keep this narrow and name-based.
+    name = type(exc).__name__.lower()
+    return "timeout" in name or "connectionerror" in name or "connecterror" in name
+
+
+def _download_url_once(location: str, target: Path, timeout_seconds: float) -> int:
+    """Download one signed ADS result URL without library-internal 120 s retry.
+
+    The signed URL is deliberately never returned to callers or written to the
+    request journal because it may contain temporary access material.
+    """
+    request = Request(location, headers={"User-Agent": "Taiwan-Firecloud-PhysicsCore/CAMS-download"})
+    written = 0
+    with urlopen(request, timeout=float(timeout_seconds)) as response, target.open("wb") as fh:
+        status = int(getattr(response, "status", 200) or 200)
+        if status < 200 or status >= 300:
+            raise HTTPError(location, status, f"HTTP {status}", getattr(response, "headers", None), None)
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            fh.write(chunk)
+            written += len(chunk)
+    return written
+
+
+def _download_remote_with_recovery(
+    *,
+    client: Any,
+    remote: Any,
+    request_id: str,
+    target: Path,
+    journal: dict[str, Any],
+    journal_path: Path,
+    monotonic: Callable[[], float],
+    sleep: Callable[[float], None],
+) -> dict[str, Any]:
+    """Download terminal-successful ADS results with bounded retry.
+
+    Preferred path reacquires ``Results`` from the *same* request ID on every
+    attempt and downloads its current signed location directly.  This avoids
+    the client downloader's long default retry sleep after a transient 502 and
+    also allows a fresh download-node location to be selected.  If the client
+    does not expose Results/location, the legacy native downloader is used once
+    as a compatibility fallback.
+    """
+    max_attempts, initial_backoff, max_backoff, http_timeout = _download_recovery_policy()
+    started = monotonic()
+    retry_count = 0
+    url_refresh_count = 0
+    total_backoff = 0.0
+    errors: list[str] = []
+    strategy = "DIRECT_RESULTS_LOCATION_BOUNDED_RETRY_V1"
+
+    for attempt in range(1, max_attempts + 1):
+        if target.exists():
+            try:
+                target.unlink()
+            except Exception:
+                pass
+        try:
+            results = _results_object(client, remote, request_id)
+            location = _results_location(results)
+            if location:
+                url_refresh_count += 1
+                _download_url_once(location, target, http_timeout)
+            else:
+                # Compatibility fallback for older/test clients only.  Do not
+                # loop this path because the library itself may have a long
+                # internal retry policy.
+                strategy = "CLIENT_NATIVE_DOWNLOAD_FALLBACK_ONCE"
+                downloader = getattr(remote, "download", None)
+                if callable(downloader):
+                    downloader(str(target))
+                else:
+                    client_download = getattr(client, "download_results", None)
+                    if callable(client_download):
+                        client_download(request_id, str(target))
+                    else:
+                        raise AdsStatefulFailure(
+                            "ADS_REMOTE_DOWNLOAD_METHOD_UNAVAILABLE",
+                            audit_fields={
+                                "ads_request_id": request_id,
+                                "ads_remote_status": normalized_remote_status(remote),
+                            },
+                        )
+            elapsed = monotonic() - started
+            meta = {
+                "ads_download_strategy": strategy,
+                "ads_download_attempts": attempt,
+                "ads_download_retry_count": retry_count,
+                "ads_download_url_refresh_count": url_refresh_count,
+                "ads_download_backoff_seconds": round(total_backoff, 3),
+                "ads_download_elapsed_seconds": round(elapsed, 3),
+                "ads_download_http_timeout_seconds": round(http_timeout, 3),
+                "ads_download_last_error": errors[-1] if errors else "",
+                "ads_download_recovery_contract": "R5.7.38_POST_SUCCESS_SAME_REQUEST_ID_BOUNDED_DOWNLOAD_RETRY_V1",
+            }
+            journal.update(meta)
+            journal["download_attempt_history"] = (list(journal.get("download_attempt_history") or []) + [{
+                "attempt": attempt, "status": "SUCCESS", "at_utc": utc_now_iso(),
+                "elapsed_seconds": round(elapsed, 3), "strategy": strategy,
+            }])[-16:]
+            _atomic_json(journal_path, journal)
+            return meta
+        except AdsStatefulFailure:
+            raise
+        except Exception as exc:
+            error_text = _safe_download_error_text(exc)
+            errors.append(error_text)
+            transient = _transient_download_error(exc)
+            elapsed = monotonic() - started
+            history = list(journal.get("download_attempt_history") or [])
+            history.append({
+                "attempt": attempt, "status": "RETRYABLE_FAILURE" if transient else "NON_RETRYABLE_FAILURE",
+                "at_utc": utc_now_iso(), "elapsed_seconds": round(elapsed, 3),
+                "error_type": type(exc).__name__,
+                "http_status": _http_status_from_exception(exc) or None,
+            })
+            journal.update({
+                "download_attempt_history": history[-16:],
+                "ads_download_strategy": strategy,
+                "ads_download_attempts": attempt,
+                "ads_download_retry_count": retry_count,
+                "ads_download_url_refresh_count": url_refresh_count,
+                "ads_download_backoff_seconds": round(total_backoff, 3),
+                "ads_download_elapsed_seconds": round(elapsed, 3),
+                "ads_download_last_error": error_text,
+            })
+            _atomic_json(journal_path, journal)
+            if strategy == "CLIENT_NATIVE_DOWNLOAD_FALLBACK_ONCE" or not transient or attempt >= max_attempts:
+                raise AdsStatefulFailure(
+                    f"ADS_POST_SUCCESS_DOWNLOAD_FAILED: {error_text}",
+                    audit_fields={
+                        "ads_request_id": request_id,
+                        "ads_remote_status": normalized_remote_status(remote),
+                        "ads_request_recovery_eligible": True,
+                        "ads_download_recovery_eligible": True,
+                        "ads_request_journal": str(journal_path),
+                        "ads_download_strategy": strategy,
+                        "ads_download_attempts": attempt,
+                        "ads_download_retry_count": retry_count,
+                        "ads_download_url_refresh_count": url_refresh_count,
+                        "ads_download_backoff_seconds": round(total_backoff, 3),
+                        "ads_download_elapsed_seconds": round(elapsed, 3),
+                        "ads_download_last_error": error_text,
+                        "ads_download_recovery_contract": "R5.7.38_POST_SUCCESS_SAME_REQUEST_ID_BOUNDED_DOWNLOAD_RETRY_V1",
+                    },
+                ) from exc
+            retry_count += 1
+            backoff = min(max_backoff, initial_backoff * (2 ** (attempt - 1)))
+            server_retry = _retry_after_seconds(exc)
+            if server_retry is not None:
+                # Honor server guidance only up to the bounded cap.  A 120 s
+                # Retry-After must not silently reintroduce the field-observed
+                # 120 s stall this recovery layer exists to remove.
+                backoff = max(backoff, min(max_backoff, server_retry))
+            total_backoff += backoff
+            sleep(backoff)
+
+    raise AssertionError("unreachable")
 
 
 def retrieve_with_stateful_deadline(
@@ -272,7 +519,10 @@ def retrieve_with_stateful_deadline(
 
         if status in TERMINAL_SUCCESS:
             target.parent.mkdir(parents=True, exist_ok=True)
-            _download_remote(client, remote, request_id, target)
+            download_meta = _download_remote_with_recovery(
+                client=client, remote=remote, request_id=request_id, target=target,
+                journal=journal, journal_path=journal_path, monotonic=monotonic, sleep=sleep,
+            )
             journal.update({"remote_status": status, "downloaded_at_utc": utc_now_iso(), "target_name": target.name})
             _atomic_json(journal_path, journal)
             return {
@@ -285,6 +535,7 @@ def retrieve_with_stateful_deadline(
                 "ads_running_elapsed_seconds": round(running_elapsed, 3),
                 "ads_total_elapsed_seconds": round(total_elapsed, 3),
                 "ads_stateful_deadline_contract": "R5.7.34_QUEUE_RUNNING_TOTAL_PHASED_DEADLINE_V1",
+                **download_meta,
             }
         if status in TERMINAL_FAILURE:
             raise AdsStatefulFailure(

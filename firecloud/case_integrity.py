@@ -143,6 +143,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     twilight_glow_observer_aerosol_coverage_required = bool(result.get("twilight_glow_observer_aerosol_coverage_required", False))
     twilight_glow_deep_range_closure_required = bool(result.get("twilight_glow_deep_range_closure_required", False))
     near_surface_molecular_boundary_closure_required = bool(result.get("near_surface_molecular_boundary_closure_required", False))
+    cams_post_success_download_recovery_required = bool(result.get("cams_post_success_download_recovery_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -208,6 +209,50 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     cams_payload_expected = o3_missing_signal or aerosol_missing_signal or not ozone.empty or not aerosol_spectral.empty
     if cams_payload_expected:
         add("CAMS_REQUEST_AUDIT_PRESENT", PASS if not cams_req.empty else FAIL, "CAMS", _rows(cams_req), ">0 request-audit rows when CAMS-dependent payload is expected", "A blank request audit must not coexist silently with missing O3/aerosol payload")
+
+    # R5.7.38: a terminal-successful ADS job has entered a distinct download
+    # phase.  Fresh successful stateful requests must export bounded download
+    # recovery telemetry; cache hits and jobs that never reached remote success
+    # are not post-success download attempts and are excluded.
+    if cams_post_success_download_recovery_required:
+        if cams_req.empty:
+            add(
+                "CAMS_POST_SUCCESS_DOWNLOAD_RECOVERY_TELEMETRY", FAIL, "CAMS", 0,
+                "fresh terminal-successful CAMS rows carry R5.7.38 download recovery telemetry",
+                "Request audit is absent, so post-success download behavior cannot be verified",
+            )
+        else:
+            remote_status = cams_req.get("ads_remote_status", pd.Series("", index=cams_req.index)).fillna("").astype(str).str.lower()
+            request_id = cams_req.get("ads_request_id", pd.Series("", index=cams_req.index)).fillna("").astype(str).str.strip()
+            cache_hit = cams_req.get("cache_hit", pd.Series(False, index=cams_req.index)).fillna(False).astype(bool)
+            fresh_success = remote_status.isin({"successful", "succeeded", "completed", "complete"}) & request_id.ne("") & ~cache_hit
+            scoped = cams_req.loc[fresh_success].copy()
+            if scoped.empty:
+                add(
+                    "CAMS_POST_SUCCESS_DOWNLOAD_RECOVERY_TELEMETRY", WARN, "CAMS", 0,
+                    "fresh terminal-successful CAMS rows when present",
+                    "No fresh terminal-successful stateful CAMS download occurred in this run; cache/deferred paths cannot field-prove R5.7.38 download telemetry",
+                )
+            else:
+                contract = scoped.get("ads_download_recovery_contract", pd.Series("", index=scoped.index)).fillna("").astype(str)
+                attempts = pd.to_numeric(scoped.get("ads_download_attempts", pd.Series(float("nan"), index=scoped.index)), errors="coerce")
+                retries = pd.to_numeric(scoped.get("ads_download_retry_count", pd.Series(float("nan"), index=scoped.index)), errors="coerce")
+                refreshes = pd.to_numeric(scoped.get("ads_download_url_refresh_count", pd.Series(float("nan"), index=scoped.index)), errors="coerce")
+                elapsed = pd.to_numeric(scoped.get("ads_download_elapsed_seconds", pd.Series(float("nan"), index=scoped.index)), errors="coerce")
+                strategy = scoped.get("ads_download_strategy", pd.Series("", index=scoped.index)).fillna("").astype(str)
+                contract_ok = contract.eq("R5.7.38_POST_SUCCESS_SAME_REQUEST_ID_BOUNDED_DOWNLOAD_RETRY_V1")
+                numeric_ok = attempts.ge(1) & retries.ge(0) & elapsed.ge(0)
+                strategy_ok = strategy.isin({"DIRECT_RESULTS_LOCATION_BOUNDED_RETRY_V1", "CLIENT_NATIVE_DOWNLOAD_FALLBACK_ONCE"})
+                direct = strategy.eq("DIRECT_RESULTS_LOCATION_BOUNDED_RETRY_V1")
+                direct_ok = (~direct) | refreshes.ge(attempts)
+                ok = bool((contract_ok & numeric_ok & strategy_ok & direct_ok).all())
+                retry_rows = int(retries.fillna(0).gt(0).sum())
+                add(
+                    "CAMS_POST_SUCCESS_DOWNLOAD_RECOVERY_TELEMETRY", PASS if ok else FAIL, "CAMS",
+                    f"fresh_success={len(scoped)};retry_rows={retry_rows};contract={int(contract_ok.sum())}/{len(scoped)}",
+                    "all fresh terminal-successful CAMS rows export bounded same-request-ID download recovery telemetry",
+                    "Download URLs are intentionally not persisted; direct strategy must reacquire Results/location on every attempt",
+                )
 
     if o3_success:
         add("CAMS_O3_ROUTE_HANDOFF", PASS if not ozone.empty else FAIL, "CAMS_O3", _rows(ozone), ">0 rows after successful O3 request")
