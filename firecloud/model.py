@@ -1458,17 +1458,17 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         openmeteo_request_audit=pd.DataFrame(hourly.attrs.get("api_request_audit", []))
         performance_rows.append({"stage":"OPENMETEO_PRESSURE_PROFILE_FALLBACK","elapsed_seconds":perf_counter()-_pf_t0,"cache_status":pressure_hourly.attrs.get("openmeteo_status","UNKNOWN")})
 
-    _progress(0.34, f"預先取得 CAMS O₃／3D 氣膠／光譜 AOD 三條獨立資料鏈（{len(cams_requests)} 個唯一時次；持久快取優先，未命中時每時次 90 秒 grace window）…")
+    _progress(0.34, f"預先取得 CAMS 壓力層 O₃／近地 O₃ L137／3D 氣膠／光譜 AOD／氣膠 SSA-g 五條獨立資料鏈（{len(cams_requests)} 個唯一時次；持久快取優先，未命中時每時次 90 秒 grace window）…")
     _prefetch_t0 = perf_counter()
     _cams_items = list(cams_requests.items())
     # The request planner already deduplicates identical (run, lead) keys.  The
     # remaining expensive work is normally two different forecast times.  Run
     # at most two *time bundles* concurrently; each bundle continues to fetch
-    # O3, spectral AOD, and native aerosol serially.  This preserves the ADS
+    # pressure-level O3, near-surface O3 L137, spectral AOD, native aerosol, and aerosol SSA/g serially.  This preserves the ADS
     # queue protection added in V8.4.11 while avoiding a full 2-time serial wait.
     # R5.7.23 Runtime Hardening: CAMS ADS single-flight.  R5.7.23 allowed two
     # time bundles to run concurrently.  Although each bundle serialized its
-    # three roles, two bundles could still submit two ADS requests at once
+    # provider roles, two bundles could still submit two ADS requests at once
     # (most visibly two SPECTRAL_COLUMN_AOD requests).  This reintroduced the
     # provider queue / hosted-memory failure mode that the serial ADS scheduler
     # was designed to avoid.  Production therefore defaults to one time bundle
@@ -1504,8 +1504,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             _short = {
                 "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL": "3D氣膠",
                 "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL_RETRY": "3D氣膠重試",
-                "O3_PRESSURE_LEVEL": "O₃",
-                "O3_PRESSURE_LEVEL_RETRY": "O₃重試",
+                "O3_PRESSURE_LEVEL": "O₃壓力層",
+                "O3_PRESSURE_LEVEL_RETRY": "O₃壓力層重試",
+                "O3_NEAR_SURFACE_MODEL_LEVEL_137": "近地O₃ L137",
+                "O3_NEAR_SURFACE_MODEL_LEVEL_137_RETRY": "近地O₃ L137重試",
                 "SPECTRAL_COLUMN_AOD": "光譜AOD",
                 "SPECTRAL_COLUMN_AOD_RETRY": "光譜AOD重試",
                 "AEROSOL_SCATTERING_COLUMN_PROPERTIES": "氣膠SSA/g",
@@ -1561,7 +1563,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                     _display.append(f"{_name}:{_value}")
             _summary = "｜".join(_display)
             _parts.append(f"時次 {_idx}/{len(_cams_items)}" + (f"｜{_summary}" if _summary else "｜等待"))
-        _mode_label = "CAMS 安全預取（全域 ADS single-flight；每時次內四角色串行）" if _cams_parallel_workers == 1 else "CAMS 專家模式並行預取（兩時次；每時次內四角色串行）"
+        _mode_label = "CAMS 安全預取（全域 ADS single-flight；每時次內五角色串行）" if _cams_parallel_workers == 1 else "CAMS 專家模式並行預取（兩時次；每時次內五角色串行）"
         _progress(0.34 + 0.04 * float(_completed) / max(1, len(_cams_items)), _mode_label + "｜" + "；".join(_parts))
 
     def _record_cams_bundle(_key, _payload, _elapsed):
@@ -2868,6 +2870,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "cams_geopotential_normalization_required": True,
         "twilight_glow_observer_aerosol_coverage_required": True,
         "twilight_glow_deep_range_closure_required": True,
+        "near_surface_molecular_boundary_closure_required": True,
         # R5.7.27.1: hand the already-built Formation-first decision table to
         # the pre-export integrity audit.  R5.7.27 returned/exported this table
         # but omitted it here, so the audit saw a false empty-table failure.

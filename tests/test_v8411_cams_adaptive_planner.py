@@ -46,10 +46,10 @@ def test_planner_best_case_uses_one_request_per_role(monkeypatch):
     monkeypatch.setattr(cams_native,'_run_cams_role_isolated',fake)
     monkeypatch.setenv('FIRECLOUD_CAMS_INTER_ROLE_GAP_SECONDS','0')
     df,meta=cams_native.fetch_route_native_aerosol_bundle_timed(_pts(),datetime(2026,9,4,10,tzinfo=timezone.utc),deadline_seconds=1)
-    assert len(calls)==4
-    assert set(calls)=={'O3_PRESSURE_LEVEL','SPECTRAL_COLUMN_AOD','NATIVE_AEROSOL_532NM_PRESSURE_LEVEL','AEROSOL_SCATTERING_COLUMN_PROPERTIES'}
+    assert len(calls)==5
+    assert set(calls)=={'O3_PRESSURE_LEVEL','O3_NEAR_SURFACE_MODEL_LEVEL_137','SPECTRAL_COLUMN_AOD','NATIVE_AEROSOL_532NM_PRESSURE_LEVEL','AEROSOL_SCATTERING_COLUMN_PROPERTIES'}
     assert meta['cams_request_planner']=='WHOLE_ROUTE_FIRST_ADAPTIVE_SUBTILING'
-    assert meta['cams_tile_count']==4
+    assert meta['cams_tile_count']==5
     assert len(df)==len(_pts())
 
 

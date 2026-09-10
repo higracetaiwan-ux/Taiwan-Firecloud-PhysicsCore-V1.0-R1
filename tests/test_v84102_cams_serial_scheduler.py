@@ -9,9 +9,15 @@ def _ok(role, point_id='p0'):
     if role == 'O3_PRESSURE_LEVEL':
         base['cams_ozone_kgkg_100']=[1e-6]
         extra={'levels':1,'rows':1}
+    elif role == 'O3_NEAR_SURFACE_MODEL_LEVEL_137':
+        base['cams_ozone_ml137_kgkg']=[8e-8]
+        extra={'levels':1,'rows':1}
     elif role == 'SPECTRAL_COLUMN_AOD':
         base.update({'aod550':[0.1],'aod645':[0.08],'aod670':[0.075],'aod800':[0.05]})
         extra={'columns':['aod550','aod645','aod670','aod800'],'rows':1}
+    elif role == 'AEROSOL_SCATTERING_COLUMN_PROPERTIES':
+        base.update({'aod532':[0.11],'ssa550':[0.97],'asymmetry550':[0.72]})
+        extra={'columns':['aod532','ssa550','asymmetry550'],'rows':1}
     else:
         base['cams_aerext532_m1_100']=[1e-5]
         extra={'levels':1,'rows':1}
@@ -36,7 +42,7 @@ def test_serial_scheduler_retries_only_failed_role(monkeypatch):
     pts=[{'point_id':'p0','distance_km':0.0,'direction_offset_deg':0.0,'lat':24.25,'lon':120.5}]
     df,meta=cams_native._fetch_route_native_aerosol_bundle_single_tile(
         pts, datetime(2026,9,4,10,0,tzinfo=timezone.utc), deadline_seconds=1.0)
-    assert calls == ['O3_PRESSURE_LEVEL','SPECTRAL_COLUMN_AOD','SPECTRAL_COLUMN_AOD','NATIVE_AEROSOL_532NM_PRESSURE_LEVEL']
+    assert calls == ['O3_PRESSURE_LEVEL','O3_NEAR_SURFACE_MODEL_LEVEL_137','SPECTRAL_COLUMN_AOD','SPECTRAL_COLUMN_AOD','NATIVE_AEROSOL_532NM_PRESSURE_LEVEL','AEROSOL_SCATTERING_COLUMN_PROPERTIES']
     assert meta['cams_scheduler_mode'] == 'SERIAL_EXTERNAL_SUBPROCESS_FILE_IPC_ROLES'
     assert meta['native_ozone_status'] == 'OK'
     assert meta['native_aerosol_status'] == 'OK'
@@ -62,7 +68,7 @@ def test_timeout_is_not_immediately_duplicated(monkeypatch):
     _,meta=cams_native._fetch_route_native_aerosol_bundle_single_tile(
         pts, datetime(2026,9,4,10,0,tzinfo=timezone.utc), deadline_seconds=1.0)
     assert calls.count('O3_PRESSURE_LEVEL') == 1
-    assert calls == ['O3_PRESSURE_LEVEL','SPECTRAL_COLUMN_AOD','NATIVE_AEROSOL_532NM_PRESSURE_LEVEL']
+    assert calls == ['O3_PRESSURE_LEVEL','O3_NEAR_SURFACE_MODEL_LEVEL_137','SPECTRAL_COLUMN_AOD','NATIVE_AEROSOL_532NM_PRESSURE_LEVEL','AEROSOL_SCATTERING_COLUMN_PROPERTIES']
     o3=[r for r in meta['cams_request_audit'] if r['request_role']=='O3_PRESSURE_LEVEL'][0]
     assert o3['timeout'] is True
     assert o3['retry_attempted'] is False

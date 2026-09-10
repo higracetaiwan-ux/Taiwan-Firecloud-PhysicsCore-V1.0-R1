@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
-from .gas_rt import BOLTZMANN, DEFAULT_PROFILE_BOUNDARY_TOLERANCE_KM, prepare_gas_rt_context, _interp_fast_profile_state, _sigma_fast
+from .gas_rt import (BOLTZMANN, DEFAULT_PROFILE_BOUNDARY_TOLERANCE_KM, NEAR_SURFACE_MOLECULAR_BOUNDARY_CONTRACT, prepare_gas_rt_context, _interp_fast_profile_state, _sigma_fast)
 from .precipitation import build_viewing_precipitation_evidence
 from .shared_geometry import destination_point, directional_scattering_geometry
 from .shared_geometry.ray import observer_los_height_agl_km
@@ -222,15 +222,22 @@ def _molecular_boundary_diagnostics(
     profiles: dict[float, pd.DataFrame] | None,
     earth_radius_km: float,
 ) -> dict[str, float | int]:
-    """Report lower-boundary gaps for the sampled observer LOS.
+    """Report observer-LOS lower-boundary evidence without changing RT.
 
-    These diagnostics do not change the integration. They expose the raw and
-    1 m-quantized gap used by the R5.7.35.2 boundary precision contract.
+    R5.7.37 distinguishes the *actual* lowest molecular anchor from the former
+    pressure-level-only boundary.  A CAMS ML137 + surface-thermodynamic anchor
+    may therefore turn a previous extrapolation gap into a genuine bracket.
+    The frozen <=10 m endpoint tolerance remains unchanged and is still
+    reported separately for true endpoint snaps.
     """
     out = {
         "snap_segment_count": 0,
         "raw_max_gap_km": 0.0,
         "quantized_max_gap_km": 0.0,
+        "pressure_level_only_raw_max_gap_km": 0.0,
+        "near_surface_anchor_segment_count": 0,
+        "near_surface_bridge_segment_count": 0,
+        "near_surface_anchor_min_km": float("nan"),
     }
     if not profiles:
         return out
@@ -256,16 +263,33 @@ def _molecular_boundary_diagnostics(
         profile = profiles.get(nearest)
         if profile is None or profile.empty:
             continue
-        z = pd.to_numeric(profile.get("altitude_agl_km"), errors="coerce")
-        z = z[np.isfinite(z)]
-        if z.empty:
+        z_all = pd.to_numeric(profile.get("altitude_agl_km"), errors="coerce")
+        finite_all = np.isfinite(z_all)
+        if not finite_all.any():
             continue
-        lo = float(z.min())
-        if altitude >= lo:
+        actual_lo = float(z_all[finite_all].min())
+
+        state = profile.get("near_surface_boundary_state", pd.Series("", index=profile.index)).fillna("").astype(str)
+        anchor_mask = finite_all & state.eq("READY")
+        pressure_mask = finite_all & ~state.eq("READY")
+        if anchor_mask.any():
+            anchor_lo = float(z_all[anchor_mask].min())
+            out["near_surface_anchor_segment_count"] = int(out["near_surface_anchor_segment_count"]) + 1
+            cur = out["near_surface_anchor_min_km"]
+            out["near_surface_anchor_min_km"] = anchor_lo if not math.isfinite(float(cur)) else min(float(cur), anchor_lo)
+            if pressure_mask.any():
+                pressure_lo = float(z_all[pressure_mask].min())
+                if anchor_lo - 1e-12 <= altitude < pressure_lo - 1e-12:
+                    out["near_surface_bridge_segment_count"] = int(out["near_surface_bridge_segment_count"]) + 1
+                    out["pressure_level_only_raw_max_gap_km"] = max(
+                        float(out["pressure_level_only_raw_max_gap_km"]), pressure_lo - float(altitude)
+                    )
+
+        if altitude >= actual_lo:
             continue
-        raw_gap = max(0.0, lo - float(altitude))
+        raw_gap = max(0.0, actual_lo - float(altitude))
         if q > 0.0:
-            quantized_gap = max(0.0, round(lo / q) * q - round(float(altitude) / q) * q)
+            quantized_gap = max(0.0, round(actual_lo / q) * q - round(float(altitude) / q) * q)
         else:
             quantized_gap = raw_gap
         out["raw_max_gap_km"] = max(float(out["raw_max_gap_km"]), raw_gap)
@@ -603,7 +627,10 @@ def build_twilight_glow_phase1_exports(detail: pd.DataFrame) -> tuple[pd.DataFra
         "glow_observer_aerosol_lowest_endpoint_snap_segment_count", "glow_observer_aerosol_endpoint_tolerance_km",
         "glow_observer_molecular_lowest_endpoint_tolerance_km", "glow_observer_molecular_boundary_quantization_km",
         "glow_observer_molecular_boundary_raw_max_gap_km", "glow_observer_molecular_boundary_quantized_max_gap_km",
-        "glow_observer_molecular_boundary_snap_segment_count", "glow_observer_molecular_boundary_policy",
+        "glow_observer_molecular_boundary_snap_segment_count", "glow_observer_pressure_level_only_raw_max_gap_km",
+        "glow_observer_near_surface_boundary_anchor_segment_count", "glow_observer_near_surface_boundary_bridge_segment_count",
+        "glow_observer_near_surface_boundary_anchor_min_km", "glow_observer_near_surface_boundary_contract",
+        "glow_observer_molecular_boundary_policy",
         "glow_observer_cloud_evidence_state", "glow_observer_cloud_blocker_count",
         "glow_observer_cloud_unresolved_blocker_count", "glow_observer_cloud_conflict_blocker_count",
         "glow_observer_cloud_unresolved_layer_ids", "glow_observer_cloud_conflict_states",
@@ -915,7 +942,12 @@ def build_twilight_glow_branch(
             "glow_observer_molecular_boundary_raw_max_gap_km": molecular_boundary_diag.get("raw_max_gap_km", 0.0),
             "glow_observer_molecular_boundary_quantized_max_gap_km": molecular_boundary_diag.get("quantized_max_gap_km", 0.0),
             "glow_observer_molecular_boundary_snap_segment_count": molecular_boundary_diag.get("snap_segment_count", 0),
-            "glow_observer_molecular_boundary_policy": "LOWEST_NATIVE_PRESSURE_LEVEL_10M_TOLERANCE_WITH_1M_VERTICAL_PRECISION",
+            "glow_observer_pressure_level_only_raw_max_gap_km": molecular_boundary_diag.get("pressure_level_only_raw_max_gap_km", 0.0),
+            "glow_observer_near_surface_boundary_anchor_segment_count": molecular_boundary_diag.get("near_surface_anchor_segment_count", 0),
+            "glow_observer_near_surface_boundary_bridge_segment_count": molecular_boundary_diag.get("near_surface_bridge_segment_count", 0),
+            "glow_observer_near_surface_boundary_anchor_min_km": molecular_boundary_diag.get("near_surface_anchor_min_km", float("nan")),
+            "glow_observer_near_surface_boundary_contract": NEAR_SURFACE_MOLECULAR_BOUNDARY_CONTRACT,
+            "glow_observer_molecular_boundary_policy": "CAMS_ML137_NEAR_SURFACE_BRIDGE_THEN_FROZEN_LOWEST_NATIVE_10M_TOLERANCE_WITH_1M_VERTICAL_PRECISION",
             "glow_observer_cloud_evidence_state": cloud_diag.get("state"),
             "glow_observer_cloud_blocker_count": cloud_diag.get("blocker_count", 0),
             "glow_observer_cloud_unresolved_blocker_count": cloud_diag.get("unresolved_blocker_count", 0),

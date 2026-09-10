@@ -33,7 +33,8 @@ def test_surface_wrapper_does_not_request_pressure_profile(monkeypatch,tmp_path)
     assert len(SurfaceSession.calls)==2  # batch size 30
     requested=set(SurfaceSession.calls[0]['hourly'].split(','))
     assert requested==set(openmeteo.SURFACE_HOURLY_VARS)
-    assert not any(v.startswith('temperature_') for v in requested)
+    assert 'temperature_2m' in requested
+    assert not any(v.startswith('temperature_') and v.endswith('hPa') for v in requested)
     assert out.attrs['api_request_audit'][0]['request_profile']=='SURFACE_ONLY'
     assert out.attrs['api_request_audit'][0]['requested_variable_count']==len(openmeteo.SURFACE_HOURLY_VARS)
 

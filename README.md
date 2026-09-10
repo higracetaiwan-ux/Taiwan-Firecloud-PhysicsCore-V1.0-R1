@@ -1,4 +1,12 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.36
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.37
+
+## R5.7.37 Near-Surface Molecular Boundary Closure
+
+R5.7.37 專門處理 Twilight Glow `Scatter→Observer` 路徑在近地層出現的 pressure-profile 下邊界缺口。既有 **10 m (`0.01 km`) molecular endpoint tolerance 完全保留，不放寬**。當 CAMS 原生 O₃ model level 137、Open-Meteo surface pressure、2 m temperature 與 2 m relative humidity 都具備真實證據時，程式建立約 10 m AGL 的 near-surface molecular anchor，與最低原生 pressure-level 形成真實垂直 bracket，供 Rayleigh 與 HITRAN gas-species 路徑內插。
+
+任何必要證據缺失時不建立 anchor；Missing 仍為 Missing，不向下外插 pressure-level O₃、不使用固定 O₃、不以放寬 tolerance 取得假 PASS。CASE Integrity 另新增 anchor provenance、固定 10 m tolerance 與實際 bridge provenance 檢查。
+
+發行驗證：working tree **533/533 PASS**；FULL-CLEAN 解壓後 **533/533 PASS**；封包 **506 個檔案成員、0 cache/pyc**。Field Validation 仍需以 R5.7.37 新 CASE 完成。
 
 ## R5.7.36 Formation Canvas Eligibility / Low-Cloud Role Separation
 

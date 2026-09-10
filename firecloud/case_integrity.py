@@ -142,6 +142,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     cams_geopotential_normalization_required = bool(result.get("cams_geopotential_normalization_required", False))
     twilight_glow_observer_aerosol_coverage_required = bool(result.get("twilight_glow_observer_aerosol_coverage_required", False))
     twilight_glow_deep_range_closure_required = bool(result.get("twilight_glow_deep_range_closure_required", False))
+    near_surface_molecular_boundary_closure_required = bool(result.get("near_surface_molecular_boundary_closure_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -199,7 +200,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     elif not native_vox.empty:
         add("GFS_NATIVE_VOXEL_HANDOFF", PASS, "NOAA_GFS_NATIVE", _rows(native_vox), ">0 rows")
 
-    o3_success = _cams_role_success(cams_req, ["O3", "OZONE"])
+    o3_success = _cams_role_success(cams_req, ["O3_PRESSURE_LEVEL"])
     o3_missing_signal = _text_token_fraction(ozone, ["o3_quality"], "MISSING") > 0.95 or _text_token_fraction(gas, ["o3_quality", "gas_profile_source"], "O3_MISSING") > 0.95
     aerosol_missing_signal = False
     if not spectral.empty and "missing_components" in spectral.columns:
@@ -449,6 +450,103 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "every unresolved cloud blocker is explicitly classified and no conflict/missing cloud tau is promoted to zero/full evidence",
                 "DIRECT_EVIDENCE_CONFLICT remains Partial/Missing; R5.7.33 does not infer COT from cloud fraction or zero condensate",
             )
+
+
+    # R5.7.37 Near-Surface Molecular Boundary Closure.  This is an evidence
+    # bridge, not a wider endpoint extrapolation rule.  The frozen 10 m
+    # tolerance remains exactly 0.01 km.
+    if near_surface_molecular_boundary_closure_required:
+        near_role_success = _cams_role_success(cams_req, ["O3_NEAR_SURFACE_MODEL_LEVEL_137"])
+        near_state = gas.get("near_surface_boundary_state", pd.Series("", index=gas.index)).fillna("").astype(str) if not gas.empty else pd.Series(dtype=str)
+        anchors = gas.loc[near_state.eq("READY")].copy() if not gas.empty else pd.DataFrame()
+        if near_role_success:
+            if anchors.empty:
+                add(
+                    "NEAR_SURFACE_MOLECULAR_BOUNDARY_ANCHOR_PROVENANCE", FAIL, "GAS_PROFILE", 0,
+                    "CAMS ML137 request success must hand off evidence-complete near-surface anchors",
+                    "Successful native near-surface O3 must not disappear before gas-profile construction",
+                )
+            else:
+                alt = pd.to_numeric(anchors.get("altitude_agl_km"), errors="coerce")
+                pres = pd.to_numeric(anchors.get("pressure_hpa"), errors="coerce")
+                temp = pd.to_numeric(anchors.get("temperature_k"), errors="coerce")
+                o3 = pd.to_numeric(anchors.get("o3_mass_mixing_ratio_kgkg"), errors="coerce")
+                contract = anchors.get("near_surface_boundary_contract", pd.Series("", index=anchors.index)).fillna("").astype(str)
+                quality = anchors.get("o3_quality", pd.Series("", index=anchors.index)).fillna("").astype(str)
+                valid = (
+                    alt.between(0.0, 0.05, inclusive="both") & pres.gt(0.0) & temp.gt(0.0) & o3.ge(0.0)
+                    & contract.eq("R5.7.37_CAMS_ML137_SURFACE_THERMODYNAMIC_BOUNDARY_CLOSURE_V1")
+                    & quality.eq("CAMS_MODEL_LEVEL_137_OZONE_NATIVE_NEAR_SURFACE_ANCHOR")
+                )
+                add(
+                    "NEAR_SURFACE_MOLECULAR_BOUNDARY_ANCHOR_PROVENANCE",
+                    PASS if bool(valid.all()) else FAIL, "GAS_PROFILE",
+                    f"valid={int(valid.sum())}/{len(anchors)}",
+                    "all ML137 anchors have native O3, surface thermodynamics, valid 0-50 m height and exact R5.7.37 provenance",
+                    "No pressure-level O3 downward extrapolation and no synthetic ozone fallback",
+                )
+        else:
+            add(
+                "NEAR_SURFACE_MOLECULAR_BOUNDARY_ANCHOR_PROVENANCE", WARN, "GAS_PROFILE",
+                f"near_surface_role_success=false;anchors={len(anchors)}",
+                "native ML137 O3 request success plus anchors when provider is available",
+                "Missing provider evidence remains Missing; deep-range molecular coverage still fail-closes when the bridge is required",
+            )
+
+        if twilight_glow_observer_extinction.empty:
+            add(
+                "NEAR_SURFACE_MOLECULAR_BOUNDARY_FROZEN_10M_TOLERANCE", WARN, "TWILIGHT_GLOW_EXTINCTION",
+                "observer_table_empty", "observer export reports the frozen 0.01 km tolerance when present",
+            )
+            add(
+                "NEAR_SURFACE_MOLECULAR_BOUNDARY_BRIDGE_PROVENANCE", NOT_APPLICABLE, "TWILIGHT_GLOW_EXTINCTION",
+                "observer_table_empty", "bridge provenance evaluated when observer rows exist",
+            )
+        else:
+            tol = pd.to_numeric(
+                twilight_glow_observer_extinction.get(
+                    "glow_observer_molecular_lowest_endpoint_tolerance_km",
+                    pd.Series(float("nan"), index=twilight_glow_observer_extinction.index),
+                ), errors="coerce"
+            )
+            tol_ok = tol.notna().all() and bool((tol.sub(0.01).abs() <= 1e-12).all())
+            add(
+                "NEAR_SURFACE_MOLECULAR_BOUNDARY_FROZEN_10M_TOLERANCE",
+                PASS if tol_ok else FAIL, "TWILIGHT_GLOW_EXTINCTION",
+                f"min={tol.min() if tol.notna().any() else 'nan'};max={tol.max() if tol.notna().any() else 'nan'}",
+                "molecular lowest-endpoint tolerance remains exactly 0.01 km (10 m)",
+                "R5.7.37 must close gaps with real ML137/surface evidence, never by widening tolerance",
+            )
+
+            bridge = pd.to_numeric(
+                twilight_glow_observer_extinction.get(
+                    "glow_observer_near_surface_boundary_bridge_segment_count",
+                    pd.Series(0, index=twilight_glow_observer_extinction.index),
+                ), errors="coerce"
+            ).fillna(0).gt(0)
+            if bridge.any():
+                bridged = twilight_glow_observer_extinction.loc[bridge].copy()
+                pressure_gap = pd.to_numeric(
+                    bridged.get("glow_observer_pressure_level_only_raw_max_gap_km"), errors="coerce"
+                )
+                contract = bridged.get(
+                    "glow_observer_near_surface_boundary_contract", pd.Series("", index=bridged.index)
+                ).fillna("").astype(str)
+                ray_ok = bridged.get("glow_observer_rayleigh_status", pd.Series("", index=bridged.index)).astype(str).eq("GLOW_OBSERVER_RAYLEIGH_PATH_RESOLVED")
+                gas_ok = bridged.get("glow_observer_gas_species_status", pd.Series("", index=bridged.index)).astype(str).eq("GLOW_OBSERVER_GAS_PATH_RESOLVED")
+                use_ok = (pressure_gap.gt(0.0) & contract.eq("R5.7.37_CAMS_ML137_SURFACE_THERMODYNAMIC_BOUNDARY_CLOSURE_V1") & ray_ok & gas_ok)
+                add(
+                    "NEAR_SURFACE_MOLECULAR_BOUNDARY_BRIDGE_PROVENANCE",
+                    PASS if bool(use_ok.all()) else FAIL, "TWILIGHT_GLOW_EXTINCTION",
+                    f"bridged_rows={len(bridged)};resolved={int(use_ok.sum())}",
+                    "every used near-surface bridge preserves the former pressure-level-only gap and resolves Rayleigh+gas via exact R5.7.37 provenance",
+                    "A genuine bracket closes the gap; endpoint tolerance remains independent",
+                )
+            else:
+                add(
+                    "NEAR_SURFACE_MOLECULAR_BOUNDARY_BRIDGE_PROVENANCE", NOT_APPLICABLE, "TWILIGHT_GLOW_EXTINCTION",
+                    "bridged_rows=0", "bridge provenance is required only when an LOS sample falls below the lowest pressure-level anchor",
+                )
 
 
     # R5.7.36 Formation Canvas eligibility: low cloud remains CloudScene blocker

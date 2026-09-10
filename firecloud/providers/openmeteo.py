@@ -30,7 +30,8 @@ PRESSURE_LEVELS_HPA = (
 
 SURFACE_HOURLY_VARS = [
     "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "visibility",
-    "precipitation", "surface_pressure", "relative_humidity_850hPa",
+    "precipitation", "surface_pressure", "temperature_2m", "relative_humidity_2m",
+    "relative_humidity_850hPa",
     "relative_humidity_700hPa", "relative_humidity_500hPa", "wind_speed_850hPa",
     "wind_direction_850hPa", "wind_speed_500hPa", "wind_direction_500hPa",
 ]

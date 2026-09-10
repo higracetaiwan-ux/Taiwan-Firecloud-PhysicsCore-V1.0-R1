@@ -22,6 +22,17 @@ BOLTZMANN=1.380649e-23
 # refusing any extrapolation beyond the real profile.
 DEFAULT_PROFILE_BOUNDARY_TOLERANCE_KM = 0.01
 
+# R5.7.37 Near-Surface Molecular Boundary Closure.  ECMWF L137 uses
+# half-level B coefficients 0.997630 (above) and 1.000000 (surface); with
+# A=0 Pa at both half levels the full-level pressure is their midpoint.
+# This is a native-model-coordinate anchor, not a relaxation of the frozen
+# 10 m pressure-profile endpoint tolerance.
+NEAR_SURFACE_MOLECULAR_BOUNDARY_CONTRACT = "R5.7.37_CAMS_ML137_SURFACE_THERMODYNAMIC_BOUNDARY_CLOSURE_V1"
+ECMWF_L137_B_HALF_ABOVE = 0.997630
+ECMWF_L137_B_SURFACE = 1.0
+ECMWF_L137_FULL_PRESSURE_RATIO = 0.5 * (ECMWF_L137_B_HALF_ABOVE + ECMWF_L137_B_SURFACE)
+STANDARD_GRAVITY_M_S2 = 9.80665
+
 
 from .hitran_readiness import hitran_backend_status, resolve_hitran_db_path, resolve_hitran_lut_path
 
@@ -103,6 +114,67 @@ def _cams_o3_at_pressure(o3row, pressure_hpa: float):
     return np.nan, "CAMS_O3_MISSING", ""
 
 
+def _near_surface_ml137_anchor(snapshot_row, o3row):
+    """Build one evidence-complete near-surface T/P/H2O/O2/O3 anchor.
+
+    The anchor uses CAMS native ozone at model level 137 together with
+    Open-Meteo surface pressure and 2 m thermodynamics.  No pressure-level
+    ozone is extrapolated below 1000 hPa.  If any required evidence is absent,
+    the anchor is not created and the existing Missing semantics remain.
+    """
+    if o3row is None:
+        return None
+    try:
+        ps_hpa = float(snapshot_row.get("surface_pressure", np.nan))
+        tk = _coerce_temperature_kelvin(snapshot_row.get("temperature_2m", np.nan))
+        rh = float(snapshot_row.get("relative_humidity_2m", np.nan))
+        o3_q = float(o3row.get("cams_ozone_ml137_kgkg", np.nan))
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(ps_hpa) and ps_hpa > 0.0 and pd.notna(tk) and math.isfinite(float(tk)) and float(tk) > 0.0
+            and math.isfinite(rh) and math.isfinite(o3_q) and o3_q >= 0.0):
+        return None
+    rh = min(100.0, max(0.0, rh))
+    p_ml137 = ps_hpa * ECMWF_L137_FULL_PRESSURE_RATIO
+    if not (math.isfinite(p_ml137) and p_ml137 > 0.0 and p_ml137 < ps_hpa):
+        return None
+    # Hydrostatic/hypsometric height of the full model level above the surface.
+    # The 2 m forecast temperature is the explicit near-surface thermodynamic
+    # proxy; the resulting height is ~10 m for standard conditions.
+    z_m = R_D * float(tk) / STANDARD_GRAVITY_M_S2 * math.log(ps_hpa / p_ml137)
+    if not (math.isfinite(z_m) and 0.0 <= z_m <= 0.05 * 1000.0):
+        return None
+    es = _sat_vapor_pressure_hpa(float(tk))
+    if pd.isna(es):
+        return None
+    e = max(0.0, min(p_ml137 * 0.99, float(es) * rh / 100.0))
+    h2o = e / max(1e-9, p_ml137)
+    o3_x = o3_q * M_DRY_AIR / M_O3
+    n_air = (p_ml137 * 100.0) / (BOLTZMANN * float(tk))
+    o3_n = o3_x * n_air
+    return {
+        "pressure_hpa": p_ml137,
+        "altitude_agl_km": z_m / 1000.0,
+        "temperature_k": float(tk),
+        "relative_humidity_pct": rh,
+        "h2o_mole_fraction": h2o,
+        "o2_mole_fraction": 0.20946,
+        "o3_mass_mixing_ratio_kgkg": o3_q,
+        "o3_mole_fraction": o3_x,
+        "o3_number_density_m3": o3_n,
+        "o3_quality": "CAMS_MODEL_LEVEL_137_OZONE_NATIVE_NEAR_SURFACE_ANCHOR",
+        "o3_source_pressure_bracket_hpa": "ML137",
+        "temperature_quality": "OPEN_METEO_2M_NEAR_SURFACE_ANCHOR",
+        "thermodynamic_profile_source": "OPEN_METEO_SURFACE_NEAR_SURFACE_BOUNDARY",
+        "gas_profile_source": "OPEN_METEO_SURFACE_THERMODYNAMICS+CAMS_O3_MODEL_LEVEL_137+HITRAN_CONTRACT",
+        "near_surface_boundary_state": "READY",
+        "near_surface_boundary_contract": NEAR_SURFACE_MOLECULAR_BOUNDARY_CONTRACT,
+        "near_surface_surface_pressure_hpa": ps_hpa,
+        "near_surface_ml137_pressure_ratio": ECMWF_L137_FULL_PRESSURE_RATIO,
+        "near_surface_ml137_height_method": "HYPSOMETRIC_FROM_SURFACE_PRESSURE_AND_2M_TEMPERATURE",
+    }
+
+
 def build_gas_profile(snapshot:pd.DataFrame, pressure_levels_hpa, surface_elevation_m:float|None=None, ozone_snapshot:pd.DataFrame|None=None)->pd.DataFrame:
     """Build route T/P/H2O/O2/O3 atmospheric state.
 
@@ -163,7 +235,33 @@ def build_gas_profile(snapshot:pd.DataFrame, pressure_levels_hpa, surface_elevat
                 "o3_mass_mixing_ratio_kgkg":o3_q,"o3_mole_fraction":o3_x,"o3_number_density_m3":o3_n,
                 "o3_quality":o3q,"o3_source_pressure_bracket_hpa":o3_bracket,
                 "temperature_quality":tq,"thermodynamic_profile_source":thermo_source,"gas_profile_source":source})
-    return pd.DataFrame(rows)
+    out = pd.DataFrame(rows)
+
+    # R5.7.37: append the native near-surface anchor only when it extends the
+    # real profile downward.  Existing pressure-level rows are never modified.
+    anchors=[]
+    if ozone_snapshot is not None and not ozone_snapshot.empty and "point_id" in ozone_snapshot.columns:
+        for _, r in snapshot.iterrows():
+            pid=r.get("point_id")
+            o3row=ozone_by_point.get(pid)
+            anchor_row=_near_surface_ml137_anchor(r,o3row)
+            if anchor_row is None:
+                continue
+            existing=out[out["point_id"].astype(str)==str(pid)] if not out.empty and "point_id" in out.columns else pd.DataFrame()
+            if not existing.empty:
+                zmin=pd.to_numeric(existing.get("altitude_agl_km"),errors="coerce").dropna()
+                if not zmin.empty and float(anchor_row["altitude_agl_km"]) >= float(zmin.min()) - 1e-12:
+                    continue
+            anchor_row.update({
+                "point_id":pid,
+                "distance_km":r.get("distance_km"),
+                "direction_offset_deg":r.get("direction_offset_deg"),
+            })
+            anchors.append(anchor_row)
+    if anchors:
+        out=pd.concat([out,pd.DataFrame(anchors)],ignore_index=True,sort=False)
+        out=out.sort_values([c for c in ("point_id","altitude_agl_km") if c in out.columns],kind="stable").reset_index(drop=True)
+    return out
 
 
 @lru_cache(maxsize=8)

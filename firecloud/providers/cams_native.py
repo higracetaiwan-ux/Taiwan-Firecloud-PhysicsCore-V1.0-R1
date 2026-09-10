@@ -37,6 +37,8 @@ from .cams_ads_stateful import AdsStatefulTimeout, AdsStatefulFailure, retrieve_
 DATASET = "cams-global-atmospheric-composition-forecasts"
 PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_3D_AEROSOL_EXTINCTION_532NM"
 OZONE_PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_3D_OZONE_PRESSURE_LEVELS"
+OZONE_NEAR_SURFACE_PROVIDER_NAME = "CAMS_GLOBAL_FORECAST_NATIVE_OZONE_MODEL_LEVEL_137"
+OZONE_NEAR_SURFACE_MODEL_LEVEL = 137
 DEFAULT_PRESSURE_LEVELS_HPA = (1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30)
 
 STANDARD_GRAVITY_M_S2 = 9.80665
@@ -189,6 +191,23 @@ def native_ozone_provider_status() -> dict:
         "retrieval_policy": "INDEPENDENT_REQUEST",
     }
 
+def native_near_surface_ozone_provider_status() -> dict:
+    """Status for the CAMS model-level-137 ozone anchor used by R5.7.37."""
+    return {
+        "provider": OZONE_NEAR_SURFACE_PROVIDER_NAME,
+        "dataset": DATASET,
+        "api_client_available": api_client_available(),
+        "decoder_available": decoder_available(),
+        "credentials_configured": credentials_configured(),
+        "credential_source": credential_source(),
+        "native_variable": "ozone",
+        "native_units": "kg kg-1",
+        "vertical_coordinate": "model_level_137",
+        "profile_policy": "NATIVE_CAMS_ML137_NEAR_SURFACE_ANCHOR_ONLY_NO_PRESSURE_LEVEL_EXTRAPOLATION",
+        "retrieval_policy": "INDEPENDENT_REQUEST",
+    }
+
+
 def _utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
@@ -291,6 +310,22 @@ def build_ads_ozone_request(points: list[dict], valid_time: datetime, pressure_l
         "pressure_level": [str(int(p)) for p in pressure_levels_hpa],
     })
     meta["request_role"] = "O3_PRESSURE_LEVEL"
+    return request, meta
+
+
+def build_ads_near_surface_ozone_request(points: list[dict], valid_time: datetime) -> tuple[dict, dict]:
+    """Independent CAMS ozone request at native model level 137.
+
+    R5.7.37 uses this as the near-surface chemical anchor.  It is deliberately
+    separate from the pressure-level ozone profile so no 1000-hPa value is
+    extrapolated below its native vertical support.
+    """
+    request, meta = _base_request(points, valid_time)
+    request.update({
+        "variable": ["ozone"],
+        "model_level": [str(OZONE_NEAR_SURFACE_MODEL_LEVEL)],
+    })
+    meta["request_role"] = "O3_NEAR_SURFACE_MODEL_LEVEL_137"
     return request, meta
 
 
@@ -523,6 +558,10 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
 
 def download_ozone_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
     return _retrieve_request(points, valid_time, "O3_PRESSURE_LEVEL", build_ads_ozone_request, cache_dir)
+
+def download_near_surface_ozone_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
+    return _retrieve_request(points, valid_time, "O3_NEAR_SURFACE_MODEL_LEVEL_137", build_ads_near_surface_ozone_request, cache_dir)
+
 
 def download_spectral_aod_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
     return _retrieve_request(points, valid_time, "SPECTRAL_COLUMN_AOD", build_ads_spectral_aod_request, cache_dir)
@@ -866,6 +905,69 @@ def decode_grib_spectral_aod_to_route(grib_path: str | Path, points: list[dict])
     return pd.DataFrame(recs.values())
 
 
+def decode_grib_near_surface_ozone_to_route(grib_path: str | Path, points: list[dict]) -> pd.DataFrame:
+    """Decode native CAMS ozone at model level 137 onto logical route points."""
+    if not decoder_available():
+        raise RuntimeError("ecCodes decoder unavailable")
+    from eccodes import codes_grib_new_from_file, codes_get, codes_get_array, codes_release
+    recs = {
+        p["point_id"]: {
+            "point_id": p["point_id"],
+            "distance_km": p.get("distance_km"),
+            "direction_offset_deg": p.get("direction_offset_deg"),
+            "lat": p.get("lat"),
+            "lon": p.get("lon"),
+            "cams_ozone_ml137_source": OZONE_NEAR_SURFACE_PROVIDER_NAME,
+        }
+        for p in points
+    }
+    nearest_idx = None
+    grid_signature = None
+    found = False
+    with open(grib_path, "rb") as f:
+        while True:
+            gid = codes_grib_new_from_file(f)
+            if gid is None:
+                break
+            try:
+                if not _is_ozone(gid, codes_get):
+                    continue
+                try:
+                    typ = str(codes_get(gid, "typeOfLevel"))
+                except Exception:
+                    typ = ""
+                try:
+                    level = int(round(float(codes_get(gid, "level"))))
+                except Exception:
+                    continue
+                typ_l = typ.strip().lower()
+                if level != OZONE_NEAR_SURFACE_MODEL_LEVEL or not ("hybrid" in typ_l or "model" in typ_l):
+                    continue
+                vals = np.asarray(codes_get_array(gid, "values"), dtype=float)
+                lats = np.asarray(codes_get_array(gid, "latitudes"), dtype=float)
+                lons = np.asarray(codes_get_array(gid, "longitudes"), dtype=float)
+                lons = np.where(lons > 180, lons - 360, lons)
+                sig = (len(vals), round(float(lats[0]), 4), round(float(lons[0]), 4))
+                if nearest_idx is None or sig != grid_signature:
+                    nearest_idx = []
+                    for pnt in points:
+                        d2 = (lats - float(pnt["lat"]))**2 + ((lons - float(pnt["lon"])) * math.cos(math.radians(float(pnt["lat"]))))**2
+                        nearest_idx.append(int(np.nanargmin(d2)))
+                    grid_signature = sig
+                for pnt, j in zip(points, nearest_idx):
+                    v = float(vals[j])
+                    recs[pnt["point_id"]]["cams_ozone_ml137_kgkg"] = v if np.isfinite(v) and v >= 0.0 else np.nan
+                    recs[pnt["point_id"]]["cams_ozone_ml137_type_of_level"] = typ
+                    recs[pnt["point_id"]]["cams_ozone_ml137_model_level"] = OZONE_NEAR_SURFACE_MODEL_LEVEL
+                found = True
+            finally:
+                codes_release(gid)
+    out = pd.DataFrame(recs.values())
+    if not found and "cams_ozone_ml137_kgkg" not in out.columns:
+        out["cams_ozone_ml137_kgkg"] = np.nan
+    return out
+
+
 def _decode_ozone_only(grib_path: str | Path, points: list[dict], pressure_levels_hpa=DEFAULT_PRESSURE_LEVELS_HPA) -> pd.DataFrame:
     df = decode_grib_to_route(grib_path, points, pressure_levels_hpa)
     keep = [c for c in df.columns if c in {"point_id","distance_km","direction_offset_deg","lat","lon"} or c.startswith("cams_ozone_kgkg_") or c.startswith("cams_geopotential_height_m_") or c in {"cams_geopotential_height_normalization_state","cams_geopotential_height_source_units"}]
@@ -1107,6 +1209,16 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
                               "meta": meta, "levels": len(cols), "rows": len(df),
                               "inventory": inv.to_dict(orient="records") if not inv.empty else [],
                               "error": "" if cols else "CAMS_PRESSURE_LEVEL_AEROSOL_EXTINCTION_532NM_NOT_FOUND_IN_GRIB"})
+            return
+        if role == "O3_NEAR_SURFACE_MODEL_LEVEL_137":
+            path, meta = download_near_surface_ozone_subset(points, valid_time, cache_dir=cache_dir)
+            df = decode_grib_near_surface_ozone_to_route(path, points)
+            cols = [c for c in df.columns if c == "cams_ozone_ml137_kgkg" and df[c].notna().any()]
+            inv = inspect_grib_message_inventory(path)
+            _write_cams_worker_result(result_path, {"role": role, "status": "OK" if cols else "MISSING", "df": df,
+                              "meta": meta, "levels": 1 if cols else 0, "rows": len(df),
+                              "inventory": inv.to_dict(orient="records") if not inv.empty else [],
+                              "error": "" if cols else "CAMS_MODEL_LEVEL_137_OZONE_NOT_FOUND_IN_GRIB"})
             return
         if role == "O3_PRESSURE_LEVEL":
             path, meta = download_ozone_subset(points, valid_time, cache_dir=cache_dir)
@@ -1483,7 +1595,7 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
                                                     cache_dir: str | Path | None = None,
                                                     deadline_seconds: float | None = None,
                                                     progress_callback=None) -> tuple[pd.DataFrame, dict]:
-    """Fetch the three CAMS chains with a conservative serial ADS scheduler.
+    """Fetch the five CAMS chains with a conservative serial ADS scheduler.
 
     V8.4.10.5 retains one ADS job at a time and runs each role in an external Python module worker,
     avoiding multiprocessing.spawn of the Streamlit main application.  The previous parallel mode could saturate the
@@ -1501,7 +1613,7 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
             deadline_seconds=210.0
     deadline_seconds=max(0.2,float(deadline_seconds))
     spectral_role="SPECTRAL_COLUMN_AOD"
-    roles=["O3_PRESSURE_LEVEL",spectral_role,"NATIVE_AEROSOL_532NM_PRESSURE_LEVEL"]
+    roles=["O3_PRESSURE_LEVEL","O3_NEAR_SURFACE_MODEL_LEVEL_137",spectral_role,"NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","AEROSOL_SCATTERING_COLUMN_PROPERTIES"]
     base_meta={**native_aerosol_provider_status(), **{f"ozone_{k}":v for k,v in native_ozone_provider_status().items() if k not in {"provider","dataset"}}}
     meta=dict(base_meta)
     meta["cams_prefetch_policy"]="PERSISTENT_CACHE_FIRST_SERIAL_STATEFUL_ADS_REQUEST_ID_RECOVERY"
@@ -1610,9 +1722,15 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
         elif role=="O3_PRESSURE_LEVEL":
             meta.update({"native_ozone_status":res.get("status","FAILED"),"native_ozone_error":res.get("error",""),
                          "native_ozone_levels_decoded":int(res.get("levels",0) or 0),"native_ozone_rows":int(res.get("rows",0) or 0)})
-        else:
+        elif role=="O3_NEAR_SURFACE_MODEL_LEVEL_137":
+            meta.update({"near_surface_ozone_status":res.get("status","FAILED"),"near_surface_ozone_error":res.get("error",""),
+                         "near_surface_ozone_levels_decoded":int(res.get("levels",0) or 0),"near_surface_ozone_rows":int(res.get("rows",0) or 0)})
+        elif role=="SPECTRAL_COLUMN_AOD":
             meta.update({"cams_spectral_aod_status":res.get("status","FAILED"),"cams_spectral_aod_columns":res.get("columns",[]),
                          "cams_spectral_aod_error":res.get("error","")})
+        elif role=="AEROSOL_SCATTERING_COLUMN_PROPERTIES":
+            meta.update({"cams_aerosol_scattering_properties_status":res.get("status","FAILED"),
+                         "cams_aerosol_scattering_properties_error":res.get("error","")})
     meta["cams_request_audit"]=request_audit
     meta["cams_role_elapsed_seconds"]={r:round(float(role_results[r].get("elapsed_seconds",0.0)),3) for r in roles}
     if inventory_rows:
@@ -1838,7 +1956,7 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
     if not points:
         return pd.DataFrame(), {"cams_request_planner":"WHOLE_ROUTE_FIRST_ADAPTIVE_SUBTILING","cams_route_requested_points":0,
                                 "cams_route_returned_points":0,"cams_route_point_completeness":0.0}
-    roles=["O3_PRESSURE_LEVEL","SPECTRAL_COLUMN_AOD","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","AEROSOL_SCATTERING_COLUMN_PROPERTIES"]
+    roles=["O3_PRESSURE_LEVEL","O3_NEAR_SURFACE_MODEL_LEVEL_137","SPECTRAL_COLUMN_AOD","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","AEROSOL_SCATTERING_COLUMN_PROPERTIES"]
     merged=pd.DataFrame(); all_audits=[]; all_inventory=[]; planner_rows=[]
     role_statuses={}; role_stats={}
     try:
@@ -1882,6 +2000,7 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
           "cams_planner_audit":planner_rows,
           "native_aerosol_status":role_statuses.get("NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","MISSING"),
           "native_ozone_status":role_statuses.get("O3_PRESSURE_LEVEL","MISSING"),
+          "near_surface_ozone_status":role_statuses.get("O3_NEAR_SURFACE_MODEL_LEVEL_137","MISSING"),
           "cams_spectral_aod_status":role_statuses.get("SPECTRAL_COLUMN_AOD","MISSING"),
           "cams_aerosol_scattering_properties_status":role_statuses.get("AEROSOL_SCATTERING_COLUMN_PROPERTIES","MISSING")}
 
