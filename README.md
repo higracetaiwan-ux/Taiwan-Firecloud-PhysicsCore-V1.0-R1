@@ -1,3 +1,23 @@
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.40
+
+## R5.7.40 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification
+
+本版延續 R5.7.39.1 已 field-pass 的 GFS `pgrb2b.0p25` provider hotfix，新增 Canvas Optical Truth 的垂直衝突資格層。主 `pgrb2` 提供 cloud-fraction geometry 與主 pressure-level CLWMR/ICMR；`pgrb2b` 僅提供中間 pressure-level 的 CLWMR/ICMR/HGT/TMP hydrometeor context。
+
+R5.7.40 會針對 `CF_CLOUD_CONDENSATE_ZERO` 的 Canvas，檢查主衝突層、上下主 pressure-level 鄰層，以及兩側最近的 pgrb2b 中間層，輸出：
+
+- `ISOLATED_PRIMARY_CF_SPIKE_HYDROMETEOR_UNSUPPORTED`
+- `INTERMEDIATE_NATIVE_CONDENSATE_SUPPORT_PRESENT`
+- `ADJACENT_PRIMARY_NATIVE_CONDENSATE_SUPPORT_PRESENT`
+- `PRIMARY_CF_SIGNAL_WITH_ZERO_INTERMEDIATE_HYDROMETEORS`
+- `VERTICAL_CONTEXT_INCOMPLETE`
+
+硬規則不變：本版是 evidence/qualification only；不得由 RH 或 cloud fraction 生成 condensate/COT，不得把 pgrb2b cloud fraction 當 pressure-level geometry，不得自動提升 target COT、Formation 或 Photography outcome。
+
+新增 CASE：`v1_canvas_vertical_conflict_qualification.csv` 與 summary。Focused 20/20 PASS；working-tree full regression 562/562 PASS。Field validation 需以 R5.7.40 新 CASE 驗證真實 150 ↔ 125/175 hPa 等垂直 context。
+
+---
+
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.39.1
 
 
@@ -553,3 +573,10 @@ Production LUT 必須提供：
 為了區分真正的 provider/runtime stall 與重新 TEST 後的 persistent-cache 加速，本版提供三種分析執行契約：`WARM_PRODUCTION`、`COLD_ISOLATED_TEST`、`RESUME_SAME_JOB`。Cold Test 會建立 job-specific provider cache namespace；CASE 另保存 runtime stage trace、cache provenance 與 resource telemetry。CAMS production 預設採 ADS global single-flight，避免兩個 forecast time 同時送出 SPECTRAL_COLUMN_AOD 等遠端請求。
 
 R5.7.23 的 genuine liquid-cloud calibration pipeline 已可產生與驗證外部 libRadtran/MYSTIC jobs；本封裝環境未含 `uvspec`，因此 genuine calibrated production LUT 仍維持 `NOT_YET_GENERATED_EXTERNAL_RT_REQUIRED`，不會以 synthetic LUT 取代。
+
+## Release Gate
+- Working regression：562/562 PASS
+- FULL-CLEAN：CLOSED
+- Extracted regression：562/562 PASS
+- cache / pyc：0
+- Field validation：OPEN

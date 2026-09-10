@@ -55,7 +55,7 @@ def test_pgrb2b_request_uses_intermediate_native_levels_and_vars():
     assert params["file"] == "gfs.t00z.pgrb2b.0p25.f009"
     assert params["var_CLWMR"] == "on"
     assert params["var_ICMR"] == "on"
-    assert params["var_TCDC"] == "on"
+    assert "var_TCDC" not in params
     assert params["var_TMP"] == "on"
     assert params["var_HGT"] == "on"
     assert params["lev_125_mb"] == "on"
@@ -89,7 +89,7 @@ def test_zero_native_condensate_with_cloud_fraction_stays_conflict():
     r = out.iloc[0]
     assert not bool(r["probe_positive_condensate"])
     assert r["probe_condensate_state"] == "ZERO"
-    assert r["probe_evidence_consistency"] == "CF_CLOUD_CONDENSATE_ZERO"
+    assert r["probe_evidence_consistency"] == "NATIVE_CONDENSATE_ZERO"
 
 
 def test_missing_native_condensate_stays_missing():
@@ -121,7 +121,7 @@ def test_summary_counts_positive_canvas_and_rows():
     assert r["canvas_count_with_probe_levels"] == 1
     assert r["canvas_with_positive_supplement_condensate_count"] == 1
     assert r["positive_probe_level_count"] == 1
-    assert r["probe_contract"] == "R5.7.39_DIAGNOSTIC_ONLY_NO_FORMATION_PROMOTION"
+    assert r["probe_contract"] == "R5.7.40_HYDROMETEOR_DIAGNOSTIC_ONLY_NO_FORMATION_PROMOTION"
 
 
 def test_integrity_accepts_valid_probe_contract():

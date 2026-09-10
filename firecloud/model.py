@@ -66,6 +66,9 @@ from .providers.gfs_canvas_optical_probe import (
     fetch_route_canvas_optical_probe, build_canvas_probe_evidence,
     summarize_canvas_probe_evidence, PROVIDER_NAME as GFS_CANVAS_PROBE_PROVIDER,
 )
+from .canvas_optical_vertical_conflict import (
+    build_canvas_vertical_conflict_qualification, summarize_vertical_conflict_qualification,
+)
 from .providers.ecmwf_ifs_native import fetch_route_secondary_target_optics as fetch_ifs_secondary_target_optics, provider_status as ecmwf_ifs_provider_status
 from .providers.dwd_icon_native import fetch_route_secondary_target_optics as fetch_icon_secondary_target_optics, provider_status as dwd_icon_provider_status
 from .v1_runtime import build_r2_geometry_tables
@@ -1380,6 +1383,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_secondary_target_optics_frames = []
     v1_canvas_optical_native_probe_frames = []
     v1_canvas_optical_native_probe_summary_frames = []
+    v1_canvas_vertical_conflict_qualification_frames = []
+    v1_canvas_vertical_conflict_qualification_summary_frames = []
     v1_formation_gate_frames = []
     v1_red_light_reference_frames = []
     # Small per-angle readiness rows are computed before large atmospheric and
@@ -1905,6 +1910,20 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             _canvas_probe_summary = summarize_canvas_probe_evidence(_canvas_probe)
             if _canvas_probe_summary is not None and not _canvas_probe_summary.empty:
                 v1_canvas_optical_native_probe_summary_frames.append(_canvas_probe_summary)
+
+        # R5.7.40: qualify the primary pgrb2 cloud-fraction/native-condensate
+        # conflict against its immediate pgrb2 main-level neighbours plus the
+        # pgrb2b intermediate hydrometeor levels. Evidence-only: no target COT
+        # or Formation state is changed here.
+        _vertical_conflict = build_canvas_vertical_conflict_qualification(
+            _v1["scene"], _v1.get("canvas_objects", ()), snap, _probe_route,
+            valid_time=t, solar_altitude_deg=float(angle),
+        )
+        if _vertical_conflict is not None and not _vertical_conflict.empty:
+            v1_canvas_vertical_conflict_qualification_frames.append(_vertical_conflict)
+            _vertical_conflict_summary = summarize_vertical_conflict_qualification(_vertical_conflict)
+            if _vertical_conflict_summary is not None and not _vertical_conflict_summary.empty:
+                v1_canvas_vertical_conflict_qualification_summary_frames.append(_vertical_conflict_summary)
 
         # Legacy candidate evaluation remains temporarily available as a
         # diagnostic compatibility branch only. It is not a PhysicsCore V1
@@ -2573,6 +2592,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # intentionally aggregated beside, not into, target optical truth.
     v1_canvas_optical_native_probe = _concat_release(v1_canvas_optical_native_probe_frames)
     v1_canvas_optical_native_probe_summary = _concat_release(v1_canvas_optical_native_probe_summary_frames)
+    v1_canvas_vertical_conflict_qualification = _concat_release(v1_canvas_vertical_conflict_qualification_frames)
+    v1_canvas_vertical_conflict_qualification_summary = _concat_release(v1_canvas_vertical_conflict_qualification_summary_frames)
     gfs_canvas_optical_probe_request_audit = pd.DataFrame(gfs_canvas_optical_probe_request_audit_rows)
     v1_viewing_spectral_extinction = build_viewing_spectral_extinction(
         v1_viewing_path_geometry, v1_cloud_layers, v1_target_canvas_optical_evidence,
@@ -2955,9 +2976,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "near_surface_molecular_boundary_closure_required": True,
         "cams_post_success_download_recovery_required": True,
         "canvas_optical_truth_pgrb2b_probe_required": True,
+        "canvas_optical_vertical_conflict_qualification_required": True,
         "gfs_canvas_optical_probe_request_audit": gfs_canvas_optical_probe_request_audit,
         "v1_canvas_optical_native_probe": v1_canvas_optical_native_probe,
         "v1_canvas_optical_native_probe_summary": v1_canvas_optical_native_probe_summary,
+        "v1_canvas_vertical_conflict_qualification": v1_canvas_vertical_conflict_qualification,
+        "v1_canvas_vertical_conflict_qualification_summary": v1_canvas_vertical_conflict_qualification_summary,
         # R5.7.27.1: hand the already-built Formation-first decision table to
         # the pre-export integrity audit.  R5.7.27 returned/exported this table
         # but omitted it here, so the audit saw a false empty-table failure.
@@ -3048,6 +3072,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_target_canvas_optical_summary": v1_target_canvas_optical_summary,
         "v1_canvas_optical_native_probe": v1_canvas_optical_native_probe,
         "v1_canvas_optical_native_probe_summary": v1_canvas_optical_native_probe_summary,
+        "v1_canvas_vertical_conflict_qualification": v1_canvas_vertical_conflict_qualification,
+        "v1_canvas_vertical_conflict_qualification_summary": v1_canvas_vertical_conflict_qualification_summary,
         "gfs_canvas_optical_probe_request_audit": gfs_canvas_optical_probe_request_audit,
         "v1_tier2_scattering_readiness": v1_tier2_scattering_readiness,
         "v1_tier2_scattering_readiness_summary": v1_tier2_scattering_readiness_summary,

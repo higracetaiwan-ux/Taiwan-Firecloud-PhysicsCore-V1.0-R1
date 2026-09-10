@@ -122,6 +122,9 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
+    canvas_vertical_conflict = _df(result.get("v1_canvas_vertical_conflict_qualification"))
+    canvas_vertical_conflict_summary = _df(result.get("v1_canvas_vertical_conflict_qualification_summary"))
+    target_canvas_optics = _df(result.get("v1_target_canvas_optical_evidence"))
     native_vox = _df(result.get("native_cloud_voxel_matrix"))
     gas = _df(result.get("gas_profile_route_snapshots"))
     ozone = _df(result.get("ozone_profile_route_snapshots"))
@@ -148,6 +151,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     near_surface_molecular_boundary_closure_required = bool(result.get("near_surface_molecular_boundary_closure_required", False))
     cams_post_success_download_recovery_required = bool(result.get("cams_post_success_download_recovery_required", False))
     canvas_optical_truth_pgrb2b_probe_required = bool(result.get("canvas_optical_truth_pgrb2b_probe_required", False))
+    canvas_optical_vertical_conflict_qualification_required = bool(result.get("canvas_optical_vertical_conflict_qualification_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -205,7 +209,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     # promote target COT/Formation in this release. Provider unavailability is
     # therefore visible WARN; a malformed/non-native evidence table is FAIL.
     if canvas_optical_truth_pgrb2b_probe_required:
-        _probe_expected_contract = "DIRECT_NATIVE_PGRB2B_INTERMEDIATE_LEVEL_ONLY;NO_TARGET_COT_PROMOTION;NO_CF_RH_TO_COT"
+        _probe_expected_contract = "DIRECT_NATIVE_PGRB2B_INTERMEDIATE_HYDROMETEOR_ONLY;NO_TARGET_COT_PROMOTION;NO_CF_RH_TO_COT"
         _probe_expected_source = "NOAA_GFS_0P25_PGRB2B_CANVAS_OPTICAL_PROBE"
         if gfs_canvas_probe.empty:
             _req_text = _join_text_columns(
@@ -262,6 +266,87 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                     "CANVAS_OPTICAL_TRUTH_PGRB2B_PROBE_SUMMARY", WARN, "CANVAS_OPTICAL_TRUTH",
                     0, ">0 summary rows when probe evidence exists",
                     "Probe evidence exists but diagnostic summary is absent",
+                )
+
+    # R5.7.40: qualify primary pgrb2 CF/native-condensate conflicts with the
+    # immediate main pressure-level neighbours and pgrb2b intermediate native
+    # hydrometeors. This remains diagnostic-only and is prohibited from
+    # carrying COT/Formation promotion fields.
+    if canvas_optical_vertical_conflict_qualification_required:
+        _expected_conflict_canvases = set()
+        if not target_canvas_optics.empty and "canvas_id" in target_canvas_optics.columns:
+            _cons = target_canvas_optics.get("evidence_consistency", pd.Series("", index=target_canvas_optics.index)).fillna("").astype(str)
+            _truth = target_canvas_optics.get("target_optical_truth_state", pd.Series("", index=target_canvas_optics.index)).fillna("").astype(str)
+            _mask = _cons.eq("CF_CLOUD_CONDENSATE_ZERO") | _truth.eq("DIRECT_EVIDENCE_CONFLICT")
+            _expected_conflict_canvases = set(target_canvas_optics.loc[_mask, "canvas_id"].astype(str))
+        _probe_ready = False
+        if not gfs_canvas_probe_req.empty:
+            _pst = _join_text_columns(gfs_canvas_probe_req, [c for c in ["status","action"] if c in gfs_canvas_probe_req.columns]).str.upper()
+            _probe_ready = bool(_pst.str.contains("READY|DOWNLOADED|CACHE_HIT", regex=True, na=False).any())
+        if not _expected_conflict_canvases:
+            add(
+                "CANVAS_OPTICAL_VERTICAL_CONFLICT_QUALIFICATION", ALLOWED_EMPTY, "CANVAS_OPTICAL_TRUTH",
+                0, "0 conflict canvases -> qualifier may be empty",
+                "No primary CF/native-condensate conflict requires vertical qualification",
+            )
+        elif canvas_vertical_conflict.empty:
+            add(
+                "CANVAS_OPTICAL_VERTICAL_CONFLICT_QUALIFICATION", FAIL if _probe_ready else WARN, "CANVAS_OPTICAL_TRUTH",
+                f"expected_conflict_canvases={len(_expected_conflict_canvases)};qualifier_rows=0;probe_ready={_probe_ready}",
+                "all primary conflict canvases qualified when pgrb2b native probe is READY",
+                "Empty qualifier is not evidence that condensate is zero; provider unavailability remains visible",
+            )
+        else:
+            required_cols = {
+                "canvas_id", "primary_conflict_pressure_hpa", "primary_cloud_fraction",
+                "primary_total_condensate_kgkg", "primary_evidence_consistency",
+                "below_primary_pressure_hpa", "above_primary_pressure_hpa",
+                "below_supplement_pressure_hpa", "above_supplement_pressure_hpa",
+                "below_supplement_condensate_state", "above_supplement_condensate_state",
+                "vertical_conflict_qualification", "primary_source", "supplement_source",
+                "supplement_cloud_fraction_used", "rh_used_to_infer_condensate",
+                "cot_promotion_allowed", "formation_promotion_allowed", "qualification_contract",
+            }
+            missing_cols = sorted(required_cols - set(canvas_vertical_conflict.columns))
+            prohibited_cols = sorted(set(canvas_vertical_conflict.columns).intersection({
+                "target_cot", "target_cot_nominal", "target_optics_ready",
+                "formation_state", "formation_probability", "photography_outcome",
+            }))
+            observed_canvases = set(canvas_vertical_conflict.get("canvas_id", pd.Series(dtype=str)).astype(str))
+            coverage_ok = _expected_conflict_canvases.issubset(observed_canvases)
+            primary_conflict_ok = bool(canvas_vertical_conflict.get("primary_evidence_consistency", pd.Series("", index=canvas_vertical_conflict.index)).fillna("").astype(str).eq("CF_CLOUD_CONDENSATE_ZERO").all())
+            states = set(canvas_vertical_conflict.get("vertical_conflict_qualification", pd.Series(dtype=str)).dropna().astype(str))
+            allowed_states = {
+                "ISOLATED_PRIMARY_CF_SPIKE_HYDROMETEOR_UNSUPPORTED",
+                "INTERMEDIATE_NATIVE_CONDENSATE_SUPPORT_PRESENT",
+                "ADJACENT_PRIMARY_NATIVE_CONDENSATE_SUPPORT_PRESENT",
+                "PRIMARY_CF_SIGNAL_WITH_ZERO_INTERMEDIATE_HYDROMETEORS",
+                "VERTICAL_CONTEXT_INCOMPLETE",
+            }
+            state_ok = states.issubset(allowed_states) and bool(states)
+            no_promotion = True
+            for c in ["supplement_cloud_fraction_used","rh_used_to_infer_condensate","cot_promotion_allowed","formation_promotion_allowed"]:
+                if c in canvas_vertical_conflict.columns:
+                    no_promotion = no_promotion and bool((~canvas_vertical_conflict[c].fillna(False).astype(bool)).all())
+            contract_ok = bool(canvas_vertical_conflict.get("qualification_contract", pd.Series("", index=canvas_vertical_conflict.index)).fillna("").astype(str).str.contains("NO_COT_PROMOTION;NO_FORMATION_PROMOTION;NO_RH_CF_TO_CONDENSATE", regex=False).all())
+            ok = not missing_cols and not prohibited_cols and coverage_ok and primary_conflict_ok and state_ok and no_promotion and contract_ok
+            add(
+                "CANVAS_OPTICAL_VERTICAL_CONFLICT_QUALIFICATION", PASS if ok else FAIL, "CANVAS_OPTICAL_TRUTH",
+                f"rows={len(canvas_vertical_conflict)};expected_canvases={len(_expected_conflict_canvases)};observed_canvases={len(observed_canvases)};states={','.join(sorted(states))}",
+                "direct-native vertical context covers all primary conflicts; no COT/Formation promotion; no RH/CF->condensate",
+                f"missing_cols={','.join(missing_cols)};prohibited_cols={','.join(prohibited_cols)};coverage_ok={coverage_ok};primary_conflict_ok={primary_conflict_ok};state_ok={state_ok};no_promotion={no_promotion};contract_ok={contract_ok}",
+            )
+            if not canvas_vertical_conflict_summary.empty:
+                add(
+                    "CANVAS_OPTICAL_VERTICAL_CONFLICT_SUMMARY", PASS, "CANVAS_OPTICAL_TRUTH",
+                    len(canvas_vertical_conflict_summary), ">0 summary rows when vertical qualification exists",
+                    "Summary remains diagnostic-only",
+                )
+            else:
+                add(
+                    "CANVAS_OPTICAL_VERTICAL_CONFLICT_SUMMARY", WARN, "CANVAS_OPTICAL_TRUTH",
+                    0, ">0 summary rows when vertical qualification exists",
+                    "Vertical qualification exists but summary is absent",
                 )
 
     if not gfs_inv.empty and native_vox.empty:

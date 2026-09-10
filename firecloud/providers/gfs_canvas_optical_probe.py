@@ -1,4 +1,4 @@
-"""R5.7.39.1 GFS pgrb2b Canvas optical-truth probe provider hotfix.
+"""R5.7.40 GFS pgrb2b Canvas optical hydrometeor probe.
 
 This provider is intentionally diagnostic-only. It acquires the intermediate
 isobaric levels from the NOAA GFS ``pgrb2b.0p25`` product inside the 0--100 km
@@ -33,7 +33,7 @@ from ..native_cloud import NATIVE_CONDENSATE_THRESHOLD_KGKG
 from ..runtime_hardening import atomic_write_bytes, stamp_cache_artifact, cache_provenance
 
 PROVIDER_NAME = "NOAA_GFS_0P25_PGRB2B_CANVAS_OPTICAL_PROBE"
-PROVIDER_SCHEMA_VERSION = "R5.7.39.1_GFS_PGRB2B_CANVAS_OPTICAL_PROBE_V1"
+PROVIDER_SCHEMA_VERSION = "R5.7.40_GFS_PGRB2B_CANVAS_HYDROMETEOR_PROBE_V2"
 NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25b.pl"
 
 # pgrb2b provides the pressure levels that sit between the main pgrb2 levels.
@@ -46,7 +46,6 @@ SUPPLEMENT_PRESSURE_LEVELS_HPA = (
 PROBE_SHORTNAMES = {
     "CLWMR": "cloud_liquid_water_kgkg",
     "ICMR": "cloud_ice_water_kgkg",
-    "TCDC": "cloud_fraction",
     "TMP": "temperature_k",
     "HGT": "geopotential_height_m",
 }
@@ -284,15 +283,18 @@ def build_canvas_probe_evidence(scene, canvases, probe_route: pd.DataFrame, *, v
                 qstate = "POSITIVE" if positive else "ZERO"
             else:
                 qt = np.nan; positive = False; qstate = "MISSING"
+            # R5.7.40: pgrb2b pressure-level products are used only for direct
+            # hydrometeor/height context. Cloud-fraction geometry belongs to the
+            # primary pgrb2 chain; do not infer geometry or COT from a pgrb2b
+            # TCDC-like field even if a future provider happens to expose one.
             try:
-                f = float(cf); f = f/100.0 if f > 1.0+1e-9 else f
-                f = max(0.0,min(1.0,f))
-                geom_cloud = f > 0.01
+                f = float(cf) if pd.notna(cf) and math.isfinite(float(cf)) else np.nan
+                if math.isfinite(f):
+                    f = f/100.0 if f > 1.0+1e-9 else f
+                    f = max(0.0,min(1.0,f))
             except Exception:
-                f = np.nan; geom_cloud = None
+                f = np.nan
             if qstate == "MISSING": consistency = "OPTICS_MISSING"
-            elif geom_cloud is True and qstate == "ZERO": consistency = "CF_CLOUD_CONDENSATE_ZERO"
-            elif geom_cloud is False and qstate == "POSITIVE": consistency = "CONDENSATE_CLOUD_CF_LOW"
             elif qstate == "POSITIVE": consistency = "NATIVE_CONDENSATE_POSITIVE"
             else: consistency = "NATIVE_CONDENSATE_ZERO"
             rows.append({
@@ -304,6 +306,7 @@ def build_canvas_probe_evidence(scene, canvases, probe_route: pd.DataFrame, *, v
                 "probe_pressure_hpa": float(p), "probe_altitude_agl_km": float(z),
                 "probe_temperature_k": float(t) if pd.notna(t) and math.isfinite(float(t)) else np.nan,
                 "probe_cloud_fraction": f,
+                "probe_cloud_fraction_used": False,
                 "probe_cloud_liquid_water_kgkg": float(ql) if q_known else np.nan,
                 "probe_cloud_ice_water_kgkg": float(qi) if q_known else np.nan,
                 "probe_total_condensate_kgkg": qt,
@@ -311,7 +314,7 @@ def build_canvas_probe_evidence(scene, canvases, probe_route: pd.DataFrame, *, v
                 "probe_evidence_consistency": consistency,
                 "probe_positive_condensate": bool(positive),
                 "probe_source": PROVIDER_NAME,
-                "probe_contract": "DIRECT_NATIVE_PGRB2B_INTERMEDIATE_LEVEL_ONLY;NO_TARGET_COT_PROMOTION;NO_CF_RH_TO_COT",
+                "probe_contract": "DIRECT_NATIVE_PGRB2B_INTERMEDIATE_HYDROMETEOR_ONLY;NO_TARGET_COT_PROMOTION;NO_CF_RH_TO_COT",
             })
     return pd.DataFrame(rows)
 
@@ -323,7 +326,7 @@ def summarize_canvas_probe_evidence(table: pd.DataFrame) -> pd.DataFrame:
     for (tm, ang), g in table.groupby(["time","solar_altitude_deg"], dropna=False, sort=False):
         by_canvas = g.groupby("canvas_id", sort=False)
         any_pos = by_canvas["probe_positive_condensate"].any()
-        any_conf = by_canvas["probe_evidence_consistency"].apply(lambda s: s.astype(str).isin(["CF_CLOUD_CONDENSATE_ZERO","CONDENSATE_CLOUD_CF_LOW"]).any())
+        any_conf = by_canvas["probe_evidence_consistency"].apply(lambda s: s.astype(str).isin(["OPTICS_MISSING"]).any())
         missing = by_canvas["probe_condensate_state"].apply(lambda s: s.astype(str).eq("MISSING").any())
         rows.append({
             "time": tm, "solar_altitude_deg": ang,
@@ -333,6 +336,6 @@ def summarize_canvas_probe_evidence(table: pd.DataFrame) -> pd.DataFrame:
             "canvas_with_probe_missing_condensate_count": int(missing.sum()),
             "probe_level_row_count": int(len(g)),
             "positive_probe_level_count": int(g["probe_positive_condensate"].astype(bool).sum()),
-            "probe_contract": "R5.7.39_DIAGNOSTIC_ONLY_NO_FORMATION_PROMOTION",
+            "probe_contract": "R5.7.40_HYDROMETEOR_DIAGNOSTIC_ONLY_NO_FORMATION_PROMOTION",
         })
     return pd.DataFrame(rows)
