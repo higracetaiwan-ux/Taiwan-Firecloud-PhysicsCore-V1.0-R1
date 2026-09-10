@@ -1047,6 +1047,9 @@ def build_twilight_glow_aerosol_scattering(detail: pd.DataFrame, cams_native_sna
         property_source=str(row.get("cams_aerosol_scattering_property_source") or "") if row is not None else ""
         base_state="GLOW_AEROSOL_SCATTERING_UNRESOLVED"
         missing=[]
+        inherited_missing=str(src.get("glow_missing_components") or "").strip()
+        if inherited_missing and inherited_missing.lower() not in {"nan","none"}:
+            missing.extend([x.strip() for x in inherited_missing.split(";") if x.strip()])
         conflict=False
         if row is None: missing.append("ROUTE_PROPERTY_ROW")
         if beta532 is None: missing.append("NATIVE_3D_EXTINCTION_532")
@@ -1080,6 +1083,11 @@ def build_twilight_glow_aerosol_scattering(detail: pd.DataFrame, cams_native_sna
             source_coeff=betasca*phase if betasca is not None and phase is not None else None
             incident=_finite(src.get(f"glow_sun_incident_relative_irradiance_{w}nm"))
             observer_t=_finite(src.get(f"glow_observer_transmission_{w}nm"))
+            if aod is None: missing.append(f"AOD_{w}NM")
+            if ssa is None: missing.append(f"SSA_{w}NM")
+            if gg is None: missing.append(f"ASYMMETRY_G_{w}NM")
+            if incident is None: missing.append("SUN_TO_SCATTER_EXTINCTION")
+            if observer_t is None: missing.append("SCATTER_TO_OBSERVER_EXTINCTION")
             aerosol_proxy=(max(0.0,incident)*observer_t*source_coeff) if all(v is not None for v in (incident,observer_t,source_coeff)) else None
             rayleigh_proxy=_finite(src.get(f"glow_single_scattering_source_proxy_{w}nm"))
             combined=(rayleigh_proxy+aerosol_proxy) if rayleigh_proxy is not None and aerosol_proxy is not None else None

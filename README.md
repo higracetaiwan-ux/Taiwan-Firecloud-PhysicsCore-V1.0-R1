@@ -1,4 +1,10 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.35
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.35.1
+
+## R5.7.35.1 Aerosol Missing-Reason Handoff Hotfix
+
+R5.7.35 real sunset CASE field validation showed the aerosol scattering physics itself closed correctly, but 872 unresolved aerosol-proxy rows had an empty `glow_aerosol_missing_components` diagnostic field. R5.7.35.1 preserves every R5.7.35 numeric value and state while handing upstream `Sun→Scatter` / `Scatter→Observer` missing reasons into the aerosol evidence table. An Integrity guard now fails if an unresolved/partial aerosol row has no explicit reason. No SSA, asymmetry-g, HG phase, extinction, proxy, Formation, Viewing or Photography science is changed.
+
+Working-tree regression: **514/514 PASS**.
 
 ## R5.7.35 Aerosol Scattering Physics Phase 1
 

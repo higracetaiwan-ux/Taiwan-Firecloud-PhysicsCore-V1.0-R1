@@ -873,7 +873,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "exact time+angle+glow-volume coverage")
             base_required={"glow_aerosol_scattering_state","glow_aerosol_scattering_contract","aerosol_phase_function_model",
                            "aerosol_vertical_property_contract","aerosol_local_extinction_532_m1","aerosol_aod532_anchor",
-                           "calibrated_glow_radiance_available","glow_total_radiance_state"}
+                           "calibrated_glow_radiance_available","glow_total_radiance_state","glow_aerosol_missing_components"}
             band_required={f"{name}_{int(w)}nm" for w in SIX_BAND_WAVELENGTHS_NM for name in (
                 "aerosol_aod","aerosol_aod_provenance","aerosol_ssa","aerosol_ssa_provenance","aerosol_asymmetry_g",
                 "aerosol_asymmetry_provenance","aerosol_hg_phase_function_sr","aerosol_extinction_coefficient_m1",
@@ -883,9 +883,13 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             add("TWILIGHT_GLOW_AEROSOL_SCATTERING_SCHEMA", PASS if not missing_cols and not diff else FAIL,
                 "TWILIGHT_GLOW_AEROSOL_SCATTERING", str(missing_cols),
                 "native 3D extinction + CAMS AOD/SSA/g + HG + six-band single-scattering proxy")
-            bad=0; extrap=0
+            bad=0; extrap=0; missing_reason_gaps=0
             if not twilight_glow_aerosol_scattering.empty and not missing_cols:
                 for _,r in twilight_glow_aerosol_scattering.iterrows():
+                    aerosol_state=str(r.get("glow_aerosol_scattering_state") or "")
+                    missing_reason=str(r.get("glow_aerosol_missing_components") or "").strip()
+                    if aerosol_state != "GLOW_AEROSOL_SINGLE_SCATTERING_PROXY_READY" and (not missing_reason or missing_reason.lower() in {"nan","none"}):
+                        missing_reason_gaps += 1
                     beta532=pd.to_numeric(pd.Series([r.get("aerosol_local_extinction_532_m1")]),errors="coerce").iloc[0]
                     a532=pd.to_numeric(pd.Series([r.get("aerosol_aod532_anchor")]),errors="coerce").iloc[0]
                     for w in SIX_BAND_WAVELENGTHS_NM:
@@ -909,6 +913,8 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "TWILIGHT_GLOW_AEROSOL_SCATTERING", bad, "0 beta_ext/beta_sca/HG/source inconsistencies and no partial proxy promotion")
             add("TWILIGHT_GLOW_AEROSOL_SCATTERING_PROVENANCE", PASS if not missing_cols and extrap==0 else FAIL,
                 "TWILIGHT_GLOW_AEROSOL_SCATTERING", extrap, "0 extrapolated SSA/g/AOD provenance; exact or bounded-native only")
+            add("TWILIGHT_GLOW_AEROSOL_SCATTERING_MISSING_REASON_COVERAGE", PASS if not missing_cols and missing_reason_gaps==0 else FAIL,
+                "TWILIGHT_GLOW_AEROSOL_SCATTERING", missing_reason_gaps, "0 unresolved/partial aerosol rows without an explicit missing/conflict reason")
 
         forbidden = {
             column for column in twilight_glow.columns

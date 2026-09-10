@@ -114,3 +114,35 @@ def test_r5735_analysis_integrity_guards_close_on_valid_aerosol_table():
     got=audit[audit.check_id.isin(wanted)].set_index("check_id")["status"].to_dict()
     assert set(got)==wanted
     assert set(got.values())=={"PASS"}
+
+
+def test_r57351_unresolved_aerosol_inherits_path_missing_reason():
+    detail=_detail()
+    for w in (550,575,600,650,700,750):
+        detail.loc[0,f"glow_sun_incident_relative_irradiance_{w}nm"]=float("nan")
+    detail.loc[0,"glow_missing_components"]="SUN_TO_SCATTER_EXTINCTION"
+    out=build_twilight_glow_aerosol_scattering(detail,_cams())
+    r=out.iloc[0]
+    assert r["glow_aerosol_scattering_state"] == "GLOW_AEROSOL_SCATTERING_UNRESOLVED"
+    assert "SUN_TO_SCATTER_EXTINCTION" in r["glow_aerosol_missing_components"]
+    for w in (550,575,600,650,700,750):
+        assert pd.isna(r[f"aerosol_single_scattering_source_proxy_{w}nm"])
+
+
+def test_r57351_integrity_fails_unresolved_aerosol_without_reason():
+    from firecloud.case_integrity import build_analysis_integrity_audit
+    detail=_detail()
+    for w in (550,575,600,650,700,750):
+        detail.loc[0,f"glow_sun_incident_relative_irradiance_{w}nm"]=float("nan")
+    detail.loc[0,"glow_missing_components"]="SUN_TO_SCATTER_EXTINCTION"
+    aero=build_twilight_glow_aerosol_scattering(detail,_cams())
+    aero.loc[0,"glow_aerosol_missing_components"]=""
+    audit=build_analysis_integrity_audit({
+        "v1_twilight_glow_scattering_volume_550_750nm":detail,
+        "v1_twilight_glow_aerosol_scattering_550_750nm":aero,
+        "twilight_glow_required":True,
+        "twilight_glow_aerosol_scattering_phase1_required":True,
+    })
+    row=audit[audit.check_id.eq("TWILIGHT_GLOW_AEROSOL_SCATTERING_MISSING_REASON_COVERAGE")].iloc[0]
+    assert row.status == "FAIL"
+    assert int(row.observed) == 1
