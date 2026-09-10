@@ -1,4 +1,4 @@
-"""R5.7.39 GFS pgrb2b Canvas optical-truth probe.
+"""R5.7.39.1 GFS pgrb2b Canvas optical-truth probe provider hotfix.
 
 This provider is intentionally diagnostic-only. It acquires the intermediate
 isobaric levels from the NOAA GFS ``pgrb2b.0p25`` product inside the 0--100 km
@@ -33,8 +33,8 @@ from ..native_cloud import NATIVE_CONDENSATE_THRESHOLD_KGKG
 from ..runtime_hardening import atomic_write_bytes, stamp_cache_artifact, cache_provenance
 
 PROVIDER_NAME = "NOAA_GFS_0P25_PGRB2B_CANVAS_OPTICAL_PROBE"
-PROVIDER_SCHEMA_VERSION = "R5.7.39_GFS_PGRB2B_CANVAS_OPTICAL_PROBE_V1"
-NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
+PROVIDER_SCHEMA_VERSION = "R5.7.39.1_GFS_PGRB2B_CANVAS_OPTICAL_PROBE_V1"
+NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25b.pl"
 
 # pgrb2b provides the pressure levels that sit between the main pgrb2 levels.
 # The probe is restricted to the tropospheric Canvas-relevant subset. 70 hPa is

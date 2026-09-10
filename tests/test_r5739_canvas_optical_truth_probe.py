@@ -50,7 +50,8 @@ def _probe_route(ql=0.0, qi=2e-7, cf=0.6, *, distance=30.0):
 
 def test_pgrb2b_request_uses_intermediate_native_levels_and_vars():
     run = datetime(2026, 9, 10, 0, tzinfo=timezone.utc)
-    _, params = build_nomads_request(run, 9, (120.0, 122.0, 23.0, 25.0))
+    url, params = build_nomads_request(run, 9, (120.0, 122.0, 23.0, 25.0))
+    assert url == "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25b.pl"
     assert params["file"] == "gfs.t00z.pgrb2b.0p25.f009"
     assert params["var_CLWMR"] == "on"
     assert params["var_ICMR"] == "on"

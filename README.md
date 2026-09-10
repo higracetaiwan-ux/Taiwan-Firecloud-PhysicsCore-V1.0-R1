@@ -1,4 +1,9 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.39
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.39.1
+
+
+## R5.7.39.1 pgrb2b Secondary Filter Endpoint Hotfix
+
+R5.7.39 真實 CASE 確認 `pgrb2b.0p25` 誤用主產品 `filter_gfs_0p25.pl` 會回 HTTP 500。R5.7.39.1 改用 Secondary Parameters 的 `filter_gfs_0p25b.pl`。本 hotfix 只修 provider routing，不改 target COT readiness、Formation、Viewing、Glow 或 Photography。Focused 10/10 PASS；full regression 552/552 PASS。
 
 ## R5.7.39 Canvas Optical Truth Phase 1 / GFS pgrb2b Native Condensate Probe
 
