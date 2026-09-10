@@ -17,6 +17,7 @@ from .cloud_scene import build_cloud_scene_from_native_route
 from .contracts import (
     CanvasCandidate, CanvasDomain, CloudScene, EvidenceState, GeometryConfidence,
     RefractionMode, SolarGeometryState, SolarRay, RaySegment,
+    FIRECLOUD_CANVAS_MIN_BASE_KM,
 )
 from .geometry import destination_point, ray_altitude_km_at_surface_distance
 from .illumination import direct_solar_state_g0
@@ -27,7 +28,34 @@ CANVAS_CANDIDATE_TABLE_COLUMNS = [
     "time", "solar_altitude_deg", "canvas_id", "cloud_layer_id",
     "latitude", "longitude", "cloud_base_altitude_km", "distance_km",
     "azimuth_deg", "operational_domain", "geometry_confidence",
+    "formation_canvas_eligible", "formation_cloud_role", "formation_canvas_min_base_km",
 ]
+
+def formation_cloud_role(z_base_km: float, distance_km: float | None = None) -> tuple[bool, str, str]:
+    """Classify a native cloud layer for Formation without deleting blocker evidence.
+
+    Low cloud below 2 km remains in CloudScene so it can obstruct illumination
+    and viewing, but it is not a Firecloud Formation Canvas target.
+    """
+    try:
+        z = float(z_base_km)
+    except Exception:
+        return False, "BLOCKER_ONLY_CLOUD", "CLOUD_BASE_ALTITUDE_UNRESOLVED"
+    if not math.isfinite(z):
+        return False, "BLOCKER_ONLY_CLOUD", "CLOUD_BASE_ALTITUDE_UNRESOLVED"
+    if distance_km is not None:
+        try:
+            d = float(distance_km)
+        except Exception:
+            return False, "BLOCKER_ONLY_CLOUD", "CLOUD_DISTANCE_UNRESOLVED"
+        if not math.isfinite(d):
+            return False, "BLOCKER_ONLY_CLOUD", "CLOUD_DISTANCE_UNRESOLVED"
+        if d < 0.0 or d > 100.0 + 1e-12:
+            return False, "UPSTREAM_OR_DIAGNOSTIC_CLOUD", "OUTSIDE_0_100KM_FORMATION_CANVAS_DOMAIN"
+    if z < float(FIRECLOUD_CANVAS_MIN_BASE_KM) - 1e-12:
+        return False, "BLOCKER_ONLY_LOW_CLOUD", "CLOUD_BASE_BELOW_2KM_FIRECLOUD_CANVAS_MINIMUM"
+    return True, "FORMATION_CANVAS_TARGET", "CLOUD_BASE_AT_OR_ABOVE_2KM_WITHIN_0_100KM"
+
 
 def canvas_domain(distance_km: float) -> CanvasDomain:
     d = float(distance_km)
@@ -50,13 +78,20 @@ def build_canvas_candidates(
     """Create Canvas targets from native cloud layers only.
 
     Cloud type/coverage is not scored here.  A cloud layer inside the operational
-    0-100 km Canvas domain is a geometric candidate; its physical response is a
-    later Stage-3 concern.
+    0-100 km Canvas domain becomes a Formation Canvas candidate only when its
+    native cloud base is at or above the frozen 2 km low-cloud boundary.  Lower
+    clouds remain in CloudScene as illumination/view blockers and are never
+    deleted or treated as clear sky.
     """
     out: list[CanvasCandidate] = []
     for layer in scene.layers:
         d = float(layer.distance_km)
         if d < 0.0 or d > float(max_canvas_distance_km):
+            continue
+        formation_eligible, _role, _reason = formation_cloud_role(layer.z_base_km, d)
+        if not formation_eligible:
+            # Keep the layer in CloudScene for blocker/view-obstruction physics,
+            # but do not promote it into the Formation Canvas target chain.
             continue
         bearing = (float(solar_azimuth_deg) + float(layer.direction_offset_deg)) % 360.0
         lat, lon = destination_point(observer_lat, observer_lon, bearing, d, earth_radius_km)
@@ -191,6 +226,11 @@ def build_r2_geometry_tables(
         r["optical_evidence"] = x.optical_evidence.value
         r["evidence_consistency"] = x.evidence_consistency
         r["provenance"] = str(x.provenance)
+        _eligible, _role, _reason = formation_cloud_role(x.z_base_km, x.distance_km)
+        r["formation_canvas_eligible"] = bool(_eligible)
+        r["formation_cloud_role"] = _role
+        r["formation_canvas_eligibility_reason"] = _reason
+        r["formation_canvas_min_base_km"] = float(FIRECLOUD_CANVAS_MIN_BASE_KM)
         cloud_rows.append(r)
 
     canvas_rows=[]; direct_rows=[]; ray_rows=[]
@@ -204,6 +244,9 @@ def build_r2_geometry_tables(
             "distance_km": c.distance_km, "azimuth_deg": c.azimuth_deg,
             "operational_domain": c.operational_domain.value,
             "geometry_confidence": c.geometry_confidence.value,
+            "formation_canvas_eligible": True,
+            "formation_cloud_role": "FORMATION_CANVAS_TARGET",
+            "formation_canvas_min_base_km": float(FIRECLOUD_CANVAS_MIN_BASE_KM),
         })
         direct_rows.append({
             "time": valid_time, "solar_altitude_deg": float(solar_altitude_deg),

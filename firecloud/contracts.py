@@ -14,6 +14,7 @@ from typing import Any, Mapping, Optional, Sequence, Tuple
 
 
 SIX_BAND_WAVELENGTHS_NM: Tuple[int, ...] = (550, 575, 600, 650, 700, 750)
+FIRECLOUD_CANVAS_MIN_BASE_KM: float = 2.0
 CORE_FIRECLOUD_ANGLES_DEG: Tuple[float, ...] = (
     0.0, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5,
     -4.0, -4.5, -5.0, -5.5, -6.0,

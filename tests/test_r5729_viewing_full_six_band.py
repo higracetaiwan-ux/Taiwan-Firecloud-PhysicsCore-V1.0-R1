@@ -230,3 +230,29 @@ def test_integrity_fails_header_only_precipitation_when_native_hydrometeors_are_
     assert statuses["VIEWING_PRECIPITATION_TARGET_COVERAGE"] == "FAIL"
     assert statuses["VIEWING_NATIVE_HYDROMETEOR_HANDOFF"] == "FAIL"
     assert statuses["ANALYSIS_INTEGRITY_OVERALL"] == "FAIL"
+
+
+def test_integrity_allows_empty_precipitation_when_no_viewing_target_is_eligible():
+    geometry = pd.DataFrame([{
+        **_target(),
+        "photographic_target_eligible": False,
+        "view_target_role": "FOREGROUND_LOW_CLOUD_OBSTRUCTION_ONLY",
+    }])
+    audit = build_analysis_integrity_audit({
+        "v1_formation": pd.DataFrame([{
+            "time": "t0",
+            "solar_altitude_deg": -1.0,
+            "formation_state": "FORMATION_UNCERTAIN",
+        }]),
+        "v1_viewing_path_geometry": geometry,
+        "v1_viewing_precipitation_evidence": pd.DataFrame(columns=[
+            "time", "solar_altitude_deg", "canvas_id", "view_precipitation_status",
+        ]),
+        "gfs_native_field_completeness": pd.DataFrame({
+            "field": ["RWMR", "SNMR", "GRLE"],
+            "status": ["READY", "READY", "READY"],
+        }),
+    })
+    statuses = audit.set_index("check_id")["status"].to_dict()
+    assert statuses["VIEWING_PRECIPITATION_TARGET_COVERAGE"] == "PASS"
+    assert statuses["VIEWING_NATIVE_HYDROMETEOR_HANDOFF"] == "NOT_APPLICABLE"

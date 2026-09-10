@@ -450,6 +450,34 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "DIRECT_EVIDENCE_CONFLICT remains Partial/Missing; R5.7.33 does not infer COT from cloud fraction or zero condensate",
             )
 
+
+    # R5.7.36 Formation Canvas eligibility: low cloud remains CloudScene blocker
+    # evidence but must never be promoted into v1_canvas_candidates.
+    if not canvas.empty:
+        cb = pd.to_numeric(canvas.get("cloud_base_altitude_km", pd.Series(index=canvas.index, dtype=float)), errors="coerce")
+        low_promoted = cb.notna() & (cb < 2.0 - 1e-12)
+        explicit_eligible = canvas.get("formation_canvas_eligible", pd.Series(True, index=canvas.index)).fillna(False).astype(bool)
+        role = canvas.get("formation_cloud_role", pd.Series("FORMATION_CANVAS_TARGET", index=canvas.index)).astype(str)
+        bad_role = (~explicit_eligible) | (~role.eq("FORMATION_CANVAS_TARGET"))
+        ok = not low_promoted.any() and not bad_role.any()
+        add(
+            "FORMATION_CANVAS_LOW_CLOUD_ROLE_SEPARATION",
+            PASS if ok else FAIL,
+            "FORMATION_CANVAS",
+            f"rows={len(canvas)};below_2km_promoted={int(low_promoted.sum())};non_target_role={int(bad_role.sum())}",
+            "v1_canvas_candidates contains only cloud-base >=2 km FORMATION_CANVAS_TARGET rows",
+            "Low cloud remains in CloudScene and may still be an illumination/view blocker",
+        )
+    else:
+        add(
+            "FORMATION_CANVAS_LOW_CLOUD_ROLE_SEPARATION",
+            ALLOWED_EMPTY,
+            "FORMATION_CANVAS",
+            "rows=0",
+            "empty Canvas table is allowed when no eligible Formation Canvas exists",
+            "No-Canvas is a physical outcome when cloud geometry is resolved",
+        )
+
     add("FORMATION_TABLE_PRESENT", PASS if not formation.empty else FAIL, "FORMATION", _rows(formation), ">0 rows")
     add("VIEWING_SUMMARY_PRESENT", PASS if not viewing.empty else WARN, "VIEWING", _rows(viewing), ">0 rows when viewing targets exist")
 
@@ -493,20 +521,41 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         )
         if hydrometeor_ready:
             statuses=viewing_precipitation.get("view_precipitation_status",pd.Series(dtype=str)).fillna("").astype(str)
-            native_handoff_ok=(not viewing_precipitation.empty and precip_coverage_ok and not statuses.eq("VIEW_PRECIPITATION_VOLUME_UNRESOLVED").any())
-            add(
-                "VIEWING_NATIVE_HYDROMETEOR_HANDOFF",
-                PASS if native_handoff_ok else FAIL,
-                "VIEWING_PRECIPITATION",
-                f"gfs_ready={hydrometeor_ready};rows={len(viewing_precipitation)};volume_unresolved={int(statuses.eq('VIEW_PRECIPITATION_VOLUME_UNRESOLVED').sum())}",
-                "RWMR/SNMR/GRLE READY implies preserved per-target Viewing precipitation evidence",
-                "Runtime spool cleanup must occur only after viewing_route_snapshot drain",
-            )
+            eligible_target_count=int(eligible.sum())
+            if eligible_target_count == 0:
+                # R5.7.35.2: native hydrometeor readiness is not, by itself, a
+                # reason to require per-target precipitation evidence.  When
+                # Viewing has no photographic targets, the empty table is a
+                # physical Not-Applicable outcome rather than a spool-handoff
+                # failure.  This does not weaken the non-empty requirement
+                # when one or more eligible targets exist.
+                add(
+                    "VIEWING_NATIVE_HYDROMETEOR_HANDOFF",
+                    NOT_APPLICABLE,
+                    "VIEWING_PRECIPITATION",
+                    f"gfs_ready={hydrometeor_ready};eligible_targets=0;rows={len(viewing_precipitation)}",
+                    "native hydrometeor handoff is required only when eligible Viewing targets exist",
+                    "Zero eligible Viewing targets -> precipitation evidence is correctly not applicable",
+                )
+            else:
+                native_handoff_ok=(not viewing_precipitation.empty and precip_coverage_ok and not statuses.eq("VIEW_PRECIPITATION_VOLUME_UNRESOLVED").any())
+                add(
+                    "VIEWING_NATIVE_HYDROMETEOR_HANDOFF",
+                    PASS if native_handoff_ok else FAIL,
+                    "VIEWING_PRECIPITATION",
+                    f"gfs_ready={hydrometeor_ready};eligible_targets={eligible_target_count};rows={len(viewing_precipitation)};volume_unresolved={int(statuses.eq('VIEW_PRECIPITATION_VOLUME_UNRESOLVED').sum())}",
+                    "RWMR/SNMR/GRLE READY implies preserved per-target Viewing precipitation evidence when eligible targets exist",
+                    "Runtime spool cleanup must occur only after viewing_route_snapshot drain",
+                )
         else:
             add("VIEWING_NATIVE_HYDROMETEOR_HANDOFF",WARN,"VIEWING_PRECIPITATION",f"gfs_ready={hydrometeor_ready}","explicit provider gap or native hydrometeor evidence")
     else:
-        add("VIEWING_PRECIPITATION_TARGET_COVERAGE",WARN,"VIEWING_PRECIPITATION","GEOMETRY_SCHEMA_NOT_AVAILABLE","R5.7.29.1 viewing target geometry")
-        add("VIEWING_NATIVE_HYDROMETEOR_HANDOFF",WARN,"VIEWING_PRECIPITATION",f"gfs_ready={hydrometeor_ready}","viewing geometry and provider evidence")
+        if canvas.empty and not formation.empty:
+            add("VIEWING_PRECIPITATION_TARGET_COVERAGE",NOT_APPLICABLE,"VIEWING_PRECIPITATION","eligible_targets=0;geometry_rows=0","no eligible Formation/Viewing target exists")
+            add("VIEWING_NATIVE_HYDROMETEOR_HANDOFF",NOT_APPLICABLE,"VIEWING_PRECIPITATION",f"gfs_ready={hydrometeor_ready};eligible_targets=0","native hydrometeor handoff is not applicable without an eligible Viewing target")
+        else:
+            add("VIEWING_PRECIPITATION_TARGET_COVERAGE",WARN,"VIEWING_PRECIPITATION","GEOMETRY_SCHEMA_NOT_AVAILABLE","R5.7.29.1 viewing target geometry")
+            add("VIEWING_NATIVE_HYDROMETEOR_HANDOFF",WARN,"VIEWING_PRECIPITATION",f"gfs_ready={hydrometeor_ready}","viewing geometry and provider evidence")
 
     # R5.7.29 Viewing Full Six-Band RT evidence-chain closure.  These checks
     # validate target coverage, six-band schema and arithmetic only; they do not

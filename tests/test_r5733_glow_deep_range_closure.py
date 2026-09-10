@@ -150,3 +150,42 @@ def test_r5733_integrity_rejects_unclosed_deep_range_molecular_path():
 def test_r5733_integrity_rejects_missing_to_zero_cloud_conflict_promotion():
     checks=_integrity_status(_deep_observer_rows(promote_conflict=True))
     assert checks["TWILIGHT_GLOW_OBSERVER_CLOUD_CONFLICT_PRESERVATION"] == "FAIL"
+
+
+def test_r57352_one_metre_boundary_precision_resolves_10378m_raw_gap_without_widening_10m_contract():
+    """R5.7.35.2: 10.378 m raw gap rounds to exactly 10 m at 1 m native vertical precision."""
+    profiles={float(d):_profile_frame(min_z=0.084998) for d in np.arange(0.0,105.0,5.0)}
+    tau,status,required,resolved=twilight_glow._rayleigh_observer_path(_target(),profiles,6371.0)
+    diag=twilight_glow._molecular_boundary_diagnostics(_target(),profiles,6371.0)
+    assert status == "GLOW_OBSERVER_RAYLEIGH_PATH_RESOLVED"
+    assert required == resolved > 0
+    assert diag["snap_segment_count"] == 1
+    assert 0.010 < diag["raw_max_gap_km"] < 0.0105
+    assert abs(diag["quantized_max_gap_km"] - 0.010) < 1.0e-12
+    assert all(tau[int(w)] > 0.0 for w in SIX_BAND_WAVELENGTHS_NM)
+
+
+def test_r57352_one_metre_boundary_precision_still_fail_closes_true_11m_gap():
+    """A true 11 m quantized gap remains outside the frozen 10 m allowance."""
+    profiles={float(d):_profile_frame(min_z=0.0856) for d in np.arange(0.0,105.0,5.0)}
+    _,status,required,resolved=twilight_glow._rayleigh_observer_path(_target(),profiles,6371.0)
+    diag=twilight_glow._molecular_boundary_diagnostics(_target(),profiles,6371.0)
+    assert status == "GLOW_OBSERVER_RAYLEIGH_PATH_PARTIAL"
+    assert resolved < required
+    assert diag["snap_segment_count"] == 0
+    assert diag["quantized_max_gap_km"] > 0.010
+
+
+def test_r57352_gas_species_uses_same_one_metre_boundary_precision(monkeypatch):
+    distances=np.arange(0.0,105.0,5.0)
+    ctx=SimpleNamespace(
+        valid=True,
+        prepared_profile={0.0:{"distances":distances,"profiles":{float(d):_fast_rec(min_z=0.084998) for d in distances}}},
+        lut={},
+    )
+    monkeypatch.setattr(twilight_glow,"_sigma_fast",lambda *_a,**_k:1.0e-27)
+    tau,status,required,resolved,path_km=twilight_glow._observer_gas_species_path(_target(),ctx,6371.0)
+    assert status == "GLOW_OBSERVER_GAS_PATH_RESOLVED"
+    assert required == resolved > 0
+    assert path_km > 100.0
+    assert all(tau[int(w)]["total"] > 0.0 for w in SIX_BAND_WAVELENGTHS_NM)

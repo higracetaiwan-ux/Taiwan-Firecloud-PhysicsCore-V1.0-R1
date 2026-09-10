@@ -22,11 +22,11 @@ import math
 import numpy as np
 import pandas as pd
 from .config import EARTH_RADIUS_KM
-from .contracts import SIX_BAND_WAVELENGTHS_NM
+from .contracts import SIX_BAND_WAVELENGTHS_NM, FIRECLOUD_CANVAS_MIN_BASE_KM
 from .shared_geometry.ray import (observer_los_height_agl_km, sample_observer_los_segment,
                                   sampled_segment_path_km)
 
-PHOTO_TARGET_MIN_BASE_KM = 2.0
+PHOTO_TARGET_MIN_BASE_KM = FIRECLOUD_CANVAS_MIN_BASE_KM
 VERTICAL_CONTINUITY_MIN_OVERLAP = 0.50
 
 # Backward-compatible private alias; implementation lives in Shared Geometry Core.

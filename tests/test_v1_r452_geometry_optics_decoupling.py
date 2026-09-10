@@ -38,7 +38,7 @@ def test_consistent_cloud_keeps_native_optics():
     assert layers[0].evidence_consistency=='CONSISTENT_CLOUD'
     assert layers[0].optical_evidence==EvidenceState.FULL
 
-def test_partial_cf_zero_condensate_still_creates_canvas_candidate():
+def test_partial_cf_zero_condensate_low_cloud_stays_scene_but_is_not_formation_canvas():
     from firecloud.cloud_scene import build_cloud_scene_from_native_route
     from firecloud.v1_runtime import build_canvas_candidates
     import pandas as pd
@@ -55,6 +55,7 @@ def test_partial_cf_zero_condensate_still_creates_canvas_candidate():
     assert len(scene.layers)==1
     canvases=build_canvas_candidates(scene, observer_lat=24.0, observer_lon=120.0,
                                      solar_azimuth_deg=270.0, earth_radius_km=6371.0)
-    assert len(canvases)==1
-    assert canvases[0].distance_km==20.0
+    assert len(canvases)==0
+    assert len(scene.layers)==1
+    assert scene.layers[0].z_base_km < 2.0
     assert scene.layers[0].cot is None

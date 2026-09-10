@@ -46,6 +46,13 @@ NO_AEROSOL_SOURCE_CLAIM = "R5.7.35_AEROSOL_SCATTERING_EVIDENCE_IN_SEPARATE_TABLE
 NO_MULTIPLE_SCATTERING_CLAIM = "NOT_RESOLVED_NO_CALIBRATED_ATMOSPHERIC_RT"
 GLOW_DEEP_RANGE_CLOSURE_CONTRACT = "R5.7.33_DEEP_RANGE_MOLECULAR_BOUNDARY_AND_CLOUD_CONFLICT_PRESERVATION_V1"
 GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM = DEFAULT_PROFILE_BOUNDARY_TOLERANCE_KM
+# R5.7.35.2: keep the frozen 10 m physical boundary tolerance, but compare
+# the lower pressure-level boundary at 1 m vertical precision. GFS/CAMS
+# geopotential heights are decoded/interpolated at approximately metre-scale
+# precision, so sub-metre differences must not flip a boundary-touch from
+# resolved to Missing. This is numerical precision normalization, not a wider
+# physical extrapolation allowance.
+GLOW_OBSERVER_MOLECULAR_BOUNDARY_QUANTIZATION_KM = 0.001
 
 AEROSOL_SCATTERING_PHASE1_CONTRACT = "R5.7.35_CAMS_NATIVE_SSA_G_HG_SINGLE_SCATTERING_PHASE1_V1"
 AEROSOL_COLUMN_PROPERTY_WAVELENGTHS_NM = (550, 645, 670, 800)
@@ -136,6 +143,7 @@ def _profile_state(
     altitude_km: float,
     *,
     lowest_endpoint_tolerance_km: float = 0.0,
+    lowest_endpoint_quantization_km: float = 0.0,
 ) -> tuple[float, float] | None:
     """Interpolate a real T/P profile with an opt-in lowest-level boundary snap.
 
@@ -160,7 +168,17 @@ def _profile_state(
     lo = float(z.min()); hi = float(z.max())
     tol = max(0.0, float(lowest_endpoint_tolerance_km))
     if query < lo:
-        if lo - query <= tol + 1e-12:
+        quantum = max(0.0, float(lowest_endpoint_quantization_km))
+        if quantum > 0.0:
+            # Compare at the native vertical precision only for boundary
+            # eligibility. The actual interpolation still snaps to the real
+            # lowest native endpoint; no synthetic state is constructed.
+            q_cmp = round(query / quantum) * quantum
+            lo_cmp = round(lo / quantum) * quantum
+            gap_cmp = max(0.0, lo_cmp - q_cmp)
+        else:
+            gap_cmp = lo - query
+        if gap_cmp <= tol + 1e-12:
             query = lo
         else:
             return None
@@ -169,8 +187,10 @@ def _profile_state(
     return float(np.interp(query, z, t)), float(np.interp(query, z, p))
 
 
-def _interp_fast_profile_state_lowest_boundary(rec, altitude_km: float, tolerance_km: float):
-    """Fast-profile equivalent of the R5.7.33 lowest native endpoint policy."""
+def _interp_fast_profile_state_lowest_boundary(
+    rec, altitude_km: float, tolerance_km: float, quantization_km: float = 0.0
+):
+    """Fast-profile equivalent of the lowest-native endpoint policy."""
     state = _interp_fast_profile_state(rec, float(altitude_km))
     if state is not None:
         return state
@@ -181,11 +201,78 @@ def _interp_fast_profile_state_lowest_boundary(rec, altitude_km: float, toleranc
             return None
         lo = float(np.nanmin(z[finite]))
         tol = max(0.0, float(tolerance_km))
-        if float(altitude_km) < lo and lo - float(altitude_km) <= tol + 1e-12:
-            return _interp_fast_profile_state(rec, lo)
+        query = float(altitude_km)
+        quantum = max(0.0, float(quantization_km))
+        if query < lo:
+            if quantum > 0.0:
+                q_cmp = round(query / quantum) * quantum
+                lo_cmp = round(lo / quantum) * quantum
+                gap_cmp = max(0.0, lo_cmp - q_cmp)
+            else:
+                gap_cmp = lo - query
+            if gap_cmp <= tol + 1e-12:
+                return _interp_fast_profile_state(rec, lo)
     except Exception:
         return None
     return None
+
+
+def _molecular_boundary_diagnostics(
+    target: pd.Series,
+    profiles: dict[float, pd.DataFrame] | None,
+    earth_radius_km: float,
+) -> dict[str, float | int]:
+    """Report lower-boundary gaps for the sampled observer LOS.
+
+    These diagnostics do not change the integration. They expose the raw and
+    1 m-quantized gap used by the R5.7.35.2 boundary precision contract.
+    """
+    out = {
+        "snap_segment_count": 0,
+        "raw_max_gap_km": 0.0,
+        "quantized_max_gap_km": 0.0,
+    }
+    if not profiles:
+        return out
+    distance = _finite(target.get("target_distance_km"))
+    base = _finite(target.get("target_base_km"))
+    top = _finite(target.get("target_top_km"))
+    if distance is None or base is None or top is None or distance <= 0.0 or top <= base:
+        return out
+    target_altitude = 0.5 * (base + top)
+    distances = sorted(float(d) for d in profiles if float(d) <= distance + 1e-8)
+    if not distances:
+        return out
+    if distances[-1] < distance - 1e-8:
+        distances.append(float(distance))
+    q = GLOW_OBSERVER_MOLECULAR_BOUNDARY_QUANTIZATION_KM
+    tol = GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM
+    for d0, d1 in zip(distances[:-1], distances[1:]):
+        if d1 <= d0:
+            continue
+        midpoint = 0.5 * (d0 + d1)
+        altitude = observer_los_height_agl_km(distance, target_altitude, midpoint, earth_radius_km)
+        nearest = min(profiles, key=lambda d: abs(float(d) - midpoint))
+        profile = profiles.get(nearest)
+        if profile is None or profile.empty:
+            continue
+        z = pd.to_numeric(profile.get("altitude_agl_km"), errors="coerce")
+        z = z[np.isfinite(z)]
+        if z.empty:
+            continue
+        lo = float(z.min())
+        if altitude >= lo:
+            continue
+        raw_gap = max(0.0, lo - float(altitude))
+        if q > 0.0:
+            quantized_gap = max(0.0, round(lo / q) * q - round(float(altitude) / q) * q)
+        else:
+            quantized_gap = raw_gap
+        out["raw_max_gap_km"] = max(float(out["raw_max_gap_km"]), raw_gap)
+        out["quantized_max_gap_km"] = max(float(out["quantized_max_gap_km"]), quantized_gap)
+        if quantized_gap <= tol + 1e-12:
+            out["snap_segment_count"] = int(out["snap_segment_count"]) + 1
+    return out
 
 
 def _rayleigh_observer_path(
@@ -219,6 +306,7 @@ def _rayleigh_observer_path(
         state = _profile_state(
             profiles.get(nearest), altitude,
             lowest_endpoint_tolerance_km=GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM,
+            lowest_endpoint_quantization_km=GLOW_OBSERVER_MOLECULAR_BOUNDARY_QUANTIZATION_KM,
         )
         if state is None:
             continue
@@ -322,7 +410,8 @@ def _observer_gas_species_path(
             continue
         altitude = observer_los_height_agl_km(float(distance), target_altitude, midpoint, float(earth_radius_km))
         state = _interp_fast_profile_state_lowest_boundary(
-            rec, altitude, GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM
+            rec, altitude, GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM,
+            GLOW_OBSERVER_MOLECULAR_BOUNDARY_QUANTIZATION_KM,
         )
         if state is None:
             continue
@@ -512,7 +601,9 @@ def build_twilight_glow_phase1_exports(detail: pd.DataFrame) -> tuple[pd.DataFra
         "glow_observer_gas_species_status", "glow_observer_aerosol_status",
         "glow_observer_aerosol_required_segment_count", "glow_observer_aerosol_resolved_segment_count",
         "glow_observer_aerosol_lowest_endpoint_snap_segment_count", "glow_observer_aerosol_endpoint_tolerance_km",
-        "glow_observer_molecular_lowest_endpoint_tolerance_km", "glow_observer_molecular_boundary_policy",
+        "glow_observer_molecular_lowest_endpoint_tolerance_km", "glow_observer_molecular_boundary_quantization_km",
+        "glow_observer_molecular_boundary_raw_max_gap_km", "glow_observer_molecular_boundary_quantized_max_gap_km",
+        "glow_observer_molecular_boundary_snap_segment_count", "glow_observer_molecular_boundary_policy",
         "glow_observer_cloud_evidence_state", "glow_observer_cloud_blocker_count",
         "glow_observer_cloud_unresolved_blocker_count", "glow_observer_cloud_conflict_blocker_count",
         "glow_observer_cloud_unresolved_layer_ids", "glow_observer_cloud_conflict_states",
@@ -749,6 +840,7 @@ def build_twilight_glow_branch(
             target, gas_contexts.get(gas_key), float(earth_radius_km)
         )
         local = _local_molecular_state(target, profiles)
+        molecular_boundary_diag = _molecular_boundary_diagnostics(target, profiles, float(earth_radius_km))
         if observer is not None and str(observer.get("view_cloud_status")) == "VIEW_CLOUD_OPTICS_PARTIAL":
             cloud_diag = _observer_cloud_conflict_provenance(
                 target,
@@ -819,7 +911,11 @@ def build_twilight_glow_branch(
             "glow_observer_aerosol_lowest_endpoint_snap_segment_count": observer.get("view_aerosol_lowest_endpoint_snap_segment_count") if observer is not None else 0,
             "glow_observer_aerosol_endpoint_tolerance_km": 0.05,
             "glow_observer_molecular_lowest_endpoint_tolerance_km": GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM,
-            "glow_observer_molecular_boundary_policy": "LOWEST_NATIVE_PRESSURE_LEVEL_WITHIN_TOLERANCE_ONLY",
+            "glow_observer_molecular_boundary_quantization_km": GLOW_OBSERVER_MOLECULAR_BOUNDARY_QUANTIZATION_KM,
+            "glow_observer_molecular_boundary_raw_max_gap_km": molecular_boundary_diag.get("raw_max_gap_km", 0.0),
+            "glow_observer_molecular_boundary_quantized_max_gap_km": molecular_boundary_diag.get("quantized_max_gap_km", 0.0),
+            "glow_observer_molecular_boundary_snap_segment_count": molecular_boundary_diag.get("snap_segment_count", 0),
+            "glow_observer_molecular_boundary_policy": "LOWEST_NATIVE_PRESSURE_LEVEL_10M_TOLERANCE_WITH_1M_VERTICAL_PRECISION",
             "glow_observer_cloud_evidence_state": cloud_diag.get("state"),
             "glow_observer_cloud_blocker_count": cloud_diag.get("blocker_count", 0),
             "glow_observer_cloud_unresolved_blocker_count": cloud_diag.get("unresolved_blocker_count", 0),

@@ -1,4 +1,30 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.35.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.36
+
+## R5.7.36 Formation Canvas Eligibility / Low-Cloud Role Separation
+
+R5.7.36 修正日本真實 CASE 暴露的 Formation 語義問題：低雲（雲底 <2 km）雖然應保留在 CloudScene 中作為 `ILLUMINATION_BLOCKER` / `VIEW_OBSTRUCTION`，但不應被升格成火燒雲 Formation Canvas。
+
+本版規則：
+
+- `0–100 km` 且 `cloud base >= 2 km`：`FORMATION_CANVAS_TARGET`。
+- `0–100 km` 且 `cloud base < 2 km`：`BLOCKER_ONLY_LOW_CLOUD`，保留雲體但不建立 Canvas target。
+- `>100 km`：`UPSTREAM_OR_DIAGNOSTIC_CLOUD`，可參與上游阻光/診斷，但不是 Formation Canvas。
+- 2.0 km 邊界本身仍為 eligible，沒有提高門檻。
+- 不刪低雲、不把低雲當 clear、不改既有 blocker 光學。
+
+新增 Integrity：`FORMATION_CANVAS_LOW_CLOUD_ROLE_SEPARATION`。任何 `<2 km` 雲被放入 `v1_canvas_candidates` 都會 FAIL。
+
+
+## R5.7.35.2 零有效 Viewing Target 的降水 Integrity 語義修正
+
+本版修正日本真實 CASE 暴露的 Integrity 誤判：當 `v1_viewing_path_geometry` 存在，但所有列的 `photographic_target_eligible=False` 時，`v1_viewing_precipitation_evidence` 為空是合理的「不適用」，不應因 GFS 原生 `RWMR/SNMR/GRLE` 已 READY 就硬判 handoff FAIL。
+
+新的規則是：
+
+- `eligible Viewing target = 0`：`VIEWING_NATIVE_HYDROMETEOR_HANDOFF = NOT_APPLICABLE`。
+- `eligible Viewing target > 0`：仍要求每個 target 都有 precipitation evidence；空表、漏列或 `VIEW_PRECIPITATION_VOLUME_UNRESOLVED` 仍為 FAIL。
+- 不修改 Viewing 幾何、降水光學、Formation、Aerosol、Glow 或 Photography 物理。
+
 
 ## R5.7.35.1 Aerosol Missing-Reason Handoff Hotfix
 
