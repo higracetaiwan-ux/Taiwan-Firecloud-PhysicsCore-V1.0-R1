@@ -1,4 +1,11 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.38
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.39
+
+## R5.7.39 Canvas Optical Truth Phase 1 / GFS pgrb2b Native Condensate Probe
+
+R5.7.39 新增 diagnostic-only 的 GFS `pgrb2b.0p25` intermediate pressure-level native condensate probe。它在 0–100 km Formation Canvas 內讀取 125/175/225/.../925 hPa 的 CLWMR/ICMR/TCDC/TMP/HGT，並只保留落入 Canvas fixed vertical envelope 的原生 evidence，用來判斷既有 `CF_CLOUD_CONDENSATE_ZERO` 是否可能來自主 pressure-level 垂直取樣過粗。
+
+本版不把 probe positive 自動升格成 target COT，不改 Formation，也不使用 RH/cloud fraction 生成 condensate/COT。Missing 仍為 Missing。新增 CASE `v1_canvas_optical_native_probe.csv`、summary、request audit 與 `CANVAS_OPTICAL_TRUTH_PGRB2B_PROBE_CONTRACT` Integrity。Focused **9/9 PASS**；working-tree full regression **551/551 PASS**。Field Validation 需新 CASE。
+
 
 ## R5.7.38 CAMS Post-success Download Recovery
 

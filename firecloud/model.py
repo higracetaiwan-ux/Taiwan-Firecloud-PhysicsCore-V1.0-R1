@@ -62,6 +62,10 @@ from .cloud_optics import add_native_optical_properties
 from .spectral_rt import build_spectral_rt, summarize_spectral_rt
 from .gas_rt import build_gas_profile, hitran_backend_status, prepare_gas_rt_context
 from .providers.gfs_native import fetch_route_native, merge_native_into_snapshot, resolve_run_and_lead, DEFAULT_PRESSURE_LEVELS_HPA, native_provider_status
+from .providers.gfs_canvas_optical_probe import (
+    fetch_route_canvas_optical_probe, build_canvas_probe_evidence,
+    summarize_canvas_probe_evidence, PROVIDER_NAME as GFS_CANVAS_PROBE_PROVIDER,
+)
 from .providers.ecmwf_ifs_native import fetch_route_secondary_target_optics as fetch_ifs_secondary_target_optics, provider_status as ecmwf_ifs_provider_status
 from .providers.dwd_icon_native import fetch_route_secondary_target_optics as fetch_icon_secondary_target_optics, provider_status as dwd_icon_provider_status
 from .v1_runtime import build_r2_geometry_tables
@@ -1374,6 +1378,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_canvas_optical_suitability_frames = []
     v1_canvas_optical_suitability_summary_frames = []
     v1_secondary_target_optics_frames = []
+    v1_canvas_optical_native_probe_frames = []
+    v1_canvas_optical_native_probe_summary_frames = []
     v1_formation_gate_frames = []
     v1_red_light_reference_frames = []
     # Small per-angle readiness rows are computed before large atmospheric and
@@ -1386,6 +1392,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     native_cache = {}
     cams_native_cache = {}
     secondary_optics_cache = {}
+    gfs_canvas_optical_probe_cache = {}
+    gfs_canvas_optical_probe_request_audit_rows = []
     native_volume_cache = {}
     voxel_topology_cache = {}
     native_optical_base_cache = {}
@@ -1732,6 +1740,46 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     performance_rows.append({"stage": "OPENMETEO_ROUTE_INTERPOLATION_TOTAL", "elapsed_seconds": perf_counter()-_snapshot_t0, "cache_status": "PRECOMPUTED_LOCAL_TMP_SPOOL"})
     _record_runtime_resource("ROUTE_SNAPSHOTS_SPOOLED", None)
 
+    # R5.7.39 Canvas Optical Truth Phase 1: fetch GFS pgrb2b intermediate
+    # pressure-level native condensate inside 0-100 km only. This is a direct
+    # evidence probe and is deliberately NOT handed to Formation/COT readiness.
+    _gfs_probe_t0 = perf_counter()
+    for _gkey, _gt in gfs_requests.items():
+        _pk = pd.Timestamp(_gt.replace(tzinfo=None))
+        _probe_points = [dict(p) for p in route_points if 0.0 <= float(p.get("distance_km", -1.0)) <= 100.0 + 1e-9]
+        _amap = _secondary_surface_anchor_cache.get(_pk, {})
+        if _amap:
+            for _p in _probe_points:
+                _a = _amap.get(str(_p.get("point_id")))
+                if _a and "surface_elevation_m" in _a:
+                    _p["surface_elevation_m"] = _a["surface_elevation_m"]
+        try:
+            _pdf, _pmeta = fetch_route_canvas_optical_probe(_probe_points, _gt)
+        except Exception as _exc:
+            _pdf, _pmeta = pd.DataFrame(), {
+                "provider": GFS_CANVAS_PROBE_PROVIDER, "status": "FAILED",
+                "error": f"{type(_exc).__name__}: {_exc}",
+                "probe_contract": "DIRECT_NATIVE_INTERMEDIATE_PRESSURE_LEVEL_EVIDENCE_ONLY;NO_FORMATION_PROMOTION",
+            }
+        gfs_canvas_optical_probe_cache[_gkey] = (_pdf, _pmeta)
+        _aud = (_pmeta or {}).get("request_audit", [])
+        if isinstance(_aud, list):
+            for _r in _aud:
+                gfs_canvas_optical_probe_request_audit_rows.append({"time": _gt, **dict(_r)})
+        gfs_canvas_optical_probe_request_audit_rows.append({
+            "time": _gt, "action": "PROBE_RESULT",
+            "status": str((_pmeta or {}).get("status", "UNAVAILABLE")),
+            "provider": GFS_CANVAS_PROBE_PROVIDER,
+            "decoded_route_rows": int(len(_pdf)) if isinstance(_pdf, pd.DataFrame) else 0,
+            "probe_contract": str((_pmeta or {}).get("probe_contract", "")),
+            "error": str((_pmeta or {}).get("error", "")),
+        })
+    performance_rows.append({
+        "stage": "GFS_PGRB2B_CANVAS_OPTICAL_PROBE_PREFETCH",
+        "elapsed_seconds": perf_counter()-_gfs_probe_t0,
+        "cache_status": "DIAGNOSTIC_ONLY_NO_FORMATION_PROMOTION",
+    })
+
     # PhysicsCore V1.0-R5.5.2: real secondary forecast-native optics chain.
     # Priority: (1) entitled/local ECMWF IFS model-level CLWC/CIWC; (2) public
     # DWD ICON Global model-level QC/QI network source. Both remain fail-closed.
@@ -1841,6 +1889,23 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             _df = _v1.get(_key, pd.DataFrame())
             if _df is not None and not _df.empty:
                 _dest.append(_df)
+
+        # R5.7.39: bind pgrb2b intermediate-level native condensate to the
+        # already-fixed primary Canvas geometry for diagnostics only. It does
+        # not mutate CloudScene, Canvas membership, target COT, or Formation.
+        _probe_route, _probe_meta = gfs_canvas_optical_probe_cache.get(
+            cache_key, (pd.DataFrame(), {"status":"UNAVAILABLE"})
+        )
+        _canvas_probe = build_canvas_probe_evidence(
+            _v1["scene"], _v1.get("canvas_objects", ()), _probe_route,
+            valid_time=t, solar_altitude_deg=float(angle),
+        )
+        if _canvas_probe is not None and not _canvas_probe.empty:
+            v1_canvas_optical_native_probe_frames.append(_canvas_probe)
+            _canvas_probe_summary = summarize_canvas_probe_evidence(_canvas_probe)
+            if _canvas_probe_summary is not None and not _canvas_probe_summary.empty:
+                v1_canvas_optical_native_probe_summary_frames.append(_canvas_probe_summary)
+
         # Legacy candidate evaluation remains temporarily available as a
         # diagnostic compatibility branch only. It is not a PhysicsCore V1
         # contract and must not gate the R2 geometry/illumination outputs.
@@ -2504,6 +2569,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # consumes it. This variable must exist on every pipeline path, including
     # fully-missing target-optics cases.
     v1_target_canvas_optical_evidence = _concat_release(v1_target_canvas_optical_evidence_frames, pd.DataFrame(columns=TARGET_CANVAS_OPTICAL_EVIDENCE_COLUMNS))
+    # R5.7.39 diagnostic-only primary-native optical probe. These tables are
+    # intentionally aggregated beside, not into, target optical truth.
+    v1_canvas_optical_native_probe = _concat_release(v1_canvas_optical_native_probe_frames)
+    v1_canvas_optical_native_probe_summary = _concat_release(v1_canvas_optical_native_probe_summary_frames)
+    gfs_canvas_optical_probe_request_audit = pd.DataFrame(gfs_canvas_optical_probe_request_audit_rows)
     v1_viewing_spectral_extinction = build_viewing_spectral_extinction(
         v1_viewing_path_geometry, v1_cloud_layers, v1_target_canvas_optical_evidence,
         aerosol_spectral_route_snapshots, gas_profile_route_snapshots,
@@ -2787,6 +2857,17 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "failure_rows":int(sum(str(m.get("native_status","")).upper().startswith("FAILED") for m in _gfs_meta_unique)),
             "reuse_scope":"RUN_LEAD_RAW_GRIB_PLUS_PERSISTENT_DECODED_ROUTE"
         })
+    if isinstance(gfs_canvas_optical_probe_request_audit, pd.DataFrame) and not gfs_canvas_optical_probe_request_audit.empty:
+        _probe_status = gfs_canvas_optical_probe_request_audit.get("status", pd.Series(dtype=str)).astype(str).str.upper()
+        _api_eff_rows.append({
+            "provider": GFS_CANVAS_PROBE_PROVIDER,
+            "logical_attempt_rows": int(len(gfs_canvas_optical_probe_request_audit)),
+            "network_requests": int(gfs_canvas_optical_probe_request_audit.get("action", pd.Series(dtype=str)).astype(str).str.upper().eq("DOWNLOAD").sum()),
+            "raw_cache_hits": int(gfs_canvas_optical_probe_request_audit.get("action", pd.Series(dtype=str)).astype(str).str.upper().eq("CACHE_USE").sum()),
+            "decoded_cache_hits": int(_probe_status.eq("READY").sum()),
+            "failure_rows": int(_probe_status.str.contains("FAILED|HTTP_4|HTTP_5", case=False, regex=True).sum()),
+            "reuse_scope": "RUN_LEAD_PGRB2B_RAW_GRIB_PLUS_PERSISTENT_DECODED_ROUTE;DIAGNOSTIC_ONLY",
+        })
     if isinstance(_cams_audit_df,pd.DataFrame) and not _cams_audit_df.empty:
         _api_eff_rows.append({
             "provider":"CAMS_ADS", "logical_attempt_rows":int(len(_cams_audit_df)),
@@ -2828,6 +2909,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     _append_cache_rows(openmeteo_request_audit, "OPEN_METEO_FORECAST")
     _append_cache_rows(_cams_audit_df, "CAMS_ADS")
     _append_cache_rows(gfs_native_request_audit, "NOAA_GFS_NATIVE")
+    _append_cache_rows(gfs_canvas_optical_probe_request_audit, GFS_CANVAS_PROBE_PROVIDER)
     _append_cache_rows(dwd_icon_request_audit, "DWD_ICON_SECONDARY")
     _openmeteo_aq_audit = pd.DataFrame(aerosol_hourly.attrs.get("api_request_audit", [])) if isinstance(aerosol_hourly, pd.DataFrame) and not aerosol_hourly.empty else pd.DataFrame()
     _append_cache_rows(_openmeteo_aq_audit, "OPEN_METEO_AIR_QUALITY")
@@ -2872,6 +2954,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "twilight_glow_deep_range_closure_required": True,
         "near_surface_molecular_boundary_closure_required": True,
         "cams_post_success_download_recovery_required": True,
+        "canvas_optical_truth_pgrb2b_probe_required": True,
+        "gfs_canvas_optical_probe_request_audit": gfs_canvas_optical_probe_request_audit,
+        "v1_canvas_optical_native_probe": v1_canvas_optical_native_probe,
+        "v1_canvas_optical_native_probe_summary": v1_canvas_optical_native_probe_summary,
         # R5.7.27.1: hand the already-built Formation-first decision table to
         # the pre-export integrity audit.  R5.7.27 returned/exported this table
         # but omitted it here, so the audit saw a false empty-table failure.
@@ -2960,6 +3046,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_precipitation_path_evidence": v1_precipitation_path_evidence,
         "v1_target_canvas_optical_evidence": v1_target_canvas_optical_evidence,
         "v1_target_canvas_optical_summary": v1_target_canvas_optical_summary,
+        "v1_canvas_optical_native_probe": v1_canvas_optical_native_probe,
+        "v1_canvas_optical_native_probe_summary": v1_canvas_optical_native_probe_summary,
+        "gfs_canvas_optical_probe_request_audit": gfs_canvas_optical_probe_request_audit,
         "v1_tier2_scattering_readiness": v1_tier2_scattering_readiness,
         "v1_tier2_scattering_readiness_summary": v1_tier2_scattering_readiness_summary,
         "v1_tier2_scattering_foundation": v1_tier2_scattering_foundation,

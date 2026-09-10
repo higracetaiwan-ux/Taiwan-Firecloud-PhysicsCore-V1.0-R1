@@ -119,6 +119,9 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     gfs_req = _df(result.get("gfs_native_request_audit"))
     gfs_inv = _df(result.get("gfs_grib_message_inventory"))
     gfs_comp = _df(result.get("gfs_native_field_completeness"))
+    gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
+    gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
+    gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
     native_vox = _df(result.get("native_cloud_voxel_matrix"))
     gas = _df(result.get("gas_profile_route_snapshots"))
     ozone = _df(result.get("ozone_profile_route_snapshots"))
@@ -144,6 +147,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     twilight_glow_deep_range_closure_required = bool(result.get("twilight_glow_deep_range_closure_required", False))
     near_surface_molecular_boundary_closure_required = bool(result.get("near_surface_molecular_boundary_closure_required", False))
     cams_post_success_download_recovery_required = bool(result.get("cams_post_success_download_recovery_required", False))
+    canvas_optical_truth_pgrb2b_probe_required = bool(result.get("canvas_optical_truth_pgrb2b_probe_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -195,6 +199,70 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             icmr = txt.str.contains("ICMR", regex=False, na=False).any()
             add("GFS_CLWMR_COMPLETENESS_ROW", PASS if clwmr else WARN, "NOAA_GFS_NATIVE", bool(clwmr), "CLWMR row when requested/available")
             add("GFS_ICMR_COMPLETENESS_ROW", PASS if icmr else WARN, "NOAA_GFS_NATIVE", bool(icmr), "ICMR row when requested/available")
+
+    # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
+    # it may expose intermediate-level native condensate, but it must never
+    # promote target COT/Formation in this release. Provider unavailability is
+    # therefore visible WARN; a malformed/non-native evidence table is FAIL.
+    if canvas_optical_truth_pgrb2b_probe_required:
+        _probe_expected_contract = "DIRECT_NATIVE_PGRB2B_INTERMEDIATE_LEVEL_ONLY;NO_TARGET_COT_PROMOTION;NO_CF_RH_TO_COT"
+        _probe_expected_source = "NOAA_GFS_0P25_PGRB2B_CANVAS_OPTICAL_PROBE"
+        if gfs_canvas_probe.empty:
+            _req_text = _join_text_columns(
+                gfs_canvas_probe_req,
+                [c for c in ["status", "action", "error", "probe_contract"] if c in gfs_canvas_probe_req.columns],
+            ) if not gfs_canvas_probe_req.empty else pd.Series(dtype=str)
+            _req_ready = bool(_req_text.str.upper().str.contains("READY|DOWNLOADED|CACHE_HIT", regex=True, na=False).any()) if len(_req_text) else False
+            add(
+                "CANVAS_OPTICAL_TRUTH_PGRB2B_PROBE_CONTRACT", WARN, "CANVAS_OPTICAL_TRUTH",
+                f"probe_rows=0;request_rows={len(gfs_canvas_probe_req)};request_ready={_req_ready}",
+                "diagnostic-only pgrb2b native intermediate-level evidence when available",
+                "R5.7.39 probe unavailability/empty geometric overlap does not alter Formation or target COT; Missing remains visible",
+            )
+        else:
+            required_cols = {
+                "canvas_id", "cloud_layer_id", "probe_pressure_hpa", "probe_altitude_agl_km",
+                "probe_cloud_liquid_water_kgkg", "probe_cloud_ice_water_kgkg",
+                "probe_total_condensate_kgkg", "probe_condensate_state",
+                "probe_evidence_consistency", "probe_positive_condensate",
+                "probe_source", "probe_contract",
+            }
+            missing_cols = sorted(required_cols - set(gfs_canvas_probe.columns))
+            prohibited_cols = sorted(set(gfs_canvas_probe.columns).intersection({
+                "target_optics_ready", "target_cot_nominal", "target_cot",
+                "formation_state", "formation_probability", "photography_outcome",
+            }))
+            source_ok = bool(gfs_canvas_probe.get("probe_source", pd.Series("", index=gfs_canvas_probe.index)).fillna("").astype(str).eq(_probe_expected_source).all())
+            contract_ok = bool(gfs_canvas_probe.get("probe_contract", pd.Series("", index=gfs_canvas_probe.index)).fillna("").astype(str).eq(_probe_expected_contract).all())
+            qt = pd.to_numeric(gfs_canvas_probe.get("probe_total_condensate_kgkg", pd.Series(float("nan"), index=gfs_canvas_probe.index)), errors="coerce")
+            pos = gfs_canvas_probe.get("probe_positive_condensate", pd.Series(False, index=gfs_canvas_probe.index)).fillna(False).astype(bool)
+            state = gfs_canvas_probe.get("probe_condensate_state", pd.Series("", index=gfs_canvas_probe.index)).fillna("").astype(str).str.upper()
+            finite = qt.notna()
+            numeric_ok = bool((((qt.ge(1e-7) == pos) & finite) | ~finite).all())
+            missing_semantics_ok = bool((~state.eq("MISSING") | qt.isna()).all())
+            schema_ok = not missing_cols and not prohibited_cols
+            ok = schema_ok and source_ok and contract_ok and numeric_ok and missing_semantics_ok
+            positive_rows = int(pos.sum())
+            positive_canvases = int(gfs_canvas_probe.loc[pos, "canvas_id"].astype(str).nunique()) if "canvas_id" in gfs_canvas_probe.columns else 0
+            add(
+                "CANVAS_OPTICAL_TRUTH_PGRB2B_PROBE_CONTRACT", PASS if ok else FAIL, "CANVAS_OPTICAL_TRUTH",
+                f"rows={len(gfs_canvas_probe)};positive_rows={positive_rows};positive_canvases={positive_canvases};missing_cols={len(missing_cols)};prohibited_cols={len(prohibited_cols)}",
+                "direct-native pgrb2b evidence only; exact source/contract; no Formation/COT promotion; native condensate threshold consistency",
+                (f"missing_cols={','.join(missing_cols)};prohibited_cols={','.join(prohibited_cols)};"
+                 f"source_ok={source_ok};contract_ok={contract_ok};numeric_ok={numeric_ok};missing_semantics_ok={missing_semantics_ok}"),
+            )
+            if not gfs_canvas_probe_summary.empty:
+                add(
+                    "CANVAS_OPTICAL_TRUTH_PGRB2B_PROBE_SUMMARY", PASS, "CANVAS_OPTICAL_TRUTH",
+                    len(gfs_canvas_probe_summary), ">0 summary rows when probe evidence exists",
+                    "Summary is diagnostic-only and does not participate in Formation",
+                )
+            else:
+                add(
+                    "CANVAS_OPTICAL_TRUTH_PGRB2B_PROBE_SUMMARY", WARN, "CANVAS_OPTICAL_TRUTH",
+                    0, ">0 summary rows when probe evidence exists",
+                    "Probe evidence exists but diagnostic summary is absent",
+                )
 
     if not gfs_inv.empty and native_vox.empty:
         add("GFS_NATIVE_VOXEL_HANDOFF", FAIL, "NOAA_GFS_NATIVE", 0, ">0 native voxel rows when inventory decoded", "Inventory exists but reconstructed native voxel evidence vanished")
