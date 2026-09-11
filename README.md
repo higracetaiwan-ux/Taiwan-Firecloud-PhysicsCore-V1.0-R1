@@ -1,4 +1,13 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.2
+
+
+## R5.7.41.3.2 Direct Conflict Eligibility Handoff Hotfix
+
+- 統一 Target Optical Truth → Vertical Microphysics Overlap → Shadow COT Migration 的 direct-conflict 定義。
+- `CONDENSATE_CLOUD_CF_LOW` 現在會在 overlap 層標成 `direct_target_evidence_conflict=True`，並阻擋 assumed-r_eff COT diagnostic。
+- Shadow migration 會獨立讀取 `target_optical_truth_state` / `resolver_state`；即使舊 overlap artifact 漏標 conflict，也會 fail-close。
+- Analysis Integrity 新增跨層 handoff guard：任何 `DIRECT_EVIDENCE_CONFLICT` 都不得同時是 `ELIGIBLE_SHADOW_CANDIDATE`。
+- 不改 Production COT、Formation、Viewing、Twilight Glow 或 Photography science。
 
 ## R5.7.41.3.1 Direct Conflict Qualification Coverage Hotfix
 

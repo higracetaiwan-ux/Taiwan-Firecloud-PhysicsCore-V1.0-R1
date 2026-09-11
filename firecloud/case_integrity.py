@@ -598,18 +598,54 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             ineligible_reason_ok = bool(
                 canvas_cot_semantic_migration.loc[~eligible, "migration_ineligibility_reasons"].fillna("").astype(str).str.len().gt(0).all()
             ) if (~eligible).any() else True
+
+            # Independent R5.7.41.3.2 handoff guard: an eligible Shadow
+            # candidate may never overlap a Target Optical Truth direct conflict.
+            # This cross-check deliberately does not trust the migration row's
+            # derived direct_evidence_conflict_free flag alone.
+            target_conflict_handoff_ok = True
+            target_conflict_eligible_overlap_count = 0
+            if eligible.any() and not target_canvas_optics.empty and "canvas_id" in target_canvas_optics.columns:
+                truth = target_canvas_optics.get(
+                    "target_optical_truth_state", pd.Series("", index=target_canvas_optics.index)
+                ).fillna("").astype(str)
+                resolver = target_canvas_optics.get(
+                    "resolver_state", pd.Series("", index=target_canvas_optics.index)
+                ).fillna("").astype(str)
+                conflict_mask = truth.eq("DIRECT_EVIDENCE_CONFLICT") | resolver.isin({
+                    "CF_CLOUD_CONDENSATE_ZERO_UNRESOLVED",
+                    "CONDENSATE_CLOUD_CF_LOW_CONFLICT",
+                    "MULTISOURCE_DIRECT_CONFLICT_UNRESOLVED",
+                })
+                conflict_keys = set()
+                for _, rr in target_canvas_optics.loc[conflict_mask].iterrows():
+                    try:
+                        akey = round(float(rr.get("solar_altitude_deg")), 6)
+                    except Exception:
+                        akey = str(rr.get("solar_altitude_deg"))
+                    conflict_keys.add((akey, str(rr.get("canvas_id"))))
+                eligible_keys = set()
+                for _, rr in canvas_cot_semantic_migration.loc[eligible].iterrows():
+                    try:
+                        akey = round(float(rr.get("solar_altitude_deg")), 6)
+                    except Exception:
+                        akey = str(rr.get("solar_altitude_deg"))
+                    eligible_keys.add((akey, str(rr.get("canvas_id"))))
+                target_conflict_eligible_overlap_count = len(conflict_keys.intersection(eligible_keys))
+                target_conflict_handoff_ok = target_conflict_eligible_overlap_count == 0
+
             contract_ok = bool(canvas_cot_semantic_migration.get(
                 "migration_contract", pd.Series("", index=canvas_cot_semantic_migration.index)
             ).astype(str).str.contains("PRODUCTION_COT_SEMANTIC_MIGRATION_SHADOW_MODE", regex=False).all())
             ok = (not missing_cols and coverage_ok and prod_source_ok and shadow_source_ok
                   and semantics_ok and no_switch and no_cf_rh and elig_state_ok
-                  and eligible_gate_ok and ineligible_reason_ok and contract_ok)
+                  and eligible_gate_ok and ineligible_reason_ok and target_conflict_handoff_ok and contract_ok)
             add(
                 "CANVAS_COT_SEMANTIC_MIGRATION_SHADOW", PASS if ok else FAIL,
                 "CANVAS_OPTICAL_TRUTH",
                 f"rows={len(canvas_cot_semantic_migration)};eligible={int(eligible.sum())};ineligible={int((~eligible).sum())}",
                 "shadow candidate eligibility is auditable; legacy remains Production; no CF/RH to candidate COT; no switch/promotion",
-                f"missing_cols={','.join(missing_cols)};coverage_ok={coverage_ok};prod_source_ok={prod_source_ok};shadow_source_ok={shadow_source_ok};semantics_ok={semantics_ok};no_switch={no_switch};no_cf_rh={no_cf_rh};eligible_gate_ok={eligible_gate_ok};ineligible_reason_ok={ineligible_reason_ok};contract_ok={contract_ok}",
+                f"missing_cols={','.join(missing_cols)};coverage_ok={coverage_ok};prod_source_ok={prod_source_ok};shadow_source_ok={shadow_source_ok};semantics_ok={semantics_ok};no_switch={no_switch};no_cf_rh={no_cf_rh};eligible_gate_ok={eligible_gate_ok};ineligible_reason_ok={ineligible_reason_ok};target_conflict_handoff_ok={target_conflict_handoff_ok};target_conflict_eligible_overlap_count={target_conflict_eligible_overlap_count};contract_ok={contract_ok}",
             )
             add(
                 "CANVAS_COT_SEMANTIC_MIGRATION_SHADOW_SUMMARY",

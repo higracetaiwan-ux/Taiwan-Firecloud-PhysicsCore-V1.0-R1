@@ -115,3 +115,37 @@ def test_analysis_integrity_rejects_illegal_production_switch():
     })
     row = audit.loc[audit["check_id"].eq("CANVAS_COT_SEMANTIC_MIGRATION_SHADOW")].iloc[0]
     assert row["status"] == "FAIL"
+
+
+def test_target_optical_truth_direct_conflict_blocks_shadow_even_if_overlap_flag_is_stale_false():
+    target = _target().copy()
+    target.loc[0, "target_optical_truth_state"] = "DIRECT_EVIDENCE_CONFLICT"
+    target.loc[0, "resolver_state"] = "CONDENSATE_CLOUD_CF_LOW_CONFLICT"
+    out = build_canvas_cot_semantic_migration_shadow(target, _overlap(conflict=False))
+    r = out.iloc[0]
+    assert not bool(r["shadow_candidate_eligible"])
+    assert not bool(r["direct_evidence_conflict_free"])
+    assert "DIRECT_EVIDENCE_CONFLICT" in r["migration_ineligibility_reasons"]
+    assert "VERTICAL_INTEGRATION_CONTRACT_FAILED" in r["migration_ineligibility_reasons"]
+    assert math.isnan(r["in_cloud_target_cot"])
+
+
+def test_analysis_integrity_cross_checks_target_truth_conflict_against_eligible_shadow():
+    target = _target().copy()
+    target.loc[0, "target_optical_truth_state"] = "DIRECT_EVIDENCE_CONFLICT"
+    target.loc[0, "resolver_state"] = "CONDENSATE_CLOUD_CF_LOW_CONFLICT"
+    overlap = _overlap(conflict=False)
+    migration = build_canvas_cot_semantic_migration_shadow(_target(), overlap)
+    # Simulate the R5.7.41.3.1 handoff bug: migration says eligible while
+    # independent Target Optical Truth says direct conflict.
+    summary = summarize_canvas_cot_semantic_migration_shadow(migration)
+    audit = build_analysis_integrity_audit({
+        "canvas_cot_semantic_migration_required": True,
+        "v1_target_canvas_optical_evidence": target,
+        "v1_canvas_vertical_microphysics_overlap": overlap,
+        "v1_canvas_cot_semantic_migration": migration,
+        "v1_canvas_cot_semantic_migration_summary": summary,
+    })
+    row = audit.loc[audit["check_id"].eq("CANVAS_COT_SEMANTIC_MIGRATION_SHADOW")].iloc[0]
+    assert row["status"] == "FAIL"
+    assert "target_conflict_handoff_ok=False" in str(row["detail"])

@@ -316,7 +316,18 @@ def build_canvas_vertical_microphysics_overlap(
         # Direct target conflict is a property of the primary geometry/evidence,
         # not of the pgrb2b probe. Keep it explicit in every sample/aggregate row.
         primary_inside = [s for s in primary if _position(s["altitude_agl_km"], z0, z1) in {"INTERIOR", "BOUNDARY_LOWER", "BOUNDARY_UPPER", "BOUNDARY_NEAR"}]
-        direct_conflict = any(str(s.get("evidence_consistency")) == "CF_CLOUD_CONDENSATE_ZERO" for s in primary_inside)
+        # Direct conflict taxonomy must match Target Optical Truth. Both
+        # cloud-fraction-positive/native-condensate-zero and independently
+        # positive condensate with very-low CF are contradictory direct
+        # evidence and must fail closed before any diagnostic COT is formed.
+        direct_conflict_states = {
+            "CF_CLOUD_CONDENSATE_ZERO",
+            "CONDENSATE_CLOUD_CF_LOW",
+        }
+        direct_conflict = any(
+            str(s.get("evidence_consistency")) in direct_conflict_states
+            for s in primary_inside
+        )
 
         target_samples = []
         for s in merged:

@@ -166,3 +166,15 @@ def test_absent_pgrb2b_context_is_missing_not_zero_support():
     assert r.expected_supplement_level_count == 1
     assert r.expected_supplement_missing_count == 1
     assert r.target_vertical_overlap_state == "VERTICAL_EVIDENCE_INCOMPLETE"
+
+
+def test_low_cf_positive_condensate_is_direct_conflict_and_blocks_cot():
+    primary = _primary(q200=2.6e-7, q150=2.0e-7)
+    primary.loc[0, "cloud_fraction_150hPa"] = 0.0
+    overlap, _ = _run(primary=primary, supp=_supp(q175=4.0e-7))
+    r = overlap.iloc[0]
+    assert bool(r.direct_target_evidence_conflict)
+    assert r.cot_diagnostic_state == "BLOCKED_DIRECT_EVIDENCE_CONFLICT"
+    assert pd.isna(r.cot_estimate_assumed_reff)
+    assert not bool(r.cot_promotion_allowed)
+    assert not bool(r.formation_promotion_allowed)

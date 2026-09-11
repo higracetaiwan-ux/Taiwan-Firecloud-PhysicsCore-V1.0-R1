@@ -92,7 +92,18 @@ def _eligibility(row: pd.Series) -> tuple[bool, list[str], dict[str, bool | str]
         and int(row.get("native_sample_count_inside_target", 0) or 0) >= 2
         and int(row.get("expected_supplement_missing_count", 0) or 0) == 0
     )
-    conflict_free = not _as_bool(row.get("direct_target_evidence_conflict", False))
+    overlap_conflict = _as_bool(row.get("direct_target_evidence_conflict", False))
+    target_truth = str(row.get("target_optical_truth_state", "") or "")
+    target_resolver = str(row.get("resolver_state", "") or "")
+    target_direct_conflict = (
+        target_truth == "DIRECT_EVIDENCE_CONFLICT"
+        or target_resolver in {
+            "CF_CLOUD_CONDENSATE_ZERO_UNRESOLVED",
+            "CONDENSATE_CLOUD_CF_LOW_CONFLICT",
+            "MULTISOURCE_DIRECT_CONFLICT_UNRESOLVED",
+        }
+    )
+    conflict_free = not (overlap_conflict or target_direct_conflict)
 
     known_frac = row.get("native_condensate_known_fraction_inside_target", np.nan)
     missing_count = row.get("native_condensate_missing_count_inside_target", np.nan)
@@ -111,7 +122,8 @@ def _eligibility(row: pd.Series) -> tuple[bool, list[str], dict[str, bool | str]
 
     cot = row.get("cot_estimate_assumed_reff", np.nan)
     integration_pass = (
-        str(row.get("cot_diagnostic_state", "")) == "COT_ESTIMATE_ASSUMED_REFF"
+        conflict_free
+        and str(row.get("cot_diagnostic_state", "")) == "COT_ESTIMATE_ASSUMED_REFF"
         and str(row.get("cot_diagnostic_semantics", "")) == "DIAGNOSTIC_ASSUMED_REFF_NOT_NATIVE_COT"
         and _finite(cot) and float(cot) >= 0.0
     )
@@ -171,7 +183,11 @@ def build_canvas_cot_semantic_migration_shadow(
     for _, r in merged.iterrows():
         eligible, reasons, detail = _eligibility(r)
         legacy = r.get("target_cot_nominal", np.nan)
-        inc = r.get("cot_estimate_assumed_reff", np.nan)
+        inc_raw = r.get("cot_estimate_assumed_reff", np.nan)
+        # A direct evidence conflict must fail closed at the public Shadow
+        # candidate surface even when an older overlap table still contains a
+        # numerically integrable diagnostic value.
+        inc = inc_raw if detail["direct_evidence_conflict_free"] else np.nan
         delta = float(inc) - float(legacy) if _finite(inc) and _finite(legacy) else np.nan
         ratio = float(inc) / float(legacy) if _finite(inc) and _finite(legacy) and abs(float(legacy)) > 1.0e-15 else np.nan
         rows.append({
