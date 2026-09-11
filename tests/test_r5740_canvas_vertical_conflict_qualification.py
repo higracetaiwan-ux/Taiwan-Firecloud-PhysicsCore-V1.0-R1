@@ -174,3 +174,31 @@ def test_no_primary_conflict_allows_empty_qualification():
     })
     row = audit.loc[audit["check_id"].eq("CANVAS_OPTICAL_VERTICAL_CONFLICT_QUALIFICATION")].iloc[0]
     assert row["status"] == "ALLOWED_EMPTY"
+
+def test_low_cf_positive_native_condensate_gets_own_conflict_state():
+    out = _build(primary=_primary(q150=2e-7, cf150=0.0))
+    assert len(out) == 1
+    r = out.iloc[0]
+    assert r["primary_evidence_consistency"] == "CONDENSATE_CLOUD_CF_LOW"
+    assert r["primary_conflict_type"] == "CONDENSATE_CLOUD_CF_LOW"
+    assert r["vertical_conflict_qualification"] == "PRIMARY_NATIVE_CONDENSATE_WITH_LOW_CF_CONFLICT"
+    assert not bool(r["cot_promotion_allowed"])
+    assert not bool(r["formation_promotion_allowed"])
+
+
+def test_integrity_accepts_low_cf_positive_condensate_direct_conflict_coverage():
+    out = _build(primary=_primary(q150=2e-7, cf150=0.0))
+    target = pd.DataFrame([{
+        "canvas_id":"C1",
+        "evidence_consistency":"CONDENSATE_CLOUD_CF_LOW",
+        "target_optical_truth_state":"DIRECT_EVIDENCE_CONFLICT",
+    }])
+    audit = build_analysis_integrity_audit({
+        "canvas_optical_vertical_conflict_qualification_required": True,
+        "v1_target_canvas_optical_evidence": target,
+        "v1_canvas_vertical_conflict_qualification": out,
+        "v1_canvas_vertical_conflict_qualification_summary": summarize_vertical_conflict_qualification(out),
+        "gfs_canvas_optical_probe_request_audit": pd.DataFrame([{"action":"PROBE_RESULT","status":"READY"}]),
+    })
+    row = audit.loc[audit["check_id"].eq("CANVAS_OPTICAL_VERTICAL_CONFLICT_QUALIFICATION")].iloc[0]
+    assert row["status"] == "PASS"

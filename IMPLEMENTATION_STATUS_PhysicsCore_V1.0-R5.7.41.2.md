@@ -19,3 +19,8 @@
 
 ## 後續
 需累積多個 CASE 的 shadow evidence，再決定是否進行 Production COT semantic switch。Native 127-level provider 為獨立後續工作。
+
+## Regression
+- Working-tree full regression：580/580 PASS
+- FULL-CLEAN fresh-extract：580/580 PASS
+- Release gate：CLOSED

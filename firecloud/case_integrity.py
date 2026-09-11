@@ -324,9 +324,11 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             }))
             observed_canvases = set(canvas_vertical_conflict.get("canvas_id", pd.Series(dtype=str)).astype(str))
             coverage_ok = _expected_conflict_canvases.issubset(observed_canvases)
-            primary_conflict_ok = bool(canvas_vertical_conflict.get("primary_evidence_consistency", pd.Series("", index=canvas_vertical_conflict.index)).fillna("").astype(str).eq("CF_CLOUD_CONDENSATE_ZERO").all())
+            _primary_conflicts = canvas_vertical_conflict.get("primary_evidence_consistency", pd.Series("", index=canvas_vertical_conflict.index)).fillna("").astype(str)
+            primary_conflict_ok = bool(_primary_conflicts.isin({"CF_CLOUD_CONDENSATE_ZERO", "CONDENSATE_CLOUD_CF_LOW"}).all())
             states = set(canvas_vertical_conflict.get("vertical_conflict_qualification", pd.Series(dtype=str)).dropna().astype(str))
             allowed_states = {
+                "PRIMARY_NATIVE_CONDENSATE_WITH_LOW_CF_CONFLICT",
                 "ISOLATED_PRIMARY_CF_SPIKE_HYDROMETEOR_UNSUPPORTED",
                 "INTERMEDIATE_NATIVE_CONDENSATE_SUPPORT_PRESENT",
                 "ADJACENT_PRIMARY_NATIVE_CONDENSATE_SUPPORT_PRESENT",

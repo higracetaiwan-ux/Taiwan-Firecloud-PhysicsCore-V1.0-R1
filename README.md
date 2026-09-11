@@ -1,3 +1,9 @@
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.1
+
+## R5.7.41.3.1 Direct Conflict Qualification Coverage Hotfix
+
+修正 `DIRECT_EVIDENCE_CONFLICT` qualification coverage；新增 `CONDENSATE_CLOUD_CF_LOW` 專屬 state，不改 Production science。
+
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3
 
 

@@ -24,6 +24,7 @@ QUALIFICATION_CONTRACT = (
 )
 
 QUALIFICATION_STATES = {
+    "PRIMARY_NATIVE_CONDENSATE_WITH_LOW_CF_CONFLICT",
     "ISOLATED_PRIMARY_CF_SPIKE_HYDROMETEOR_UNSUPPORTED",
     "INTERMEDIATE_NATIVE_CONDENSATE_SUPPORT_PRESENT",
     "ADJACENT_PRIMARY_NATIVE_CONDENSATE_SUPPORT_PRESENT",
@@ -119,11 +120,14 @@ def build_canvas_vertical_conflict_qualification(
 ) -> pd.DataFrame:
     """Classify native vertical context for primary CF/condensate conflicts.
 
-    Only primary pgrb2 levels whose direct evidence consistency is
-    ``CF_CLOUD_CONDENSATE_ZERO`` are qualified.  The immediate primary levels
-    above/below and the pgrb2b intermediate hydrometeor levels between them are
-    audited.  pgrb2b cloud fraction is intentionally not used because the
-    pressure-level secondary-parameter inventory does not supply a TCDC profile.
+    All primary pgrb2 levels whose direct evidence consistency is a
+    direct cloud-fraction/native-condensate conflict are qualified. This includes
+    ``CF_CLOUD_CONDENSATE_ZERO`` and ``CONDENSATE_CLOUD_CF_LOW``. The latter is
+    preserved as its own conflict type and is never reinterpreted as a CF spike.
+    The immediate primary levels above/below and the pgrb2b intermediate
+    hydrometeor levels between them are audited. pgrb2b cloud fraction is
+    intentionally not used because the pressure-level secondary-parameter
+    inventory does not supply a TCDC profile.
     """
     if primary_route is None or primary_route.empty:
         return pd.DataFrame()
@@ -161,7 +165,9 @@ def build_canvas_vertical_conflict_qualification(
             z = float(lev["altitude_agl_km"])
             if z < float(layer.z_base_km) - 1e-9 or z > float(layer.z_top_km) + 1e-9:
                 continue
-            if native_level_evidence_consistency(lev, cfg) == "CF_CLOUD_CONDENSATE_ZERO":
+            if native_level_evidence_consistency(lev, cfg) in {
+                "CF_CLOUD_CONDENSATE_ZERO", "CONDENSATE_CLOUD_CF_LOW"
+            }:
                 conflict_indices.append(idx)
         if not conflict_indices:
             continue
@@ -196,7 +202,10 @@ def build_canvas_vertical_conflict_qualification(
             )
             supp_zero = all(x["q_state"] == "ZERO" for x in supp_neighbors)
 
-            if main_positive:
+            primary_conflict_type = str(primary["evidence_consistency"])
+            if primary_conflict_type == "CONDENSATE_CLOUD_CF_LOW":
+                state = "PRIMARY_NATIVE_CONDENSATE_WITH_LOW_CF_CONFLICT"
+            elif main_positive:
                 state = "ADJACENT_PRIMARY_NATIVE_CONDENSATE_SUPPORT_PRESENT"
             elif supp_positive:
                 state = "INTERMEDIATE_NATIVE_CONDENSATE_SUPPORT_PRESENT"
@@ -223,6 +232,7 @@ def build_canvas_vertical_conflict_qualification(
                 "primary_cloud_ice_water_kgkg": primary["qi"],
                 "primary_total_condensate_kgkg": primary["qt"],
                 "primary_evidence_consistency": primary["evidence_consistency"],
+                "primary_conflict_type": primary_conflict_type,
                 "below_primary_pressure_hpa": below_main["pressure_hpa"],
                 "below_primary_altitude_agl_km": below_main["altitude_agl_km"],
                 "below_primary_cloud_fraction": below_main["cloud_fraction"],
@@ -269,6 +279,7 @@ def summarize_vertical_conflict_qualification(table: pd.DataFrame) -> pd.DataFra
             "solar_altitude_deg": ang,
             "qualified_conflict_row_count": int(len(g)),
             "qualified_canvas_count": int(g["canvas_id"].astype(str).nunique()),
+            "low_cf_native_condensate_conflict_count": int(state.eq("PRIMARY_NATIVE_CONDENSATE_WITH_LOW_CF_CONFLICT").sum()),
             "isolated_primary_cf_spike_count": int(state.eq("ISOLATED_PRIMARY_CF_SPIKE_HYDROMETEOR_UNSUPPORTED").sum()),
             "intermediate_native_condensate_support_count": int(state.eq("INTERMEDIATE_NATIVE_CONDENSATE_SUPPORT_PRESENT").sum()),
             "adjacent_primary_native_condensate_support_count": int(state.eq("ADJACENT_PRIMARY_NATIVE_CONDENSATE_SUPPORT_PRESENT").sum()),

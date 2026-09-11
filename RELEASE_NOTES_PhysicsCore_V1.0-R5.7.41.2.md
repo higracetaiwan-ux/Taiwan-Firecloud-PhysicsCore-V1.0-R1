@@ -16,4 +16,4 @@ R5.7.41.2 將 legacy Production COT 與 R5.7.41 in-cloud exact-envelope assumed-
 
 2026-09-11 R5.7.41 Field CASE 離線 replay：767 targets，108 eligible shadow candidates，659 ineligible；Production switch=0。
 
-Release regression / FULL-CLEAN 狀態於正式封包後填入。
+Working-tree regression：580/580 PASS。Extracted full regression：580/580 PASS。FULL-CLEAN release gate：CLOSED。

@@ -38,4 +38,6 @@ Candidate 必須通過 target envelope、vertical native evidence、direct confl
 3. Native GFS 127-level provider 另立版本研究，不與 semantic switch 混版。
 
 ### Release Gate
-待 working-tree full regression、FULL-CLEAN、fresh-extract full regression 完成後關閉。
+- Working-tree full regression：580/580 PASS
+- Extracted full regression：580/580 PASS
+- FULL-CLEAN：CLOSED
