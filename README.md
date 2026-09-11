@@ -1,3 +1,35 @@
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3
+
+
+## R5.7.41.3 Shadow Validation Collection Readiness / Shared Scenic Spot Selector
+
+- 共用台灣晨昏攝影景點母資料庫 V2.2：187 個唯一 GPS 景點。
+- Streamlit 事件設定新增區域＋可搜尋景點選單，並保留自訂座標。
+- 預設景點：`TWS106` 高美濕地；景點 metadata 只做 CASE provenance，物理仍只使用 lat/lon。
+- CASE 新增 `shadow_validation_case_manifest.csv`、`shadow_validation_cohort_summary.csv`、`shadow_validation_ground_truth_template.csv`、`shadow_validation_runtime_summary.csv` 與 `analysis_request.json`。
+- Shadow cohort 固定 science baseline：`R5.7.41.2_SHADOW_COT_AB_FROZEN`；任何 Production switch / COT promotion / Formation promotion 都會讓 collection guard FAIL。
+- CASE 檔名加入 `site_id`，方便同地點多日收集。
+- 不改 Production COT、Formation、Viewing、Twilight Glow、Photography 或既有科學門檻。
+
+## R5.7.41.2 Production COT Semantic Migration Contract / Shadow Mode
+
+本版將 legacy `LEGACY_CF_SCALED_GRID_CELL_MEAN` Production COT 與 `IN_CLOUD_EXACT_ENVELOPE_ASSUMED_REFF` shadow candidate 並列，建立 target envelope、vertical evidence、direct conflict、condensate completeness、CF/RH isolation、r_eff provenance 與 vertical integration eligibility gates。即使 candidate eligible，也不切換 Production：`production_switch_performed=False`、`cot_promotion_allowed=False`、`formation_promotion_allowed=False`。
+
+2026-09-11 R5.7.41 Field CASE 離線 replay：767 targets、108 eligible、659 ineligible、0 switch/promotion。新增 `v1_canvas_cot_semantic_migration.csv`、summary 與 `tools/replay_r57412_cot_semantic_migration.py`。
+
+---
+
+
+## R5.7.41.1 COT Diagnostic Reconciliation
+
+本版釐清 R5.7.41 Field CASE 中 production `direct_native_cot` 與 target-envelope assumed-r_eff COT 的約 1.81 倍差異。108/108 comparable targets 均可由 legacy half-cell edge support、Cloud Fraction extinction scaling 語義、以及 pgrb2b intermediate-level vertical resolution 三項完整重建；最大 residual 約 `9.63e-17`。
+
+新增 `v1_canvas_cot_reconciliation.csv`、`v1_canvas_cot_reconciliation_summary.csv` 與 `tools/replay_r57411_cot_reconciliation.py`。本版不替換 Production COT，`cot_promotion_allowed=False`、`formation_promotion_allowed=False`。
+
+Working-tree regression：574/574 PASS。Extracted regression：574/574 PASS。FULL-CLEAN release gate：CLOSED。
+
+---
+
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.41
 
 ## R5.7.41 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap

@@ -72,6 +72,13 @@ from .canvas_optical_vertical_conflict import (
 from .canvas_vertical_microphysics_overlap import (
     build_canvas_vertical_microphysics_overlap, summarize_canvas_vertical_microphysics_overlap,
 )
+from .canvas_cot_reconciliation import (
+    build_canvas_cot_reconciliation, summarize_canvas_cot_reconciliation,
+)
+from .canvas_cot_semantic_migration import (
+    build_canvas_cot_semantic_migration_shadow,
+    summarize_canvas_cot_semantic_migration_shadow,
+)
 from .providers.ecmwf_ifs_native import fetch_route_secondary_target_optics as fetch_ifs_secondary_target_optics, provider_status as ecmwf_ifs_provider_status
 from .providers.dwd_icon_native import fetch_route_secondary_target_optics as fetch_icon_secondary_target_optics, provider_status as dwd_icon_provider_status
 from .v1_runtime import build_r2_geometry_tables
@@ -2619,6 +2626,25 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_canvas_vertical_microphysics_overlap = _concat_release(v1_canvas_vertical_microphysics_overlap_frames)
     v1_canvas_vertical_microphysics_samples = _concat_release(v1_canvas_vertical_microphysics_sample_frames)
     v1_canvas_vertical_microphysics_overlap_summary = _concat_release(v1_canvas_vertical_microphysics_overlap_summary_frames)
+    # R5.7.41.1: explain the semantic difference between the production
+    # direct_native_cot and the R5.7.41 target-envelope assumed-r_eff COT.
+    # Diagnostic-only: this table cannot replace target COT or Formation.
+    v1_canvas_cot_reconciliation = build_canvas_cot_reconciliation(
+        v1_target_canvas_optical_evidence,
+        v1_canvas_vertical_microphysics_overlap,
+        v1_canvas_vertical_microphysics_samples,
+    )
+    v1_canvas_cot_reconciliation_summary = summarize_canvas_cot_reconciliation(v1_canvas_cot_reconciliation)
+    # R5.7.41.2: shadow-mode semantic migration. The in-cloud exact-envelope
+    # COT is evaluated for future eligibility but production Target COT and
+    # Formation remain on the legacy source in this release.
+    v1_canvas_cot_semantic_migration = build_canvas_cot_semantic_migration_shadow(
+        v1_target_canvas_optical_evidence,
+        v1_canvas_vertical_microphysics_overlap,
+    )
+    v1_canvas_cot_semantic_migration_summary = summarize_canvas_cot_semantic_migration_shadow(
+        v1_canvas_cot_semantic_migration
+    )
     gfs_canvas_optical_probe_request_audit = pd.DataFrame(gfs_canvas_optical_probe_request_audit_rows)
     v1_viewing_spectral_extinction = build_viewing_spectral_extinction(
         v1_viewing_path_geometry, v1_cloud_layers, v1_target_canvas_optical_evidence,
@@ -3003,6 +3029,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "canvas_optical_truth_pgrb2b_probe_required": True,
         "canvas_optical_vertical_conflict_qualification_required": True,
         "canvas_vertical_microphysics_overlap_required": True,
+        "canvas_cot_reconciliation_required": True,
+        "canvas_cot_semantic_migration_required": True,
         "gfs_canvas_optical_probe_request_audit": gfs_canvas_optical_probe_request_audit,
         "v1_canvas_optical_native_probe": v1_canvas_optical_native_probe,
         "v1_canvas_optical_native_probe_summary": v1_canvas_optical_native_probe_summary,
@@ -3015,6 +3043,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_canvas_vertical_microphysics_overlap": v1_canvas_vertical_microphysics_overlap,
         "v1_canvas_vertical_microphysics_samples": v1_canvas_vertical_microphysics_samples,
         "v1_canvas_vertical_microphysics_overlap_summary": v1_canvas_vertical_microphysics_overlap_summary,
+        "v1_canvas_cot_reconciliation": v1_canvas_cot_reconciliation,
+        "v1_canvas_cot_reconciliation_summary": v1_canvas_cot_reconciliation_summary,
+        "v1_canvas_cot_semantic_migration": v1_canvas_cot_semantic_migration,
+        "v1_canvas_cot_semantic_migration_summary": v1_canvas_cot_semantic_migration_summary,
         # R5.7.27.1: hand the already-built Formation-first decision table to
         # the pre-export integrity audit.  R5.7.27 returned/exported this table
         # but omitted it here, so the audit saw a false empty-table failure.
@@ -3110,6 +3142,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_canvas_vertical_microphysics_overlap": v1_canvas_vertical_microphysics_overlap,
         "v1_canvas_vertical_microphysics_samples": v1_canvas_vertical_microphysics_samples,
         "v1_canvas_vertical_microphysics_overlap_summary": v1_canvas_vertical_microphysics_overlap_summary,
+        "v1_canvas_cot_reconciliation": v1_canvas_cot_reconciliation,
+        "v1_canvas_cot_reconciliation_summary": v1_canvas_cot_reconciliation_summary,
+        "v1_canvas_cot_semantic_migration": v1_canvas_cot_semantic_migration,
+        "v1_canvas_cot_semantic_migration_summary": v1_canvas_cot_semantic_migration_summary,
         "gfs_canvas_optical_probe_request_audit": gfs_canvas_optical_probe_request_audit,
         "v1_tier2_scattering_readiness": v1_tier2_scattering_readiness,
         "v1_tier2_scattering_readiness_summary": v1_tier2_scattering_readiness_summary,

@@ -127,6 +127,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     canvas_vertical_overlap = _df(result.get("v1_canvas_vertical_microphysics_overlap"))
     canvas_vertical_samples = _df(result.get("v1_canvas_vertical_microphysics_samples"))
     canvas_vertical_overlap_summary = _df(result.get("v1_canvas_vertical_microphysics_overlap_summary"))
+    canvas_cot_reconciliation = _df(result.get("v1_canvas_cot_reconciliation"))
+    canvas_cot_reconciliation_summary = _df(result.get("v1_canvas_cot_reconciliation_summary"))
+    canvas_cot_semantic_migration = _df(result.get("v1_canvas_cot_semantic_migration"))
+    canvas_cot_semantic_migration_summary = _df(result.get("v1_canvas_cot_semantic_migration_summary"))
     target_canvas_optics = _df(result.get("v1_target_canvas_optical_evidence"))
     native_vox = _df(result.get("native_cloud_voxel_matrix"))
     gas = _df(result.get("gas_profile_route_snapshots"))
@@ -156,6 +160,8 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     canvas_optical_truth_pgrb2b_probe_required = bool(result.get("canvas_optical_truth_pgrb2b_probe_required", False))
     canvas_optical_vertical_conflict_qualification_required = bool(result.get("canvas_optical_vertical_conflict_qualification_required", False))
     canvas_vertical_microphysics_overlap_required = bool(result.get("canvas_vertical_microphysics_overlap_required", False))
+    canvas_cot_reconciliation_required = bool(result.get("canvas_cot_reconciliation_required", False))
+    canvas_cot_semantic_migration_required = bool(result.get("canvas_cot_semantic_migration_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -443,6 +449,172 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "CANVAS_OPTICAL_TRUTH", len(canvas_vertical_overlap_summary),
                 ">0 summary rows when overlap diagnostics exist",
                 "Summary is diagnostic-only and may not promote COT/Formation",
+            )
+
+    if canvas_cot_reconciliation_required:
+        # R5.7.41.1: prove that the apparent COT mismatch is a semantic/
+        # integration-contract difference, not unexplained numerical drift.
+        # The reconciliation is diagnostic-only and may not replace target COT.
+        if canvas_cot_reconciliation.empty:
+            # A case with no comparable exact legacy + overlap COT is allowed;
+            # there is simply nothing to reconcile.
+            add(
+                "CANVAS_COT_DIAGNOSTIC_RECONCILIATION", PASS, "CANVAS_OPTICAL_TRUTH",
+                0, "0 rows allowed when no comparable exact COT pair exists",
+                "diagnostic-only; no production target COT replacement",
+            )
+        else:
+            required_cols = {
+                "legacy_direct_native_cot", "overlap_cot_estimate_assumed_reff",
+                "legacy_primary_exact_envelope_cf_scaled_cot",
+                "primary_exact_envelope_incloud_cot",
+                "legacy_half_cell_edge_support_delta_cot",
+                "cloud_fraction_semantics_delta_cot",
+                "pgrb2b_vertical_resolution_delta_cot",
+                "reconciliation_residual_cot", "legacy_reconstruction_matches",
+                "reconciliation_state", "production_target_cot_replaced",
+                "cot_promotion_allowed", "formation_promotion_allowed",
+                "cloud_fraction_used_for_new_cot", "rh_used_to_infer_condensate",
+                "reconciliation_contract",
+            }
+            missing_cols = sorted(required_cols - set(canvas_cot_reconciliation.columns))
+            state_ok = bool(canvas_cot_reconciliation.get(
+                "reconciliation_state", pd.Series("", index=canvas_cot_reconciliation.index)
+            ).astype(str).eq("SEMANTIC_DIFFERENCE_EXPLAINED").all())
+            recon_ok = bool(canvas_cot_reconciliation.get(
+                "legacy_reconstruction_matches", pd.Series(False, index=canvas_cot_reconciliation.index)
+            ).fillna(False).astype(bool).all())
+            residual = pd.to_numeric(canvas_cot_reconciliation.get(
+                "reconciliation_residual_cot", pd.Series(float("nan"), index=canvas_cot_reconciliation.index)
+            ), errors="coerce")
+            residual_ok = bool(residual.notna().all() and (residual.abs() <= 1.0e-10).all())
+            no_promotion = True
+            for c in ["production_target_cot_replaced", "cot_promotion_allowed", "formation_promotion_allowed",
+                      "cloud_fraction_used_for_new_cot", "rh_used_to_infer_condensate"]:
+                if c in canvas_cot_reconciliation.columns:
+                    no_promotion = no_promotion and bool((~canvas_cot_reconciliation[c].fillna(False).astype(bool)).all())
+            contract_ok = bool(canvas_cot_reconciliation.get(
+                "reconciliation_contract", pd.Series("", index=canvas_cot_reconciliation.index)
+            ).fillna("").astype(str).str.contains(
+                "LEGACY_GRID_CELL_MEAN_CF_SCALED_VS_TARGET_INCLOUD_EXACT_ENVELOPE", regex=False
+            ).all())
+            ok = not missing_cols and state_ok and recon_ok and residual_ok and no_promotion and contract_ok
+            add(
+                "CANVAS_COT_DIAGNOSTIC_RECONCILIATION", PASS if ok else FAIL, "CANVAS_OPTICAL_TRUTH",
+                f"rows={len(canvas_cot_reconciliation)};explained={int(canvas_cot_reconciliation.get('reconciliation_state', pd.Series(dtype=str)).astype(str).eq('SEMANTIC_DIFFERENCE_EXPLAINED').sum())};max_abs_residual={float(residual.abs().max()) if residual.notna().any() else float('nan')}",
+                "legacy COT reconstructed; semantic deltas fully explain overlap-vs-legacy difference; no promotion",
+                f"missing_cols={','.join(missing_cols)};state_ok={state_ok};recon_ok={recon_ok};residual_ok={residual_ok};no_promotion={no_promotion};contract_ok={contract_ok}",
+            )
+            add(
+                "CANVAS_COT_DIAGNOSTIC_RECONCILIATION_SUMMARY",
+                PASS if not canvas_cot_reconciliation_summary.empty else WARN,
+                "CANVAS_OPTICAL_TRUTH", len(canvas_cot_reconciliation_summary),
+                ">0 summary rows when comparable reconciliation rows exist",
+                "diagnostic-only; production target COT remains unchanged",
+            )
+
+    if canvas_cot_semantic_migration_required:
+        # R5.7.41.2: shadow-mode migration contract. Candidate eligibility may
+        # be evaluated, but Production Target COT must remain legacy and no
+        # Formation/COT promotion may occur in this release.
+        if canvas_cot_semantic_migration.empty:
+            expected_rows = len(canvas_vertical_overlap)
+            add(
+                "CANVAS_COT_SEMANTIC_MIGRATION_SHADOW",
+                PASS if expected_rows == 0 else FAIL,
+                "CANVAS_OPTICAL_TRUTH", 0,
+                "one shadow migration row per vertical-overlap target; zero only when no target overlap exists",
+                f"vertical_overlap_rows={expected_rows}; production switch forbidden",
+            )
+        else:
+            required_cols = {
+                "legacy_grid_cell_mean_cot", "in_cloud_target_cot",
+                "canvas_coverage_semantics", "legacy_cot_semantics",
+                "in_cloud_cot_semantics", "target_envelope_valid",
+                "vertical_native_evidence_sufficient",
+                "direct_evidence_conflict_free", "condensate_evidence_complete",
+                "no_cf_used_for_candidate_cot", "no_rh_used_for_condensate",
+                "reff_provenance_state", "vertical_integration_contract_pass",
+                "migration_eligibility_state", "migration_ineligibility_reasons",
+                "shadow_candidate_eligible", "production_target_cot_source",
+                "shadow_candidate_cot_source", "production_switch_performed",
+                "production_target_cot_replaced", "cot_promotion_allowed",
+                "formation_promotion_allowed", "migration_contract",
+            }
+            missing_cols = sorted(required_cols - set(canvas_cot_semantic_migration.columns))
+            coverage_ok = len(canvas_cot_semantic_migration) == len(canvas_vertical_overlap)
+            prod_source_ok = bool(canvas_cot_semantic_migration.get(
+                "production_target_cot_source", pd.Series("", index=canvas_cot_semantic_migration.index)
+            ).astype(str).eq("LEGACY_CF_SCALED_GRID_CELL_MEAN").all())
+            shadow_source_ok = bool(canvas_cot_semantic_migration.get(
+                "shadow_candidate_cot_source", pd.Series("", index=canvas_cot_semantic_migration.index)
+            ).astype(str).eq("IN_CLOUD_EXACT_ENVELOPE_ASSUMED_REFF").all())
+            semantics_ok = bool(canvas_cot_semantic_migration.get(
+                "canvas_coverage_semantics", pd.Series("", index=canvas_cot_semantic_migration.index)
+            ).astype(str).eq("HORIZONTAL_OCCUPANCY_SEPARATE_FROM_COT").all()) and bool(
+                canvas_cot_semantic_migration.get(
+                    "in_cloud_cot_semantics", pd.Series("", index=canvas_cot_semantic_migration.index)
+                ).astype(str).eq("IN_CLOUD_COT_ESTIMATE_ASSUMED_REFF").all()
+            )
+            no_switch = True
+            for c in ["production_switch_performed", "production_target_cot_replaced",
+                      "cot_promotion_allowed", "formation_promotion_allowed"]:
+                if c in canvas_cot_semantic_migration.columns:
+                    no_switch = no_switch and bool((~canvas_cot_semantic_migration[c].fillna(False).astype(bool)).all())
+            no_cf_rh = bool(canvas_cot_semantic_migration.get(
+                "no_cf_used_for_candidate_cot", pd.Series(False, index=canvas_cot_semantic_migration.index)
+            ).fillna(False).astype(bool).all()) and bool(canvas_cot_semantic_migration.get(
+                "no_rh_used_for_condensate", pd.Series(False, index=canvas_cot_semantic_migration.index)
+            ).fillna(False).astype(bool).all())
+            eligible = canvas_cot_semantic_migration.get(
+                "shadow_candidate_eligible", pd.Series(False, index=canvas_cot_semantic_migration.index)
+            ).fillna(False).astype(bool)
+            elig_state_ok = bool(canvas_cot_semantic_migration.loc[eligible, "migration_eligibility_state"].astype(str).eq(
+                "ELIGIBLE_SHADOW_CANDIDATE"
+            ).all()) if eligible.any() else True
+            gate_cols = [
+                "target_envelope_valid", "vertical_native_evidence_sufficient",
+                "direct_evidence_conflict_free", "condensate_evidence_complete",
+                "no_cf_used_for_candidate_cot", "no_rh_used_for_condensate",
+                "vertical_integration_contract_pass",
+            ]
+            eligible_gate_ok = True
+            if eligible.any():
+                for c in gate_cols:
+                    eligible_gate_ok = eligible_gate_ok and bool(
+                        canvas_cot_semantic_migration.loc[eligible, c].fillna(False).astype(bool).all()
+                    )
+                eligible_gate_ok = eligible_gate_ok and bool(
+                    canvas_cot_semantic_migration.loc[eligible, "reff_provenance_state"].astype(str).eq(
+                        "ASSUMED_DEFAULTS_EXPLICIT"
+                    ).all()
+                )
+                eligible_cot = pd.to_numeric(
+                    canvas_cot_semantic_migration.loc[eligible, "in_cloud_target_cot"], errors="coerce"
+                )
+                eligible_gate_ok = eligible_gate_ok and bool(eligible_cot.notna().all() and (eligible_cot >= 0).all())
+            ineligible_reason_ok = bool(
+                canvas_cot_semantic_migration.loc[~eligible, "migration_ineligibility_reasons"].fillna("").astype(str).str.len().gt(0).all()
+            ) if (~eligible).any() else True
+            contract_ok = bool(canvas_cot_semantic_migration.get(
+                "migration_contract", pd.Series("", index=canvas_cot_semantic_migration.index)
+            ).astype(str).str.contains("PRODUCTION_COT_SEMANTIC_MIGRATION_SHADOW_MODE", regex=False).all())
+            ok = (not missing_cols and coverage_ok and prod_source_ok and shadow_source_ok
+                  and semantics_ok and no_switch and no_cf_rh and elig_state_ok
+                  and eligible_gate_ok and ineligible_reason_ok and contract_ok)
+            add(
+                "CANVAS_COT_SEMANTIC_MIGRATION_SHADOW", PASS if ok else FAIL,
+                "CANVAS_OPTICAL_TRUTH",
+                f"rows={len(canvas_cot_semantic_migration)};eligible={int(eligible.sum())};ineligible={int((~eligible).sum())}",
+                "shadow candidate eligibility is auditable; legacy remains Production; no CF/RH to candidate COT; no switch/promotion",
+                f"missing_cols={','.join(missing_cols)};coverage_ok={coverage_ok};prod_source_ok={prod_source_ok};shadow_source_ok={shadow_source_ok};semantics_ok={semantics_ok};no_switch={no_switch};no_cf_rh={no_cf_rh};eligible_gate_ok={eligible_gate_ok};ineligible_reason_ok={ineligible_reason_ok};contract_ok={contract_ok}",
+            )
+            add(
+                "CANVAS_COT_SEMANTIC_MIGRATION_SHADOW_SUMMARY",
+                PASS if not canvas_cot_semantic_migration_summary.empty else WARN,
+                "CANVAS_OPTICAL_TRUTH", len(canvas_cot_semantic_migration_summary),
+                ">0 summary rows when shadow migration rows exist",
+                "diagnostic shadow mode only; production target COT remains legacy",
             )
 
     if not gfs_inv.empty and native_vox.empty:

@@ -18,6 +18,19 @@ import pandas as pd
 import streamlit as st
 
 from firecloud import PROGRAM_NAME, __version__, __baseline__
+from firecloud.scenic_spots import (
+    DEFAULT_SITE_ID, REGISTRY_VERSION as SCENIC_SPOT_REGISTRY_VERSION,
+    event_is_compatible, filter_scenic_spots, match_scenic_spot,
+    scenic_regions, scenic_spot_by_id, scenic_spot_label,
+)
+from firecloud.shadow_validation_collection import (
+    build_case_manifest as build_shadow_validation_case_manifest,
+    build_cohort_summary as build_shadow_validation_cohort_summary,
+    build_ground_truth_template as build_shadow_validation_ground_truth_template,
+    build_runtime_summary as build_shadow_validation_runtime_summary,
+    build_collection_integrity_audit as build_shadow_collection_integrity_audit,
+    merge_collection_audit as merge_shadow_collection_audit,
+)
 CASE_FILENAME_PREFIX = "Taiwan-Firecloud-PhysicsCore-V1.0-R5."
 from firecloud.timezone_contract import AUTO_COORDINATE, USER_OVERRIDE, resolve_event_timezone
 from firecloud.hitran_readiness import hitran_backend_status, resolve_hitran_db_path, resolve_hitran_lut_path
@@ -1087,7 +1100,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.41 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap + R5.7.40.1 Vertical Conflict Integrity Handoff Hotfix + R5.7.40 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification + R5.7.39.1 pgrb2b Secondary Filter Endpoint Hotfix + R5.7.39 Canvas Optical Truth Phase 1 / GFS pgrb2b Native Condensate Probe + R5.7.38 CAMS Post-success Download Recovery + R5.7.37 Near-Surface Molecular Boundary Closure + R5.7.36 Formation Canvas Eligibility / Low-Cloud Role Separation + R5.7.35.2 Zero-Eligible Viewing Precipitation Integrity Semantics + R5.7.35.1 Aerosol Missing-Reason Handoff Hotfix + R5.7.35 Aerosol Scattering Physics Phase 1 + R5.7.34 CAMS ADS Stateful Deadline / Request-ID Recovery + R5.7.33.1 Native 3D Aerosol Readiness Integrity Hotfix + R5.7.33 Glow Deep-Range Gas/Rayleigh/Cloud Closure + R5.7.32 Glow Observer-Path Aerosol Coverage Robustness + R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1 + R5.7.30.1 Integrity Regression Restore + R5.7.30 Independent Twilight Glow Third Branch + R5.7.29.1 Viewing Precipitation Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.41.3 Shadow Validation Collection Readiness + Shared Scenic Spot Selector + R5.7.41.2 Production COT Semantic Migration Shadow Mode + R5.7.41.1 COT Diagnostic Reconciliation + R5.7.41 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap + R5.7.40.1 Vertical Conflict Integrity Handoff Hotfix + R5.7.40 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification + R5.7.39.1 pgrb2b Secondary Filter Endpoint Hotfix + R5.7.39 Canvas Optical Truth Phase 1 / GFS pgrb2b Native Condensate Probe + R5.7.38 CAMS Post-success Download Recovery + R5.7.37 Near-Surface Molecular Boundary Closure + R5.7.36 Formation Canvas Eligibility / Low-Cloud Role Separation + R5.7.35.2 Zero-Eligible Viewing Precipitation Integrity Semantics + R5.7.35.1 Aerosol Missing-Reason Handoff Hotfix + R5.7.35 Aerosol Scattering Physics Phase 1 + R5.7.34 CAMS ADS Stateful Deadline / Request-ID Recovery + R5.7.33.1 Native 3D Aerosol Readiness Integrity Hotfix + R5.7.33 Glow Deep-Range Gas/Rayleigh/Cloud Closure + R5.7.32 Glow Observer-Path Aerosol Coverage Robustness + R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1 + R5.7.30.1 Integrity Regression Restore + R5.7.30 Independent Twilight Glow Third Branch + R5.7.29.1 Viewing Precipitation Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
@@ -1198,13 +1211,13 @@ def _render_live_analysis_fragment(job_id: str) -> None:
 
 
 try:
-    _default_lat = float(_recovery_req.get("lat", 24.2500))
+    _default_lat = float(_recovery_req.get("lat", 24.311902))
 except Exception:
-    _default_lat = 24.2500
+    _default_lat = 24.311902
 try:
-    _default_lon = float(_recovery_req.get("lon", 120.5000))
+    _default_lon = float(_recovery_req.get("lon", 120.549789))
 except Exception:
-    _default_lon = 120.5000
+    _default_lon = 120.549789
 try:
     _default_day = date.fromisoformat(str(_recovery_req.get("day"))) if _recovery_req.get("day") else date.today()
 except Exception:
@@ -1214,14 +1227,87 @@ _default_tz_mode = str(_recovery_req.get("tz_mode", AUTO_COORDINATE) or AUTO_COO
 if _default_tz_mode not in {AUTO_COORDINATE, USER_OVERRIDE}:
     _default_tz_mode = AUTO_COORDINATE
 _default_tz_override = str(_recovery_req.get("tz_name", "Asia/Taipei") or "Asia/Taipei")
+_raw_location_source = _recovery_req.get("location_source")
+_default_spot = scenic_spot_by_id(_recovery_req.get("site_id"))
+if _default_spot is None:
+    _default_spot = match_scenic_spot(_default_lat, _default_lon)
+if _raw_location_source is None:
+    # Backward-compatible recovery: old jobs had no location_source.  Preserve
+    # arbitrary/manual coordinates unless they genuinely match the shared registry.
+    _default_location_source = "PRESET" if _default_spot is not None else ("MANUAL" if _recovery_req else "PRESET")
+else:
+    _default_location_source = str(_raw_location_source or "PRESET").upper()
+    if _default_location_source not in {"PRESET", "MANUAL"}:
+        _default_location_source = "PRESET"
+if _default_spot is None and _default_location_source == "PRESET":
+    _default_spot = scenic_spot_by_id(DEFAULT_SITE_ID)
 
 with st.sidebar:
     st.header("事件設定")
-    lat = st.number_input("緯度", value=_default_lat, format="%.6f")
-    lon = st.number_input("經度", value=_default_lon, format="%.6f")
     day = st.date_input("日期", value=_default_day)
     event_zh = st.selectbox("事件", ["日落", "日出"], index=1 if _default_event == "sunrise" else 0)
     event = {"日落": "sunset", "日出": "sunrise"}[event_zh]
+
+    st.markdown("**觀測地點**")
+    _location_mode = st.radio(
+        "地點來源", ["景點選單", "自訂座標"],
+        index=1 if _default_location_source == "MANUAL" else 0,
+        horizontal=True,
+        help="景點選單使用共用台灣晨昏攝影景點母資料庫；自訂座標仍保留給臨時機位。",
+    )
+    selected_spot = None
+    if _location_mode == "景點選單":
+        _region_options = ["全部", *scenic_regions()]
+        _default_region = (_default_spot or {}).get("site_region", "全部")
+        _region_index = _region_options.index(_default_region) if _default_region in _region_options else 0
+        _selected_region = st.selectbox("區域", _region_options, index=_region_index)
+        _compatible_only = st.checkbox("只顯示符合本次日出／日落標記的景點", value=False)
+        _spot_rows = filter_scenic_spots(region=_selected_region, event=event, compatible_only=_compatible_only)
+        _spot_by_id = {row["site_id"]: row for row in _spot_rows}
+        _preferred_id = (_default_spot or {}).get("site_id", DEFAULT_SITE_ID)
+        if _preferred_id not in _spot_by_id:
+            _preferred = scenic_spot_by_id(_preferred_id)
+            if _preferred is not None and (_selected_region == "全部" or _preferred.get("site_region") == _selected_region):
+                _spot_rows = [_preferred, *_spot_rows]
+                _spot_by_id[_preferred_id] = _preferred
+        _spot_ids = [row["site_id"] for row in _spot_rows]
+        if not _spot_ids:
+            _fallback = scenic_spot_by_id(DEFAULT_SITE_ID)
+            _spot_rows = [_fallback] if _fallback else []
+            _spot_by_id = {r["site_id"]: r for r in _spot_rows}
+            _spot_ids = list(_spot_by_id)
+        _spot_index = _spot_ids.index(_preferred_id) if _preferred_id in _spot_ids else 0
+        _selected_site_id = st.selectbox(
+            "景點（可輸入名稱搜尋）", _spot_ids, index=_spot_index,
+            format_func=lambda sid: scenic_spot_label(_spot_by_id[sid]),
+        )
+        selected_spot = _spot_by_id[_selected_site_id]
+        lat = float(selected_spot["latitude"])
+        lon = float(selected_spot["longitude"])
+        site_id = str(selected_spot["site_id"])
+        site_name = str(selected_spot["site_name"])
+        site_region = str(selected_spot["site_region"])
+        site_county_area = str(selected_spot["site_county_area"])
+        site_event_suitability = str(selected_spot["event_suitability_raw"])
+        location_source = "PRESET"
+        st.caption(
+            f"GPS：{lat:.6f}, {lon:.6f}｜{site_id}｜資料庫 {SCENIC_SPOT_REGISTRY_VERSION}"
+        )
+        if not event_is_compatible(selected_spot, event):
+            st.warning(
+                f"此景點資料庫標記為「{site_event_suitability}」，與目前選擇的「{event_zh}」不一致；"
+                "仍允許分析，不會改變物理計算。"
+            )
+    else:
+        lat = st.number_input("緯度", value=_default_lat, format="%.6f")
+        lon = st.number_input("經度", value=_default_lon, format="%.6f")
+        site_id = "MANUAL"
+        site_name = "自訂座標"
+        site_region = ""
+        site_county_area = ""
+        site_event_suitability = ""
+        location_source = "MANUAL"
+        st.caption("自訂座標會完整寫入 CASE；不會冒充預設景點 site_id。")
 
     with st.expander("時區／UTC 物理時間（跨區域測試）", expanded=False):
         _tz_mode_label = st.radio(
@@ -1581,6 +1667,13 @@ if run or st.session_state.analysis_result is not None:
         _request = {
             "lat": float(lat),
             "lon": float(lon),
+            "site_id": str(site_id),
+            "site_name": str(site_name),
+            "site_region": str(site_region),
+            "site_county_area": str(site_county_area),
+            "site_event_suitability": str(site_event_suitability),
+            "location_source": str(location_source),
+            "scenic_spot_registry_version": SCENIC_SPOT_REGISTRY_VERSION if location_source == "PRESET" else "",
             "day": day.isoformat() if hasattr(day, "isoformat") else str(day),
             "event": str(event),
             "tz_mode": _tz_resolution_run.mode,
@@ -2138,9 +2231,16 @@ if run or st.session_state.analysis_result is not None:
     if "case_archive_elapsed" not in st.session_state:
         st.session_state.case_archive_elapsed = None
 
-    archive_req = st.session_state.analysis_request or {"day": day, "event": event}
+    archive_req = st.session_state.analysis_request or {
+        "day": day, "event": event, "lat": float(lat), "lon": float(lon),
+        "site_id": str(site_id), "site_name": str(site_name),
+        "site_region": str(site_region), "site_county_area": str(site_county_area),
+        "site_event_suitability": str(site_event_suitability), "location_source": str(location_source),
+        "scenic_spot_registry_version": SCENIC_SPOT_REGISTRY_VERSION if location_source == "PRESET" else "",
+    }
     archive_day = archive_req.get("day", day)
     archive_event = archive_req.get("event", event)
+    archive_site_id = str(archive_req.get("site_id", "MANUAL") or "MANUAL")
     _case_signature = json.dumps(
         {
             "program_version": __version__,
@@ -2192,8 +2292,16 @@ if run or st.session_state.analysis_result is not None:
     def _build_case_archive_bytes():
         _t0 = perf_counter()
         _mem = io.BytesIO()
+        _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
+        _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
+        _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
+        _collection_runtime_summary = build_shadow_validation_runtime_summary(archive_req, result, program_version=__version__)
         _items = [
             ("summary.csv", result["summary"]),
+            ("shadow_validation_case_manifest.csv", _collection_case_manifest),
+            ("shadow_validation_cohort_summary.csv", _collection_cohort_summary),
+            ("shadow_validation_ground_truth_template.csv", _collection_ground_truth),
+            ("shadow_validation_runtime_summary.csv", _collection_runtime_summary),
             ("event_time_contract.csv", result.get("event_time_contract", pd.DataFrame())),
             ("route_reference_contract.csv", result.get("route_reference_contract", pd.DataFrame())),
             ("directions.csv", detail["directions"]),
@@ -2272,6 +2380,10 @@ if run or st.session_state.analysis_result is not None:
             ("v1_canvas_vertical_microphysics_overlap.csv", result.get("v1_canvas_vertical_microphysics_overlap", pd.DataFrame())),
             ("v1_canvas_vertical_microphysics_samples.csv", result.get("v1_canvas_vertical_microphysics_samples", pd.DataFrame())),
             ("v1_canvas_vertical_microphysics_overlap_summary.csv", result.get("v1_canvas_vertical_microphysics_overlap_summary", pd.DataFrame())),
+            ("v1_canvas_cot_reconciliation.csv", result.get("v1_canvas_cot_reconciliation", pd.DataFrame())),
+            ("v1_canvas_cot_reconciliation_summary.csv", result.get("v1_canvas_cot_reconciliation_summary", pd.DataFrame())),
+            ("v1_canvas_cot_semantic_migration.csv", result.get("v1_canvas_cot_semantic_migration", pd.DataFrame())),
+            ("v1_canvas_cot_semantic_migration_summary.csv", result.get("v1_canvas_cot_semantic_migration_summary", pd.DataFrame())),
             ("gfs_canvas_optical_probe_request_audit.csv", result.get("gfs_canvas_optical_probe_request_audit", pd.DataFrame())),
             ("v1_tier2_scattering_readiness.csv", result.get("v1_tier2_scattering_readiness", pd.DataFrame())),
             ("v1_tier2_scattering_readiness_summary.csv", result.get("v1_tier2_scattering_readiness_summary", pd.DataFrame())),
@@ -2312,6 +2424,7 @@ if run or st.session_state.analysis_result is not None:
             ("forecast_raw.csv", result["hourly_raw"]),
         ]
         _json_items = [
+            ("analysis_request.json", dict(archive_req)),
             ("native_gfs_provider_metadata.json", {str(k): v.get("native_provider_metadata", {}) for k, v in result.get("details", {}).items()}),
             ("cams_native_aerosol_provider_metadata.json", {str(k): v.get("cams_native_aerosol_metadata", {}) for k, v in result.get("details", {}).items()}),
             ("cams_native_ozone_provider_status.json", result.get("cams_native_ozone_provider_status", {})),
@@ -2364,6 +2477,13 @@ if run or st.session_state.analysis_result is not None:
                 _manifest_df,
                 result.get("analysis_integrity_audit", pd.DataFrame()),
             )
+            _collection_integrity_df = build_shadow_collection_integrity_audit(
+                _manifest_df,
+                _collection_case_manifest,
+                _collection_cohort_summary,
+                result.get("v1_canvas_cot_semantic_migration", pd.DataFrame()),
+            )
+            _case_integrity_df = merge_shadow_collection_audit(_case_integrity_df, _collection_integrity_df)
             _status.caption("CASE：case_archive_manifest.csv")
             _manifest_manifest = _zip_write_csv_stream(z, "case_archive_manifest.csv", _manifest_df)
             _status.caption("CASE：case_integrity_audit.csv")
@@ -2404,7 +2524,7 @@ if run or st.session_state.analysis_result is not None:
         st.download_button(
             "下載本次分析 CASE ZIP",
             data=st.session_state.case_archive_bytes,
-            file_name=f"{CASE_FILENAME_PREFIX}{__version__.removeprefix('1.0.0-R5.')}_{archive_day}_{archive_event}_CASE.zip",
+            file_name=f"{CASE_FILENAME_PREFIX}{__version__.removeprefix('1.0.0-R5.')}_{archive_day}_{archive_event}_{archive_site_id}_CASE.zip",
             mime="application/zip",
             on_click="ignore",
             key="download_case_zip",
@@ -2412,7 +2532,7 @@ if run or st.session_state.analysis_result is not None:
 
 st.divider()
 st.caption(
-    "R5.7.41 新增 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap：合併主 pgrb2 與 pgrb2b 中間 pressure levels 的原生 CLWMR/ICMR/HGT/TMP，將每個 Formation Canvas 的 Cloud Base–Top 逐層分成 INTERIOR / BOUNDARY / OUTSIDE，明確區分 boundary-only 與 strict-interior native condensate support，計算 known/missing coverage、上下 bracket 與最大垂直 gap；新增 assumed-r_eff COT 診斷骨架，但 DIRECT_EVIDENCE_CONFLICT 一律 blocked，且 cot_promotion_allowed / formation_promotion_allowed 永久為 False。本版不改 Formation、Viewing、Glow、Photography 或任何既有物理門檻。R5.7.40.1 修正 Vertical Conflict Integrity Handoff：pre-export Analysis Integrity 現在會接收已生成的 v1_target_canvas_optical_evidence，讓 CANVAS_OPTICAL_VERTICAL_CONFLICT_QUALIFICATION 以真正的 DIRECT_EVIDENCE_CONFLICT canvas 集合計算 coverage；只修 audit handoff，不改 COT、Formation、Viewing、Glow 或 Photography。R5.7.40 新增 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification：以主 pgrb2 的 cloud-fraction/CLWMR/ICMR 與相鄰主 pressure levels，再結合 pgrb2b 的 125/175/225… hPa 中間層 CLWMR/ICMR/HGT/TMP，將 DIRECT_EVIDENCE_CONFLICT 分類為孤立 cloud-fraction spike、intermediate native condensate support、adjacent primary support 或 vertical context incomplete；pgrb2b pressure-level cloud fraction 不參與幾何或 COT 判定，RH/cloud fraction 不得生成 condensate，且本版不改 target COT readiness、Formation 或 Photography。R5.7.39.1 修正 NOAA GFS pgrb2b secondary-parameter Grib Filter endpoint：pgrb2b.0p25 必須使用 filter_gfs_0p25b.pl；R5.7.39 真實 CASE 因誤用主 pgrb2 filter_gfs_0p25.pl 而得到 HTTP 500。此 hotfix 只修 provider routing，不改 Canvas/Formation/COT science。R5.7.39 新增 Canvas Optical Truth Phase 1：以 NOAA GFS pgrb2b.0p25 中間 pressure levels（125/175/225…925 hPa）的原生 CLWMR/ICMR/TMP/HGT，對 0–100 km Formation Canvas 做同一 GFS cycle 的 direct-native condensate probe；本版只輸出診斷證據，不改 target COT readiness、不改 Formation，也不得由 RH/cloud fraction 假造 condensate/COT。probe positive 只表示中間層存在原生凝結物，需後續 field CASE 決定是否能建立更完整的 target optical truth。R5.7.38 新增 CAMS Post-success Download Recovery：ADS 遠端 job 已 successful 後，下載階段改以同一 request ID 重新取得 Results/下載位置並做短且有界的 transient retry；408/429/500/502/503/504 與連線錯誤可重試，預設最多 4 次、2 秒起始 backoff、12 秒上限，不再讓 client 內部 120 秒 retry stall 主導整體 runtime；任何重試都不得重新 submit CAMS job，下載 URL 不寫入 journal/CASE。R5.7.37 新增 Near-Surface Molecular Boundary Closure：保留既有 10 m molecular endpoint tolerance，不放寬容忍值；以 Open-Meteo surface pressure / 2m temperature / 2m RH 與 CAMS native O₃ model level 137 建立約 10 m 的近地分子狀態 anchor，使 LOS midpoint 可在 ML137 與最低 pressure-level 間做真實 bracket interpolation；任一必要證據 Missing 時不建立 anchor，Rayleigh / gas species 仍維持 Partial/Missing。R5.7.36 正式將 CloudScene 與 Formation Canvas target 分離：低於 2 km 的低雲仍保留為 blocker/view obstruction，但不再進入 v1_canvas_candidates、DirectSolar 或 Formation Canvas aggregation；100 km 外雲層亦僅保留上游/診斷角色。R5.7.35.2 修正零 eligible Viewing target 時 precipitation evidence 合理為空卻被誤判 FAIL 的 Integrity 語義；只有存在 eligible target 時才強制 per-target precipitation handoff。R5.7.35.1 補齊 aerosol scattering unresolved/partial 的上游 Sun→Scatter / Scatter→Observer missing-reason handoff；不改任何散射數值。R5.7.35 新增 CAMS native AOD/SSA/asymmetry g + HG 單次散射 evidence；不宣稱 absolute radiance。R5.7.34 將 CAMS ADS wait 改為 queue/running/total 分段 deadline，保存 request ID 與 request fingerprint，timeout 只停止本地等待而不取消遠端 job；下一次相同 request 會先 reattach。R5.7.33.1 修正 long-range aerosol Integrity readiness：spectral AOD fallback 不再冒充 native 3D aerosol READY；native timeout 保持 Missing，不產生假 hard FAIL。R5.7.33 收斂 100 km 深曙暮光 observer path：Rayleigh / HITRAN gas-species 沿用既有 <=10 m 最低原生 pressure-level boundary tolerance；真正的 cloud optical DIRECT_EVIDENCE_CONFLICT 仍保持 Partial/Missing，不以 cloud fraction 或零 condensate 假造 COT。R5.7.32 CAMS geopotential normalization 與長距離 aerosol coverage 契約完整保留。"
+    "R5.7.41.3 新增 Shadow Validation Collection Readiness 與 Shared Scenic Spot Selector：使用台灣晨昏攝影景點母資料庫 V2.2 的 187 筆 GPS 景點，新增穩定 site_id、區域與可搜尋景點選單、自訂座標 fallback，並將 location provenance、Shadow cohort summary、Ground Truth template、runtime summary 與 science-baseline freeze guard 寫入 CASE；本版不改任何 Production COT、Formation、Viewing、Glow、Photography science。R5.7.41.2 新增 Production COT Semantic Migration Shadow Mode：同時計算 legacy grid-cell-mean CF-scaled COT 與 in-cloud exact-envelope assumed-r_eff COT 候選，建立 target envelope、vertical native evidence、direct-conflict、condensate completeness、CF/RH isolation、r_eff provenance 與 vertical integration eligibility gates；本版 production_target_cot_source 固定維持 LEGACY_CF_SCALED_GRID_CELL_MEAN，任何 eligible candidate 只標記為 shadow candidate，production switch、COT promotion、Formation promotion 均強制 False。R5.7.41.1 新增 COT Diagnostic Reconciliation：不改 Production COT/Formation，將既有 direct_native_cot 的 grid-cell-mean CF-scaled + half-cell edge-support 語義，與 R5.7.41 target-envelope in-cloud pgrb2+pgrb2b assumed-r_eff COT 診斷拆解成可稽核項；輸出 legacy edge-support、Cloud Fraction 語義差、pgrb2b 垂直解析度增量與 reconciliation residual，只有差異可完整重建且 no-promotion contract 成立才 PASS。R5.7.41 新增 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap：合併主 pgrb2 與 pgrb2b 中間 pressure levels 的原生 CLWMR/ICMR/HGT/TMP，將每個 Formation Canvas 的 Cloud Base–Top 逐層分成 INTERIOR / BOUNDARY / OUTSIDE，明確區分 boundary-only 與 strict-interior native condensate support，計算 known/missing coverage、上下 bracket 與最大垂直 gap；新增 assumed-r_eff COT 診斷骨架，但 DIRECT_EVIDENCE_CONFLICT 一律 blocked，且 cot_promotion_allowed / formation_promotion_allowed 永久為 False。本版不改 Formation、Viewing、Glow、Photography 或任何既有物理門檻。R5.7.40.1 修正 Vertical Conflict Integrity Handoff：pre-export Analysis Integrity 現在會接收已生成的 v1_target_canvas_optical_evidence，讓 CANVAS_OPTICAL_VERTICAL_CONFLICT_QUALIFICATION 以真正的 DIRECT_EVIDENCE_CONFLICT canvas 集合計算 coverage；只修 audit handoff，不改 COT、Formation、Viewing、Glow 或 Photography。R5.7.40 新增 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification：以主 pgrb2 的 cloud-fraction/CLWMR/ICMR 與相鄰主 pressure levels，再結合 pgrb2b 的 125/175/225… hPa 中間層 CLWMR/ICMR/HGT/TMP，將 DIRECT_EVIDENCE_CONFLICT 分類為孤立 cloud-fraction spike、intermediate native condensate support、adjacent primary support 或 vertical context incomplete；pgrb2b pressure-level cloud fraction 不參與幾何或 COT 判定，RH/cloud fraction 不得生成 condensate，且本版不改 target COT readiness、Formation 或 Photography。R5.7.39.1 修正 NOAA GFS pgrb2b secondary-parameter Grib Filter endpoint：pgrb2b.0p25 必須使用 filter_gfs_0p25b.pl；R5.7.39 真實 CASE 因誤用主 pgrb2 filter_gfs_0p25.pl 而得到 HTTP 500。此 hotfix 只修 provider routing，不改 Canvas/Formation/COT science。R5.7.39 新增 Canvas Optical Truth Phase 1：以 NOAA GFS pgrb2b.0p25 中間 pressure levels（125/175/225…925 hPa）的原生 CLWMR/ICMR/TMP/HGT，對 0–100 km Formation Canvas 做同一 GFS cycle 的 direct-native condensate probe；本版只輸出診斷證據，不改 target COT readiness、不改 Formation，也不得由 RH/cloud fraction 假造 condensate/COT。probe positive 只表示中間層存在原生凝結物，需後續 field CASE 決定是否能建立更完整的 target optical truth。R5.7.38 新增 CAMS Post-success Download Recovery：ADS 遠端 job 已 successful 後，下載階段改以同一 request ID 重新取得 Results/下載位置並做短且有界的 transient retry；408/429/500/502/503/504 與連線錯誤可重試，預設最多 4 次、2 秒起始 backoff、12 秒上限，不再讓 client 內部 120 秒 retry stall 主導整體 runtime；任何重試都不得重新 submit CAMS job，下載 URL 不寫入 journal/CASE。R5.7.37 新增 Near-Surface Molecular Boundary Closure：保留既有 10 m molecular endpoint tolerance，不放寬容忍值；以 Open-Meteo surface pressure / 2m temperature / 2m RH 與 CAMS native O₃ model level 137 建立約 10 m 的近地分子狀態 anchor，使 LOS midpoint 可在 ML137 與最低 pressure-level 間做真實 bracket interpolation；任一必要證據 Missing 時不建立 anchor，Rayleigh / gas species 仍維持 Partial/Missing。R5.7.36 正式將 CloudScene 與 Formation Canvas target 分離：低於 2 km 的低雲仍保留為 blocker/view obstruction，但不再進入 v1_canvas_candidates、DirectSolar 或 Formation Canvas aggregation；100 km 外雲層亦僅保留上游/診斷角色。R5.7.35.2 修正零 eligible Viewing target 時 precipitation evidence 合理為空卻被誤判 FAIL 的 Integrity 語義；只有存在 eligible target 時才強制 per-target precipitation handoff。R5.7.35.1 補齊 aerosol scattering unresolved/partial 的上游 Sun→Scatter / Scatter→Observer missing-reason handoff；不改任何散射數值。R5.7.35 新增 CAMS native AOD/SSA/asymmetry g + HG 單次散射 evidence；不宣稱 absolute radiance。R5.7.34 將 CAMS ADS wait 改為 queue/running/total 分段 deadline，保存 request ID 與 request fingerprint，timeout 只停止本地等待而不取消遠端 job；下一次相同 request 會先 reattach。R5.7.33.1 修正 long-range aerosol Integrity readiness：spectral AOD fallback 不再冒充 native 3D aerosol READY；native timeout 保持 Missing，不產生假 hard FAIL。R5.7.33 收斂 100 km 深曙暮光 observer path：Rayleigh / HITRAN gas-species 沿用既有 <=10 m 最低原生 pressure-level boundary tolerance；真正的 cloud optical DIRECT_EVIDENCE_CONFLICT 仍保持 Partial/Missing，不以 cloud fraction 或零 condensate 假造 COT。R5.7.32 CAMS geopotential normalization 與長距離 aerosol coverage 契約完整保留。"
     "R5.7.30.1 恢復 R5.7.29.1 已 field-pass 的 Viewing precipitation target coverage 與 native hydrometeor handoff 兩項 Integrity 硬檢查；不允許只因下游表格大於 0 rows 就視為完整，並恢復 R5.7.29.1 versioned release/spec 文件。"
     "R5.7.30 建立獨立 Sun→atmospheric scatter volume→Observer Twilight Glow 第三分支；目前只輸出未校準 Rayleigh single-scattering source proxy，不宣稱絕對天空輻亮度，也不修改 Formation、Viewing 或 Photography。"
     "R5.7.29.1 修正 Viewing route snapshot 在 precipitation aggregation 前被 runtime spool cleanup 刪除的整合漏接，並新增 precipitation target coverage 與 native RWMR/SNMR/GRLE handoff 兩項 Integrity 硬檢查；不改任何 Viewing extinction 公式或 Formation 規則。"
