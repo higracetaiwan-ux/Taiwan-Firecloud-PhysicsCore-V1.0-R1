@@ -1,3 +1,15 @@
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.40.1
+
+## R5.7.40.1 Vertical Conflict Integrity Handoff Hotfix
+
+R5.7.40 真實 CASE 已產生 432 筆 vertical-conflict qualification rows（45 個 unique conflict canvases），但 pre-export Analysis Integrity 漏傳 `v1_target_canvas_optical_evidence`，導致 `CANVAS_OPTICAL_VERTICAL_CONFLICT_QUALIFICATION` 誤走 `ALLOWED_EMPTY / 0 conflict canvases`。
+
+R5.7.40.1 只補齊這個 Integrity handoff：audit 現在會以真實 `DIRECT_EVIDENCE_CONFLICT` / `CF_CLOUD_CONDENSATE_ZERO` target 集合計算 expected coverage。R5.7.40 CASE 離線 replay 得到 `PASS`、432 qualification rows、45 expected / 45 observed unique canvases。科學輸出、COT readiness、Formation、Viewing、Glow、Photography 均不改。
+
+完整 regression：564/564 PASS。Field validation 尚需用 R5.7.40.1 新 CASE 確認新 CASE 內 audit 行為。
+
+---
+
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.40
 
 ## R5.7.40 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification

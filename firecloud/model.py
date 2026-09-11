@@ -2980,6 +2980,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "gfs_canvas_optical_probe_request_audit": gfs_canvas_optical_probe_request_audit,
         "v1_canvas_optical_native_probe": v1_canvas_optical_native_probe,
         "v1_canvas_optical_native_probe_summary": v1_canvas_optical_native_probe_summary,
+        # R5.7.40.1: hand primary target optical truth into the pre-export
+        # integrity audit so the vertical-conflict guard can derive the real
+        # expected conflict canvas set instead of falling through to ALLOWED_EMPTY.
+        "v1_target_canvas_optical_evidence": v1_target_canvas_optical_evidence,
         "v1_canvas_vertical_conflict_qualification": v1_canvas_vertical_conflict_qualification,
         "v1_canvas_vertical_conflict_qualification_summary": v1_canvas_vertical_conflict_qualification_summary,
         # R5.7.27.1: hand the already-built Formation-first decision table to
