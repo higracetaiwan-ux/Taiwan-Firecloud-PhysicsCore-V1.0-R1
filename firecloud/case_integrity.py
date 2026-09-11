@@ -124,6 +124,9 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
     canvas_vertical_conflict = _df(result.get("v1_canvas_vertical_conflict_qualification"))
     canvas_vertical_conflict_summary = _df(result.get("v1_canvas_vertical_conflict_qualification_summary"))
+    canvas_vertical_overlap = _df(result.get("v1_canvas_vertical_microphysics_overlap"))
+    canvas_vertical_samples = _df(result.get("v1_canvas_vertical_microphysics_samples"))
+    canvas_vertical_overlap_summary = _df(result.get("v1_canvas_vertical_microphysics_overlap_summary"))
     target_canvas_optics = _df(result.get("v1_target_canvas_optical_evidence"))
     native_vox = _df(result.get("native_cloud_voxel_matrix"))
     gas = _df(result.get("gas_profile_route_snapshots"))
@@ -152,6 +155,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     cams_post_success_download_recovery_required = bool(result.get("cams_post_success_download_recovery_required", False))
     canvas_optical_truth_pgrb2b_probe_required = bool(result.get("canvas_optical_truth_pgrb2b_probe_required", False))
     canvas_optical_vertical_conflict_qualification_required = bool(result.get("canvas_optical_vertical_conflict_qualification_required", False))
+    canvas_vertical_microphysics_overlap_required = bool(result.get("canvas_vertical_microphysics_overlap_required", False))
     photography = _df(result.get("v1_photography_decision"))
     perf = _df(result.get("performance_diagnostics"))
     canvas = _df(result.get("v1_canvas_candidates"))
@@ -348,6 +352,98 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                     0, ">0 summary rows when vertical qualification exists",
                     "Vertical qualification exists but summary is absent",
                 )
+
+    # R5.7.41: target Cloud Base--Top vertical microphysics overlap must preserve
+    # direct-native sample position, distinguish boundary-only from strict
+    # interior condensate support, and remain diagnostic-only.
+    if canvas_vertical_microphysics_overlap_required:
+        _expected_conflict_canvases = set()
+        if not target_canvas_optics.empty and "canvas_id" in target_canvas_optics.columns:
+            _cons = target_canvas_optics.get("evidence_consistency", pd.Series("", index=target_canvas_optics.index)).fillna("").astype(str)
+            _truth = target_canvas_optics.get("target_optical_truth_state", pd.Series("", index=target_canvas_optics.index)).fillna("").astype(str)
+            _mask = _cons.eq("CF_CLOUD_CONDENSATE_ZERO") | _truth.eq("DIRECT_EVIDENCE_CONFLICT")
+            _expected_conflict_canvases = set(target_canvas_optics.loc[_mask, "canvas_id"].astype(str))
+        if not _expected_conflict_canvases:
+            add(
+                "CANVAS_VERTICAL_MICROPHYSICS_OVERLAP", ALLOWED_EMPTY, "CANVAS_OPTICAL_TRUTH",
+                0, "0 direct-evidence conflict canvases -> overlap guard may be empty",
+                "R5.7.41 overlap remains diagnostic-only",
+            )
+        elif canvas_vertical_overlap.empty:
+            add(
+                "CANVAS_VERTICAL_MICROPHYSICS_OVERLAP", FAIL, "CANVAS_OPTICAL_TRUTH",
+                f"expected_conflict_canvases={len(_expected_conflict_canvases)};overlap_rows=0",
+                "all direct-evidence conflict canvases represented in vertical overlap diagnostics",
+                "Missing overlap diagnostics must not be treated as zero/clear",
+            )
+        else:
+            required_cols = {
+                "canvas_id", "target_z_base_km", "target_z_top_km",
+                "direct_target_evidence_conflict", "native_sample_count_inside_target",
+                "native_sample_count_strict_interior", "native_sample_count_boundary",
+                "native_condensate_positive_inside_count", "native_condensate_positive_boundary_count",
+                "native_condensate_missing_count_inside_target", "primary_target_bracket_available",
+                "expected_supplement_level_count", "expected_supplement_missing_count",
+                "vertical_bracketing_complete", "max_known_vertical_gap_km", "target_vertical_overlap_state",
+                "cot_diagnostic_state", "cot_estimate_assumed_reff", "cot_diagnostic_semantics",
+                "cloud_fraction_used_for_cot", "rh_used_to_infer_condensate",
+                "cot_promotion_allowed", "formation_promotion_allowed", "overlap_contract",
+            }
+            missing_cols = sorted(required_cols - set(canvas_vertical_overlap.columns))
+            observed = set(canvas_vertical_overlap.get("canvas_id", pd.Series(dtype=str)).astype(str))
+            coverage_ok = _expected_conflict_canvases.issubset(observed)
+            states = set(canvas_vertical_overlap.get("target_vertical_overlap_state", pd.Series(dtype=str)).dropna().astype(str))
+            allowed_states = {
+                "INTERIOR_NATIVE_CONDENSATE_SUPPORT",
+                "BOUNDARY_ONLY_NATIVE_CONDENSATE_SUPPORT",
+                "NO_NATIVE_CONDENSATE_SUPPORT",
+                "MIXED_CONFLICT_WITH_INTERIOR_SUPPORT",
+                "VERTICAL_EVIDENCE_INCOMPLETE",
+            }
+            state_ok = bool(states) and states.issubset(allowed_states)
+            no_promotion = True
+            for c in ["cloud_fraction_used_for_cot", "rh_used_to_infer_condensate", "cot_promotion_allowed", "formation_promotion_allowed"]:
+                if c in canvas_vertical_overlap.columns:
+                    no_promotion = no_promotion and bool((~canvas_vertical_overlap[c].fillna(False).astype(bool)).all())
+            contract_ok = bool(canvas_vertical_overlap.get("overlap_contract", pd.Series("", index=canvas_vertical_overlap.index)).fillna("").astype(str).str.contains("BOUNDARY_NE_INTERIOR;MISSING_NE_ZERO", regex=False).all())
+            # A direct evidence conflict must block even the diagnostic assumed-r_eff
+            # COT estimate. This prevents a new diagnostic table from bypassing
+            # the existing target optical truth fail-close contract.
+            conflict_rows = canvas_vertical_overlap[canvas_vertical_overlap.get("direct_target_evidence_conflict", pd.Series(False, index=canvas_vertical_overlap.index)).fillna(False).astype(bool)]
+            conflict_cot_block_ok = True
+            if not conflict_rows.empty:
+                _cstate = conflict_rows.get("cot_diagnostic_state", pd.Series("", index=conflict_rows.index)).fillna("").astype(str)
+                _cot = pd.to_numeric(conflict_rows.get("cot_estimate_assumed_reff", pd.Series(float("nan"), index=conflict_rows.index)), errors="coerce")
+                conflict_cot_block_ok = bool(_cstate.eq("BLOCKED_DIRECT_EVIDENCE_CONFLICT").all() and _cot.isna().all())
+            semantic_ok = True
+            if "target_vertical_overlap_state" in canvas_vertical_overlap.columns:
+                _s = canvas_vertical_overlap["target_vertical_overlap_state"].astype(str)
+                _pi = pd.to_numeric(canvas_vertical_overlap.get("native_condensate_positive_inside_count", 0), errors="coerce").fillna(0)
+                _pb = pd.to_numeric(canvas_vertical_overlap.get("native_condensate_positive_boundary_count", 0), errors="coerce").fillna(0)
+                semantic_ok = bool((~_s.eq("BOUNDARY_ONLY_NATIVE_CONDENSATE_SUPPORT") | ((_pi == 0) & (_pb > 0))).all())
+                semantic_ok = semantic_ok and bool((~_s.eq("MIXED_CONFLICT_WITH_INTERIOR_SUPPORT") | ((_pi > 0) & canvas_vertical_overlap["direct_target_evidence_conflict"].fillna(False).astype(bool))).all())
+            sample_contract_ok = not canvas_vertical_samples.empty
+            if not canvas_vertical_samples.empty:
+                for c in ["cloud_fraction_used_for_cot", "rh_used_to_infer_condensate"]:
+                    if c in canvas_vertical_samples.columns:
+                        sample_contract_ok = sample_contract_ok and bool((~canvas_vertical_samples[c].fillna(False).astype(bool)).all())
+                positions = set(canvas_vertical_samples.get("sample_target_position", pd.Series(dtype=str)).dropna().astype(str))
+                sample_contract_ok = sample_contract_ok and positions.issubset({"INTERIOR","BOUNDARY_LOWER","BOUNDARY_UPPER","BOUNDARY_NEAR","BELOW_TARGET","ABOVE_TARGET","UNKNOWN"})
+            ok = (not missing_cols and coverage_ok and state_ok and no_promotion and contract_ok
+                  and conflict_cot_block_ok and semantic_ok and sample_contract_ok)
+            add(
+                "CANVAS_VERTICAL_MICROPHYSICS_OVERLAP", PASS if ok else FAIL, "CANVAS_OPTICAL_TRUTH",
+                f"rows={len(canvas_vertical_overlap)};samples={len(canvas_vertical_samples)};expected_conflict_canvases={len(_expected_conflict_canvases)};observed_canvases={len(observed)};states={','.join(sorted(states))}",
+                "complete target-envelope diagnostic coverage; boundary != interior; conflict blocks assumed-r_eff COT; no promotion",
+                f"missing_cols={','.join(missing_cols)};coverage_ok={coverage_ok};state_ok={state_ok};no_promotion={no_promotion};contract_ok={contract_ok};conflict_cot_block_ok={conflict_cot_block_ok};semantic_ok={semantic_ok};sample_contract_ok={sample_contract_ok}",
+            )
+            add(
+                "CANVAS_VERTICAL_MICROPHYSICS_OVERLAP_SUMMARY",
+                PASS if not canvas_vertical_overlap_summary.empty else WARN,
+                "CANVAS_OPTICAL_TRUTH", len(canvas_vertical_overlap_summary),
+                ">0 summary rows when overlap diagnostics exist",
+                "Summary is diagnostic-only and may not promote COT/Formation",
+            )
 
     if not gfs_inv.empty and native_vox.empty:
         add("GFS_NATIVE_VOXEL_HANDOFF", FAIL, "NOAA_GFS_NATIVE", 0, ">0 native voxel rows when inventory decoded", "Inventory exists but reconstructed native voxel evidence vanished")

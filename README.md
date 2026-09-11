@@ -1,3 +1,17 @@
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41
+
+## R5.7.41 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap
+
+本版將 GFS 主 `pgrb2` 與 `pgrb2b` 中間 pressure levels 的 direct-native CLWMR/ICMR/HGT/TMP 合併，逐 Target Canvas 檢查 Cloud Base–Top 的 Interior / Boundary / Outside microphysics evidence。Boundary-only positive condensate 不再被模糊解讀成 interior support；缺 pgrb2b 中間層時保持 Missing / `VERTICAL_EVIDENCE_INCOMPLETE`。
+
+新增 assumed-r_eff COT diagnostic scaffold，但任何 `DIRECT_EVIDENCE_CONFLICT` 都會 block 診斷 COT，且 `cot_promotion_allowed=False`、`formation_promotion_allowed=False`。Formation / Viewing / Glow / Photography science 不變。
+
+新增 CASE：`v1_canvas_vertical_microphysics_overlap.csv`、`v1_canvas_vertical_microphysics_samples.csv`、`v1_canvas_vertical_microphysics_overlap_summary.csv`；另附 `tools/replay_r5741_canvas_vertical_overlap.py` 供舊 CASE 無網路快速重播。
+
+Working-tree regression：571/571 PASS。
+
+---
+
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.40.1
 
 ## R5.7.40.1 Vertical Conflict Integrity Handoff Hotfix
