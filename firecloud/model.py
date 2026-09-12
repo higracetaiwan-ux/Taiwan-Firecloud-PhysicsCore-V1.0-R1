@@ -109,7 +109,7 @@ from .canvas_optical_suitability import build_canvas_optical_suitability, summar
 from .viewing import build_viewing_path_geometry, summarize_viewing_path
 from .viewing_spectral import (
     build_viewing_spectral_extinction, summarize_viewing_spectral_extinction,
-    attach_viewing_spectral_status,
+    attach_viewing_spectral_status, prepare_viewing_spectral_runtime_context,
 )
 from .photography_decision import build_photography_decision
 from .twilight_glow import build_twilight_glow_branch, build_twilight_glow_phase1_exports, build_twilight_glow_aerosol_scattering, attach_twilight_glow_aerosol_summary
@@ -2646,10 +2646,19 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         v1_canvas_cot_semantic_migration
     )
     gfs_canvas_optical_probe_request_audit = pd.DataFrame(gfs_canvas_optical_probe_request_audit_rows)
+    # R5.7.41.3.4.5: one immutable lookup/prepared-HITRAN runtime context is
+    # shared by the independent Viewing branch and the later Twilight Glow
+    # observer path. It contains no target result and cannot change science.
+    _viewing_runtime_context = prepare_viewing_spectral_runtime_context(
+        v1_cloud_layers, v1_target_canvas_optical_evidence,
+        aerosol_spectral_route_snapshots, gas_profile_route_snapshots,
+    )
+    _viewing_runtime_stats = {}
     v1_viewing_spectral_extinction = build_viewing_spectral_extinction(
         v1_viewing_path_geometry, v1_cloud_layers, v1_target_canvas_optical_evidence,
         aerosol_spectral_route_snapshots, gas_profile_route_snapshots,
         v1_viewing_precipitation_evidence, earth_radius_km=cfg.earth_radius_km,
+        runtime_context=_viewing_runtime_context, runtime_cache_stats=_viewing_runtime_stats,
     )
     v1_viewing_spectral_summary = summarize_viewing_spectral_extinction(v1_viewing_spectral_extinction)
     v1_viewing_path_geometry = attach_viewing_spectral_status(v1_viewing_path_geometry, v1_viewing_spectral_extinction)
@@ -2678,6 +2687,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         observer_alt_km=0.0,
         earth_radius_km=cfg.earth_radius_km,
         runtime_cache_stats=_glow_cache_stats,
+        viewing_runtime_context=_viewing_runtime_context,
     )
     (
         v1_twilight_glow_sun_to_scatter_extinction,
@@ -2694,15 +2704,18 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     performance_rows.append({
         "stage": "TWILIGHT_GLOW_INDEPENDENT_BRANCH",
         "elapsed_seconds": _glow_elapsed,
-        "cache_status": "R5741344_GLOW_CLOUD_PROVENANCE_SHARED_CACHE",
+        "cache_status": "R5741345_VIEWING_GLOW_PROVENANCE_HANDOFF_SHARED_RUNTIME",
         "detail": (
             f"volumes={len(v1_twilight_glow_scattering_volume)};angles={len(v1_twilight_glow_summary)};"
             f"sun_extinction_rows={len(v1_twilight_glow_sun_to_scatter_extinction)};"
             f"observer_extinction_rows={len(v1_twilight_glow_scatter_to_observer_extinction)};"
             f"aerosol_scattering_rows={len(v1_twilight_glow_aerosol_scattering)};"
-            f"cloud_groups={_glow_cache_stats.get('cloud_group_count', 0)};"
-            f"cloud_provenance_calls={_glow_cache_stats.get('cloud_provenance_call_count', 0)};"
-            f"support_cache_entries={_glow_cache_stats.get('support_cache_entry_count', 0)}"
+            f"view_runtime_reused={_glow_cache_stats.get('viewing_runtime_context_reused', False)};"
+            f"shared_gas_context={_glow_cache_stats.get('shared_gas_context_source', '')};"
+            f"cloud_handoff_hits={_glow_cache_stats.get('cloud_handoff_hit_count', 0)};"
+            f"cloud_provenance_fallback_calls={_glow_cache_stats.get('cloud_provenance_call_count', 0)};"
+            f"support_cache_entries={_glow_cache_stats.get('support_cache_entry_count', 0)};"
+            f"previous_cache_contract=R5741344_GLOW_CLOUD_PROVENANCE_SHARED_CACHE"
         ),
     })
     _aggregation_checkpoint(

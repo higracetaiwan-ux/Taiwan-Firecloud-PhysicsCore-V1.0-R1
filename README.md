@@ -1,7 +1,28 @@
-> Current release: **V1.0-R5.7.41.3.4.4** — Twilight Glow observer-cloud provenance shared-cache hardening + inclusive/exclusive aggregation telemetry; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.5** — Viewing→Glow observer-cloud provenance handoff + shared Viewing/Glow runtime context; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.4
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.5
 
+## R5.7.41.3.4.5 Viewing→Glow Observer-Cloud Provenance Handoff + Shared Runtime Context
+
+- Viewing 在既有 Cloud→Observer blocker 幾何 pass 內直接保留 Glow 所需的 cloud conflict provenance，不再由 Twilight Glow 為每個 atmospheric volume 重追同一條 observer-cloud path。
+- Viewing 與 Glow 可共用 process-local runtime context：route groups、prepared HITRAN gas contexts、exact COT lookup、target optical-truth lookup、projected-support cache。
+- 共用 context 僅在來源 DataFrame 為同一個 in-memory object 時重用；來源物件不同就重建，避免 stale cache / cross-run contamination。
+- Glow 優先讀取 Viewing handoff；舊/外部資料沒有 handoff 欄位時仍保留 R5.7.41.3.4.4 legacy retrace fallback。
+- H004 / TWS021 單角度 84-volume 離線等價 benchmark：R5.7.41.3.4.4 3.961 s → R5.7.41.3.4.5 2.035 s，約 1.95×；detail/summary exact DataFrame equality。
+- 此版只做 runtime engineering，不改 Shadow eligibility、Production/Shadow COT、Earth Shadow、Formation、Viewing/Glow physics、六波段或 Missing 語義。
+
+## R5.7.41.3.4.4 Twilight Glow Observer-Cloud Provenance Cache Hardening
+
+- Twilight Glow cloud layer 依 time / solar-angle / direction 預分組。
+- exact COT / target optical truth map 單次建立，projected-support geometry 依 transect 共用。
+- 新增 `AGGREGATION_EXCLUDING_TWILIGHT_GLOW` 計時，避免把 Glow inclusive time 重複當成 aggregation 瓶頸。
+- H004/TWS021 單角度 84-volume benchmark：7.743 s → 3.491 s，約 2.22×，detail/summary exact match。
+
+## R5.7.41.3.4.3 DWD Secondary Runtime Cache Hardening
+
+- DWD ICON secondary QC/QI/T/P decoded fields 可安全跨角度重用。
+- 若完整 QC/QI probe 在同一 frozen run/lead 全為 404，後續角度保留 Missing 並停止重送完全相同的 requests。
+- 不把 mixed failure / timeout / 5xx / partial ready 寫成 negative availability cache。
 
 ## R5.7.41.3.4 Historical GFS AWS Indexed-Range Provider Routing
 

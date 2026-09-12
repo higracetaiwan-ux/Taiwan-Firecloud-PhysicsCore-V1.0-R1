@@ -824,6 +824,7 @@ def build_twilight_glow_branch(
     observer_alt_km: float = 0.0,
     earth_radius_km: float = 6371.0,
     runtime_cache_stats: dict[str, Any] | None = None,
+    viewing_runtime_context: dict[str, Any] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build target-volume evidence and per-angle Twilight Glow summaries."""
     geometry = build_twilight_glow_geometry(
@@ -838,6 +839,7 @@ def build_twilight_glow_branch(
     if targets.empty:
         return pd.DataFrame(), summarize_twilight_glow(pd.DataFrame(), event_timeline)
     precipitation = _observer_precipitation(targets, route_snapshots, earth_radius_km=float(earth_radius_km))
+    _view_runtime_stats: dict[str, Any] = {}
     observer_spectral = build_viewing_spectral_extinction(
         targets,
         cloud_layers if isinstance(cloud_layers, pd.DataFrame) else pd.DataFrame(),
@@ -847,6 +849,8 @@ def build_twilight_glow_branch(
         precipitation,
         earth_radius_km=float(earth_radius_km),
         aerosol_lowest_endpoint_tolerance_km=0.05,
+        runtime_context=viewing_runtime_context,
+        runtime_cache_stats=_view_runtime_stats,
     )
     source_map = {
         _key(row.get("time"), row.get("solar_altitude_deg"), row.get("reference_receiver_id")): row
@@ -857,49 +861,69 @@ def build_twilight_glow_branch(
         for _, row in observer_spectral.iterrows()
     }
     gas_index = _gas_profile_index(gas_profiles)
-    gas_contexts = _gas_context_index(gas_profiles)
+    gas_contexts = (viewing_runtime_context or {}).get("gas_contexts") if isinstance(viewing_runtime_context, dict) else None
+    if not isinstance(gas_contexts, dict) or not gas_contexts:
+        gas_contexts = _gas_context_index(gas_profiles)
+        _gas_context_source = "GLOW_LOCAL_PREPARE"
+    else:
+        _gas_context_source = "SHARED_VIEWING_RUNTIME_CONTEXT"
 
-    # R5.7.41.3.4.4 Glow observer-cloud diagnostic cache.  The independent
+    # R5.7.41.3.4.5 Viewing hands unresolved cloud-blocker provenance forward
+    # from the same observer-LOS pass used for cloud extinction. The R5.7.41.3.4.4
+    # re-trace cache remains only as a backward-compatible fallback.
     # Viewing solver above already classifies each Glow target as resolved or
     # partial.  For partial cloud paths we still preserve exact conflict
     # provenance, but build the immutable lookup maps and projected-support
     # geometry only once per time/angle/direction transect.
     glow_cloud_groups: dict[tuple[str, float | None, float | None], pd.DataFrame] = {}
-    if isinstance(cloud_layers, pd.DataFrame) and not cloud_layers.empty:
-        _cloud_work = cloud_layers.copy()
-        if {"solar_altitude_deg", "direction_offset_deg"}.issubset(_cloud_work.columns):
-            _cloud_time = _cloud_work.get("time", pd.Series("", index=_cloud_work.index)).astype(str)
-            _cloud_angle = pd.to_numeric(_cloud_work["solar_altitude_deg"], errors="coerce").round(8)
-            _cloud_direction = pd.to_numeric(_cloud_work["direction_offset_deg"], errors="coerce").round(8)
-            for _keys, _group in _cloud_work.groupby([_cloud_time, _cloud_angle, _cloud_direction], dropna=False, sort=False):
-                _t, _a, _d = _keys
-                if pd.isna(_a) or pd.isna(_d):
-                    continue
-                glow_cloud_groups[(str(_t), round(float(_a), 8), round(float(_d), 8))] = _group
-    glow_cloud_cotmap = _exact_cot_map(
-        cloud_layers if isinstance(cloud_layers, pd.DataFrame) else pd.DataFrame(),
-        target_optics if isinstance(target_optics, pd.DataFrame) else pd.DataFrame(),
-    )
-    glow_cloud_truth_map: dict[tuple[str, float | None, str], tuple[str, str, str]] = {}
-    if isinstance(target_optics, pd.DataFrame) and not target_optics.empty:
-        for _row in target_optics.itertuples(index=False):
-            _row_dict = _row._asdict()
-            _truth_key = _evidence_key(_row_dict.get("time"), _row_dict.get("solar_altitude_deg"), _row_dict.get("cloud_layer_id"))
-            glow_cloud_truth_map[_truth_key] = (
-                str(_row_dict.get("target_optical_truth_state") or ""),
-                str(_row_dict.get("target_cot_semantics") or ""),
-                str(_row_dict.get("resolver_state") or ""),
-            )
+    glow_cloud_cotmap: dict = {}
+    glow_cloud_truth_map: dict = {}
     glow_cloud_support_caches: dict[tuple[str, float | None, float | None], dict] = {}
     glow_cloud_provenance_calls = 0
+    glow_cloud_handoff_hits = 0
+    _fallback_prepared = False
+
+    def _ensure_fallback_cloud_runtime():
+        nonlocal glow_cloud_groups, glow_cloud_cotmap, glow_cloud_truth_map, _fallback_prepared
+        if _fallback_prepared:
+            return
+        if isinstance(cloud_layers, pd.DataFrame) and not cloud_layers.empty:
+            _cloud_work = cloud_layers.copy()
+            if {"solar_altitude_deg", "direction_offset_deg"}.issubset(_cloud_work.columns):
+                _cloud_time = _cloud_work.get("time", pd.Series("", index=_cloud_work.index)).astype(str)
+                _cloud_angle = pd.to_numeric(_cloud_work["solar_altitude_deg"], errors="coerce").round(8)
+                _cloud_direction = pd.to_numeric(_cloud_work["direction_offset_deg"], errors="coerce").round(8)
+                for _keys, _group in _cloud_work.groupby([_cloud_time, _cloud_angle, _cloud_direction], dropna=False, sort=False):
+                    _t, _a, _d = _keys
+                    if pd.isna(_a) or pd.isna(_d):
+                        continue
+                    glow_cloud_groups[(str(_t), round(float(_a), 8), round(float(_d), 8))] = _group
+        glow_cloud_cotmap = _exact_cot_map(
+            cloud_layers if isinstance(cloud_layers, pd.DataFrame) else pd.DataFrame(),
+            target_optics if isinstance(target_optics, pd.DataFrame) else pd.DataFrame(),
+        )
+        if isinstance(target_optics, pd.DataFrame) and not target_optics.empty:
+            for _row in target_optics.itertuples(index=False):
+                _row_dict = _row._asdict()
+                _truth_key = _evidence_key(_row_dict.get("time"), _row_dict.get("solar_altitude_deg"), _row_dict.get("cloud_layer_id"))
+                glow_cloud_truth_map[_truth_key] = (
+                    str(_row_dict.get("target_optical_truth_state") or ""),
+                    str(_row_dict.get("target_cot_semantics") or ""),
+                    str(_row_dict.get("resolver_state") or ""),
+                )
+        _fallback_prepared = True
+
     if runtime_cache_stats is not None:
         runtime_cache_stats.clear()
         runtime_cache_stats.update({
-            "cloud_group_count": len(glow_cloud_groups),
-            "cotmap_entry_count": len(glow_cloud_cotmap),
-            "truth_map_entry_count": len(glow_cloud_truth_map),
+            "cloud_group_count": 0,
+            "cotmap_entry_count": 0,
+            "truth_map_entry_count": 0,
             "cloud_provenance_call_count": 0,
+            "cloud_handoff_hit_count": 0,
             "support_cache_entry_count": 0,
+            "viewing_runtime_context_reused": bool(_view_runtime_stats.get("runtime_context_reused", False)),
+            "shared_gas_context_source": _gas_context_source,
         })
     rows: list[dict[str, Any]] = []
     for _, geom in geometry.iterrows():
@@ -930,8 +954,19 @@ def build_twilight_glow_branch(
         )
         local = _local_molecular_state(target, profiles)
         molecular_boundary_diag = _molecular_boundary_diagnostics(target, profiles, float(earth_radius_km))
-        if observer is not None and str(observer.get("view_cloud_status")) == "VIEW_CLOUD_OPTICS_PARTIAL":
+        if observer is not None and "view_cloud_provenance_state" in observer.index:
+            glow_cloud_handoff_hits += 1
+            cloud_diag = {
+                "state": str(observer.get("view_cloud_provenance_state") or "GLOW_OBSERVER_CLOUD_NOT_EVALUATED"),
+                "blocker_count": int(observer.get("view_cloud_blocker_count", 0) or 0),
+                "unresolved_blocker_count": int(observer.get("view_cloud_unresolved_blocker_count", 0) or 0),
+                "conflict_blocker_count": int(observer.get("view_cloud_conflict_blocker_count", 0) or 0),
+                "unresolved_layer_ids": str(observer.get("view_cloud_unresolved_layer_ids") or ""),
+                "conflict_states": str(observer.get("view_cloud_conflict_states") or ""),
+            }
+        elif observer is not None and str(observer.get("view_cloud_status")) == "VIEW_CLOUD_OPTICS_PARTIAL":
             glow_cloud_provenance_calls += 1
+            _ensure_fallback_cloud_runtime()
             _cloud_group_key = (
                 str(geom.get("time")),
                 None if angle is None else round(angle, 8),
@@ -1160,7 +1195,11 @@ def build_twilight_glow_branch(
         rows.append(record)
     detail = pd.DataFrame(rows)
     if runtime_cache_stats is not None:
+        runtime_cache_stats["cloud_group_count"] = len(glow_cloud_groups)
+        runtime_cache_stats["cotmap_entry_count"] = len(glow_cloud_cotmap)
+        runtime_cache_stats["truth_map_entry_count"] = len(glow_cloud_truth_map)
         runtime_cache_stats["cloud_provenance_call_count"] = int(glow_cloud_provenance_calls)
+        runtime_cache_stats["cloud_handoff_hit_count"] = int(glow_cloud_handoff_hits)
         runtime_cache_stats["support_cache_entry_count"] = int(
             sum(len(cache) for cache in glow_cloud_support_caches.values())
         )

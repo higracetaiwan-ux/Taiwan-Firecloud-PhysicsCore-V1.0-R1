@@ -190,25 +190,123 @@ def _exact_cot_map(cloud_layers: pd.DataFrame, target_optics: pd.DataFrame):
     return out
 
 
-def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame, earth_radius_km: float, *, prefiltered_layers=None, cotmap=None, support_cache=None):
+
+def _target_optical_truth_map(target_optics: pd.DataFrame):
+    """Index fail-closed target optical provenance by time + angle + layer.
+
+    Diagnostic-only.  This never creates COT and is used only to preserve why
+    an already-unresolved observer cloud blocker is a direct conflict versus
+    generic missing optical evidence.
+    """
+    out={}
+    if target_optics is None or target_optics.empty:
+        return out
+    for _,r in target_optics.iterrows():
+        key=_evidence_key(r.get("time"),r.get("solar_altitude_deg"),r.get("cloud_layer_id"))
+        out[key]=(
+            str(r.get("target_optical_truth_state") or ""),
+            str(r.get("target_cot_semantics") or ""),
+            str(r.get("resolver_state") or ""),
+        )
+    return out
+
+
+def _route_group_map(df: pd.DataFrame):
+    """Group a route evidence table by exact time/angle/direction once."""
+    out={}
+    if df is None or df.empty:
+        return out
+    work=df.copy()
+    if "solar_altitude_deg" not in work.columns or "direction_offset_deg" not in work.columns or "distance_km" not in work.columns:
+        return out
+    tser=work.get("time",pd.Series("",index=work.index)).astype(str)
+    aser=pd.to_numeric(work["solar_altitude_deg"],errors="coerce").round(8)
+    dser=pd.to_numeric(work["direction_offset_deg"],errors="coerce").round(8)
+    for k,g in work.groupby([tser,aser,dser],dropna=False,sort=False):
+        key=(str(k[0]), None if pd.isna(k[1]) else float(k[1]), None if pd.isna(k[2]) else float(k[2]))
+        gg=g.copy(); gg["distance_km"]=pd.to_numeric(gg["distance_km"],errors="coerce"); out[key]=gg.sort_values("distance_km")
+    return out
+
+
+def prepare_viewing_spectral_runtime_context(
+    cloud_layers: pd.DataFrame,
+    target_optics: pd.DataFrame,
+    aerosol_snapshots: pd.DataFrame,
+    gas_profiles: pd.DataFrame,
+):
+    """Build immutable lookup state shared by Viewing and Twilight Glow.
+
+    The context is valid only for the exact in-memory evidence objects used to
+    create it.  It contains grouping/index/prepared-HITRAN state and a cloud
+    projected-support cache; it contains no target result and no science gate.
+    """
+    gas_groups=_route_group_map(gas_profiles)
+    return {
+        "contract":"R5.7.41.3.4.5_VIEWING_GLOW_SHARED_RUNTIME_CONTEXT_V1",
+        "source_ids":{
+            "cloud_layers":id(cloud_layers),
+            "target_optics":id(target_optics),
+            "aerosol_snapshots":id(aerosol_snapshots),
+            "gas_profiles":id(gas_profiles),
+        },
+        "aerosol_groups":_route_group_map(aerosol_snapshots),
+        "gas_groups":gas_groups,
+        "cloud_groups":_route_group_map(cloud_layers),
+        "gas_contexts":{k:prepare_gas_rt_context(g) for k,g in gas_groups.items()},
+        "cotmap":_exact_cot_map(cloud_layers,target_optics),
+        "truth_map":_target_optical_truth_map(target_optics),
+        "cloud_support_caches":{},
+    }
+
+
+def _runtime_context_matches(ctx, cloud_layers, target_optics, aerosol_snapshots, gas_profiles):
+    if not isinstance(ctx,dict):
+        return False
+    ids=ctx.get("source_ids",{})
+    return (
+        ids.get("cloud_layers")==id(cloud_layers)
+        and ids.get("target_optics")==id(target_optics)
+        and ids.get("aerosol_snapshots")==id(aerosol_snapshots)
+        and ids.get("gas_profiles")==id(gas_profiles)
+    )
+
+def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame, earth_radius_km: float, *, prefiltered_layers=None, cotmap=None, support_cache=None, truth_map=None, diagnostic_sink=None):
     # Rebuild only the actual blocker volumes for the center of the target angular footprint.
     #
     # R5.7.41.3.3 historical-replay hardening:
     # an old/partial provider replay can legitimately yield a headerless empty
-    # DataFrame.  Missing cloud-volume evidence must fail closed instead of
+    # DataFrame. Missing cloud-volume evidence must fail closed instead of
     # raising KeyError (and must never be promoted to PATH_CLEAR).
+    #
+    # R5.7.41.3.4.5: when diagnostic_sink is supplied, preserve unresolved
+    # blocker/conflict provenance during this *same* geometric pass. Twilight
+    # Glow can then consume the Viewing handoff instead of tracing the identical
+    # observer LOS a second time. No COT, blocker, or status formula changes.
+    diag={
+        "state":"GLOW_OBSERVER_CLOUD_NOT_EVALUATED",
+        "blocker_count":0,
+        "unresolved_blocker_count":0,
+        "conflict_blocker_count":0,
+        "unresolved_layer_ids":"",
+        "conflict_states":"",
+    }
+    def _commit_diag():
+        if diagnostic_sink is not None:
+            diagnostic_sink.clear(); diagnostic_sink.update(diag)
+
     direction=float(target["direction_offset_deg"]); dt=float(target["target_distance_km"]); ht=0.5*(float(target["target_base_km"])+float(target["target_top_km"]))
     time=target.get("time"); angle=float(target.get("solar_altitude_deg"))
     required_cloud_columns={"direction_offset_deg","distance_km","z_base_km","z_top_km"}
     if cloud_layers is None or cloud_layers.empty:
+        diag["state"]="GLOW_OBSERVER_CLOUD_EVIDENCE_MISSING"; _commit_diag()
         return None,0.0,"VIEW_CLOUD_VOLUME_UNRESOLVED",0,""
     if not required_cloud_columns.issubset(set(cloud_layers.columns)):
+        diag["state"]="GLOW_OBSERVER_CLOUD_EVIDENCE_MISSING"; _commit_diag()
         return None,0.0,"VIEW_CLOUD_VOLUME_UNRESOLVED",0,""
     cand=prefiltered_layers.copy() if prefiltered_layers is not None else cloud_layers.copy()
     if prefiltered_layers is not None:
-        # A supplied group should retain the cloud schema.  If it does not,
-        # treat it as missing evidence rather than an empty/clear route.
         if not required_cloud_columns.issubset(set(cand.columns)):
+            diag["state"]="GLOW_OBSERVER_CLOUD_EVIDENCE_MISSING"; _commit_diag()
             return None,0.0,"VIEW_CLOUD_VOLUME_UNRESOLVED",0,""
     else:
         if "solar_altitude_deg" in cand: cand=cand[(pd.to_numeric(cand["solar_altitude_deg"],errors="coerce")-angle).abs()<1e-8]
@@ -216,8 +314,10 @@ def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.Da
         if "time" in cand and pd.notna(time): cand=cand[cand["time"].astype(str)==str(time)]
     transect=cand.copy(); cand=cand[pd.to_numeric(cand["distance_km"],errors="coerce")<dt-1e-8]
     cotmap=_exact_cot_map(cloud_layers,target_optics) if cotmap is None else cotmap
+    truth_map=_target_optical_truth_map(target_optics) if truth_map is None else truth_map
     support_cache={} if support_cache is None else support_cache
     expected_t=1.0; conditional_tau=0.0; blockers=0; unresolved=0; sources=[]
+    unresolved_ids=[]; conflict_states=[]; conflict_count=0
     for _,b in cand.iterrows():
         bb=_finite(b.get("z_base_km")); bt=_finite(b.get("z_top_km")); cf=_finite(b.get("cloud_fraction"))
         if bb is None or bt is None or bt<=bb: continue
@@ -229,21 +329,47 @@ def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.Da
         if len(xs)<2: continue
         inside=np.isfinite(zz)&(zz>=bb)&(zz<=bt)
         if not inside.any(): continue
-        blockers+=1; bid=str(b.get("layer_id")); cotrec=cotmap.get(_evidence_key(b.get("time"),b.get("solar_altitude_deg"),bid))
+        blockers+=1; bid=str(b.get("layer_id")); evidence_key=_evidence_key(b.get("time"),b.get("solar_altitude_deg"),bid); cotrec=cotmap.get(evidence_key)
         if cotrec is None or cf is None:
-            unresolved+=1; continue
+            unresolved+=1; unresolved_ids.append(bid)
+            consistency=str(b.get("evidence_consistency") or "")
+            truth_state,cot_semantics,resolver_state=truth_map.get(evidence_key,("","",""))
+            is_conflict=(
+                truth_state in {"DIRECT_EVIDENCE_CONFLICT","MULTISOURCE_DISAGREEMENT"}
+                or cot_semantics=="UNRESOLVED_CONFLICT"
+                or consistency in {"CF_CLOUD_CONDENSATE_ZERO","CONDENSATE_CLOUD_CF_LOW"}
+                or "CONFLICT" in resolver_state.upper()
+            )
+            if is_conflict:
+                conflict_count+=1
+                conflict_states.append("|".join(x for x in (consistency,truth_state,cot_semantics,resolver_state) if x))
+            continue
         cot,src=cotrec; seg=sampled_segment_path_km(xs,zz,inside)*1000.0
         thick=(bt-bb)*1000.0
         if seg<=0 or thick<=0: continue
         slant_tau=max(0.0,cot)*seg/thick; conditional_tau+=slant_tau; cf=min(1.0,max(0.0,cf)); expected_t *= (1.0-cf)+cf*math.exp(-slant_tau); sources.append(src)
-    if blockers==0: return 0.0,0.0,"VIEW_CLOUD_PATH_CLEAR",0,""
-    if unresolved: return None,conditional_tau,"VIEW_CLOUD_OPTICS_PARTIAL",blockers,";".join(sorted(str(x) for x in set(sources)))
+    diag.update({
+        "blocker_count":int(blockers),
+        "unresolved_blocker_count":int(unresolved),
+        "conflict_blocker_count":int(conflict_count),
+        "unresolved_layer_ids":";".join(sorted(set(unresolved_ids))),
+        "conflict_states":";".join(sorted(set(conflict_states))),
+    })
+    if blockers==0:
+        diag["state"]="GLOW_OBSERVER_CLOUD_PATH_CLEAR_DIAGNOSTIC"; _commit_diag()
+        return 0.0,0.0,"VIEW_CLOUD_PATH_CLEAR",0,""
+    if unresolved:
+        diag["state"]=("GLOW_OBSERVER_CLOUD_DIRECT_EVIDENCE_CONFLICT_PRESERVED" if conflict_count==unresolved else "GLOW_OBSERVER_CLOUD_OPTICS_UNRESOLVED_MISSING_PRESERVED")
+        _commit_diag()
+        return None,conditional_tau,"VIEW_CLOUD_OPTICS_PARTIAL",blockers,";".join(sorted(str(x) for x in set(sources)))
+    diag["state"]="GLOW_OBSERVER_CLOUD_OPTICS_RESOLVED_DIAGNOSTIC"; _commit_diag()
     eff_tau=-math.log(max(1e-300,expected_t)); return eff_tau,conditional_tau,"VIEW_CLOUD_OPTICS_RESOLVED_OCCUPANCY_EXPECTATION",blockers,";".join(sorted(str(x) for x in set(sources)))
 
 
 def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame,
                                       aerosol_snapshots: pd.DataFrame, gas_profiles: pd.DataFrame,
-                                      viewing_precipitation: pd.DataFrame | None=None, *, earth_radius_km: float=6371.0, aerosol_lowest_endpoint_tolerance_km: float=0.0) -> pd.DataFrame:
+                                      viewing_precipitation: pd.DataFrame | None=None, *, earth_radius_km: float=6371.0, aerosol_lowest_endpoint_tolerance_km: float=0.0,
+                                      runtime_context: dict | None=None, runtime_cache_stats: dict | None=None) -> pd.DataFrame:
     """Build independent Cloud→Observer six-band extinction.
 
     R5.7.3 caches route groups, gas RT contexts, exact-COT lookup, and cloud
@@ -261,34 +387,34 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
     def _key(timev, angv, dirv):
         a=_finite(angv); d=_finite(dirv)
         return (str(timev), None if a is None else round(a,8), None if d is None else round(d,8))
-    def _group_route(df):
-        out={}
-        if df is None or df.empty: return out
-        work=df.copy()
-        if "solar_altitude_deg" not in work.columns or "direction_offset_deg" not in work.columns or "distance_km" not in work.columns:
-            return out
-        tser=work.get("time",pd.Series("",index=work.index)).astype(str)
-        aser=pd.to_numeric(work["solar_altitude_deg"],errors="coerce").round(8)
-        dser=pd.to_numeric(work["direction_offset_deg"],errors="coerce").round(8)
-        for k,g in work.groupby([tser,aser,dser],dropna=False,sort=False):
-            key=(str(k[0]), None if pd.isna(k[1]) else float(k[1]), None if pd.isna(k[2]) else float(k[2]))
-            gg=g.copy(); gg["distance_km"]=pd.to_numeric(gg["distance_km"],errors="coerce"); out[key]=gg.sort_values("distance_km")
-        return out
-    aerosol_groups=_group_route(aerosol_snapshots)
-    gas_groups=_group_route(gas_profiles)
-    cloud_groups=_group_route(cloud_layers)
-    gas_contexts={}
-    for k,g in gas_groups.items():
-        gas_contexts[k]=prepare_gas_rt_context(g)
-    cotmap=_exact_cot_map(cloud_layers,target_optics)
-    cloud_support_caches={k:{} for k in cloud_groups}
+    _ctx_reused=_runtime_context_matches(runtime_context,cloud_layers,target_optics,aerosol_snapshots,gas_profiles)
+    ctx=runtime_context if _ctx_reused else prepare_viewing_spectral_runtime_context(
+        cloud_layers,target_optics,aerosol_snapshots,gas_profiles
+    )
+    aerosol_groups=ctx.get("aerosol_groups",{})
+    gas_groups=ctx.get("gas_groups",{})
+    cloud_groups=ctx.get("cloud_groups",{})
+    gas_contexts=ctx.get("gas_contexts",{})
+    cotmap=ctx.get("cotmap",{})
+    truth_map=ctx.get("truth_map",{})
+    cloud_support_caches=ctx.setdefault("cloud_support_caches",{})
+    if runtime_cache_stats is not None:
+        runtime_cache_stats.clear(); runtime_cache_stats.update({
+            "runtime_context_reused":bool(_ctx_reused),
+            "aerosol_group_count":len(aerosol_groups),
+            "gas_group_count":len(gas_groups),
+            "cloud_group_count":len(cloud_groups),
+            "prepared_gas_context_count":len(gas_contexts),
+            "cotmap_entry_count":len(cotmap),
+            "truth_map_entry_count":len(truth_map),
+        })
 
     for _,t in viewing_geometry.iterrows():
         if not bool(t.get("photographic_target_eligible",False)): continue
         direction=_finite(t.get("direction_offset_deg")); dt=_finite(t.get("target_distance_km")); zb=_finite(t.get("target_base_km")); zt=_finite(t.get("target_top_km")); angle=_finite(t.get("solar_altitude_deg"))
         if None in (direction,dt,zb,zt,angle) or dt<=0:
             rec={"time":t.get("time"),"solar_altitude_deg":angle,"canvas_id":t.get("canvas_id"),"cloud_layer_id":t.get("cloud_layer_id"),"direction_offset_deg":direction,"target_distance_km":dt,"target_base_km":zb,"target_top_km":zt,
-                 "view_gas_status":"VIEW_GAS_GEOMETRY_UNRESOLVED","view_aerosol_status":"VIEW_AEROSOL_GEOMETRY_UNRESOLVED","view_cloud_status":"VIEW_CLOUD_GEOMETRY_UNRESOLVED","view_cloud_conditional_slant_tau":None,"view_cloud_blocker_count":0,"view_cloud_optical_sources":"","view_gas_path_km":0.0,"view_aerosol_path_km":0.0,
+                 "view_gas_status":"VIEW_GAS_GEOMETRY_UNRESOLVED","view_aerosol_status":"VIEW_AEROSOL_GEOMETRY_UNRESOLVED","view_cloud_status":"VIEW_CLOUD_GEOMETRY_UNRESOLVED","view_cloud_conditional_slant_tau":None,"view_cloud_blocker_count":0,"view_cloud_optical_sources":"","view_cloud_provenance_state":"GLOW_OBSERVER_CLOUD_GEOMETRY_UNRESOLVED","view_cloud_unresolved_blocker_count":0,"view_cloud_conflict_blocker_count":0,"view_cloud_unresolved_layer_ids":"","view_cloud_conflict_states":"","view_gas_path_km":0.0,"view_aerosol_path_km":0.0,
                  "view_precipitation_status":"VIEW_PRECIPITATION_GEOMETRY_UNRESOLVED","view_aerosol_required_segment_count":0,"view_aerosol_resolved_segment_count":0,"view_aerosol_temporal_fallback_segment_count":0,"view_aerosol_temporal_missing_segment_count":0,"view_aerosol_lowest_endpoint_snap_segment_count":0}
             for wl in SIX_BAND_WAVELENGTHS_NM:
                 for component in ("gas","aerosol","cloud","precip","total"):
@@ -307,10 +433,20 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         atau,astatus,apath,ameta=_integrate_view_aerosol(t,ar,earth_radius_km,lowest_endpoint_tolerance_km=aerosol_lowest_endpoint_tolerance_km)
         gtau,gstatus,gpath=_integrate_view_gas(t,gr,earth_radius_km,prepared_context=gas_contexts.get(k))
         cg=cloud_groups.get(k)
-        ctau,cconditional,cstatus,blockers,csrc=_cloud_expected_tau(t,cloud_layers,target_optics,earth_radius_km,prefiltered_layers=cg,cotmap=cotmap,support_cache=cloud_support_caches.setdefault(k,{}))
+        _cloud_diag={}
+        ctau,cconditional,cstatus,blockers,csrc=_cloud_expected_tau(
+            t,cloud_layers,target_optics,earth_radius_km,prefiltered_layers=cg,cotmap=cotmap,
+            support_cache=cloud_support_caches.setdefault(k,{}),truth_map=truth_map,diagnostic_sink=_cloud_diag,
+        )
         pr=pmap.get(_evidence_key(t.get("time"),angle,t.get("canvas_id")))
         rec={"time":t.get("time"),"solar_altitude_deg":angle,"canvas_id":t.get("canvas_id"),"cloud_layer_id":t.get("cloud_layer_id"),"direction_offset_deg":direction,"target_distance_km":dt,"target_base_km":zb,"target_top_km":zt,
-             "view_gas_status":gstatus,"view_aerosol_status":astatus,"view_cloud_status":cstatus,"view_cloud_conditional_slant_tau":cconditional,"view_cloud_blocker_count":blockers,"view_cloud_optical_sources":csrc,"view_gas_path_km":gpath,"view_aerosol_path_km":apath,
+             "view_gas_status":gstatus,"view_aerosol_status":astatus,"view_cloud_status":cstatus,"view_cloud_conditional_slant_tau":cconditional,"view_cloud_blocker_count":blockers,"view_cloud_optical_sources":csrc,
+             "view_cloud_provenance_state":_cloud_diag.get("state","GLOW_OBSERVER_CLOUD_NOT_EVALUATED"),
+             "view_cloud_unresolved_blocker_count":int(_cloud_diag.get("unresolved_blocker_count",0) or 0),
+             "view_cloud_conflict_blocker_count":int(_cloud_diag.get("conflict_blocker_count",0) or 0),
+             "view_cloud_unresolved_layer_ids":str(_cloud_diag.get("unresolved_layer_ids","") or ""),
+             "view_cloud_conflict_states":str(_cloud_diag.get("conflict_states","") or ""),
+             "view_gas_path_km":gpath,"view_aerosol_path_km":apath,
              "view_precipitation_status":getattr(pr,"view_precipitation_status",None) if pr is not None else "VIEW_PRECIPITATION_VOLUME_UNRESOLVED",
              "view_aerosol_required_segment_count":ameta.get("required_segment_count",0),"view_aerosol_resolved_segment_count":ameta.get("resolved_segment_count",0),
              "view_aerosol_temporal_fallback_segment_count":ameta.get("temporal_fallback_segment_count",0),"view_aerosol_temporal_missing_segment_count":ameta.get("temporal_missing_segment_count",0),"view_aerosol_lowest_endpoint_snap_segment_count":ameta.get("lowest_endpoint_snap_segment_count",0)}
@@ -346,6 +482,8 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         rec["viewing_spectral_contract"]=VIEWING_SIX_BAND_RT_CONTRACT
         rec["note"]="CLOUD_TO_OBSERVER_ONLY;FORMATION_UNCHANGED;NO_SUN_PATH_REUSE;CLOUD_OCCUPANCY_AND_OPTICAL_DEPTH_KEPT_SEPARATE;PARTIAL_COMPONENT_TAU_NEVER_PROMOTED_TO_TOTAL_TRANSMISSION;R5729_TIME_ANGLE_TARGET_EVIDENCE_KEYS"
         rows.append(rec)
+    if runtime_cache_stats is not None:
+        runtime_cache_stats["cloud_support_cache_entry_count"]=int(sum(len(v) for v in cloud_support_caches.values()))
     return pd.DataFrame(rows)
 
 def summarize_viewing_spectral_extinction(df: pd.DataFrame) -> pd.DataFrame:
