@@ -1,8 +1,10 @@
 """Operational NOAA GFS native-cloud GRIB2 provider for Taiwan Firecloud V8.1.2.
 
 Downloads a small NOMADS 0.25° GRIB2 subset around the Firecloud route and decodes
-pressure-level CLWMR/ICMR/TCDC/TMP/RH/HGT with ecCodes. Missing native fields remain
-missing; this module never derives condensate from RH or low/mid/high cloud cover.
+pressure-level CLWMR/ICMR/TCDC/TMP/RH/HGT with ecCodes. When a frozen historical
+run has aged out of the NOMADS GRIB-filter window, the same cycle/lead is recovered
+from NOAA AWS Open Data via .idx + HTTP Range. Missing native fields remain missing;
+this module never derives condensate from RH or low/mid/high cloud cover.
 """
 from __future__ import annotations
 
@@ -14,6 +16,10 @@ import pandas as pd
 import requests
 
 from ..runtime_hardening import atomic_write_bytes, stamp_cache_artifact, cache_provenance
+from .gfs_aws_range import (
+    download_message_subset as download_aws_message_subset,
+    TRANSPORT_NAME as AWS_RANGE_TRANSPORT_NAME,
+)
 
 NATIVE_PROVIDER_NAME = "NOAA_GFS_0P25_NOMADS_GRIB2_CLWMR_ICMR"
 NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
@@ -36,7 +42,7 @@ def native_provider_status() -> dict:
         "provider": NATIVE_PROVIDER_NAME,
         "decoder_available": decoder_available(),
         "native_fields": list(GFS_NATIVE_SHORTNAMES),
-        "transport": "NCEP_NOMADS_GRIB_FILTER",
+        "transport": "NCEP_NOMADS_GRIB_FILTER_WITH_AWS_IDX_RANGE_FALLBACK",
         "grid": "GFS_0P25",
         "provider_schema_version": GFS_PROVIDER_SCHEMA_VERSION,
         "fallback_policy": "EXPLICIT_OPEN_METEO_PRESSURE_PROFILE; NEVER RH_AS_NATIVE_CONDENSATE",
@@ -196,17 +202,64 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
     out = cache/f"gfs_{run:%Y%m%d%H}_f{lead:03d}_{bbox_fp}_{schema_fp}.grib2"
     audit=[]
     s=session or requests.Session()
+    transport_used="NCEP_NOMADS_GRIB_FILTER"
+    transport_meta={}
 
     def _download(reason: str):
-        r=s.get(url, params=params, timeout=(8, 35))
-        r.raise_for_status()
-        ctype=(r.headers.get('content-type') or '').lower()
-        if len(r.content)<1000 or b'GRIB' not in r.content[:32]:
-            raise RuntimeError(f"NOMADS did not return GRIB2 ({len(r.content)} bytes, {ctype})")
-        atomic_write_bytes(out, r.content)
-        stamp_cache_artifact(out, provider="NOAA_GFS_NATIVE", role="RAW_GRIB", schema=GFS_PROVIDER_SCHEMA_VERSION, qc_state="CACHE_READY")
-        prov=cache_provenance(out, provider="NOAA_GFS_NATIVE", role="RAW_GRIB", cache_status="DOWNLOAD")
-        audit.append({'action':'DOWNLOAD','reason':reason,'cache_file':out.name,'bytes':len(r.content),'http_status':getattr(r,'status_code',None), **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}}})
+        nonlocal transport_used, transport_meta
+        nomads_exc=None
+        try:
+            r=s.get(url, params=params, timeout=(8, 35))
+            r.raise_for_status()
+            ctype=(r.headers.get('content-type') or '').lower()
+            if len(r.content)<1000 or b'GRIB' not in r.content[:32]:
+                raise RuntimeError(f"NOMADS did not return GRIB2 ({len(r.content)} bytes, {ctype})")
+            atomic_write_bytes(out, r.content)
+            stamp_cache_artifact(out, provider="NOAA_GFS_NATIVE", role="RAW_GRIB", schema=GFS_PROVIDER_SCHEMA_VERSION, qc_state="CACHE_READY")
+            prov=cache_provenance(out, provider="NOAA_GFS_NATIVE", role="RAW_GRIB", cache_status="DOWNLOAD")
+            transport_used="NCEP_NOMADS_GRIB_FILTER"
+            audit.append({'action':'DOWNLOAD','status':'OK_NOMADS_FILTER','transport':transport_used,'reason':reason,'cache_file':out.name,'bytes':len(r.content),'http_status':getattr(r,'status_code',None), **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}}})
+            return
+        except Exception as exc:
+            nomads_exc=exc
+            _status=getattr(getattr(exc, 'response', None), 'status_code', None)
+            audit.append({
+                'action':'NOMADS_DOWNLOAD_FAILED','status':'FAILED_NOMADS_FILTER',
+                'transport':'NCEP_NOMADS_GRIB_FILTER','reason':reason,
+                'http_status':_status,'error':f"{type(exc).__name__}: {exc}",
+            })
+
+        allow_aws=str(os.getenv("FIRECLOUD_GFS_AWS_RANGE_FALLBACK", "1")).strip().lower() not in {"0","false","no","off"}
+        if not allow_aws:
+            raise nomads_exc
+        try:
+            transport_meta=download_aws_message_subset(
+                run=run, lead_hour=lead, product="pgrb2.0p25",
+                variables=GFS_NATIVE_SHORTNAMES.keys(),
+                pressure_levels_hpa=DEFAULT_PRESSURE_LEVELS_HPA,
+                output_path=out, session=s,
+            )
+            transport_used=str(transport_meta.get("transport") or AWS_RANGE_TRANSPORT_NAME)
+            audit.append({
+                'action':'DOWNLOAD','status':'OK_AWS_IDX_RANGE','transport':transport_used,
+                'reason':f"{reason};NOMADS_FALLBACK",'cache_file':out.name,
+                'bytes':transport_meta.get('downloaded_bytes'),
+                'selected_message_count':transport_meta.get('selected_message_count'),
+                'range_request_count':transport_meta.get('range_request_count'),
+                'full_object_size_bytes':transport_meta.get('full_object_size_bytes'),
+                'idx_url':transport_meta.get('idx_url'),'data_url':transport_meta.get('data_url'),
+            })
+        except Exception as aws_exc:
+            audit.append({
+                'action':'AWS_RANGE_DOWNLOAD_FAILED','status':'FAILED_AWS_RANGE',
+                'transport':AWS_RANGE_TRANSPORT_NAME,'reason':reason,
+                'error':f"{type(aws_exc).__name__}: {aws_exc}",
+            })
+            raise RuntimeError(
+                f"GFS native retrieval failed on NOMADS and AWS range fallback; "
+                f"NOMADS={type(nomads_exc).__name__}: {nomads_exc}; "
+                f"AWS={type(aws_exc).__name__}: {aws_exc}"
+            ) from aws_exc
 
     cache_status='MISS'
     if out.exists() and out.stat().st_size >= 1000:
@@ -235,6 +288,9 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
         "gfs_requested_pressure_levels_hpa":[int(x) for x in DEFAULT_PRESSURE_LEVELS_HPA],
         "gfs_grib_message_inventory":inventory,"gfs_native_field_completeness":completeness,
         "gfs_native_request_audit":audit,"gfs_required_condensate_fields_present":condensate_ok,
+        "gfs_transport_used":transport_used,
+        "gfs_historical_aws_range_fallback_used":bool(transport_used == AWS_RANGE_TRANSPORT_NAME),
+        "gfs_aws_range_metadata":transport_meta,
     }
     return out,meta
 

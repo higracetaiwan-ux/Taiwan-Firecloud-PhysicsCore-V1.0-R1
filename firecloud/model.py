@@ -1461,7 +1461,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             native_cache[_key] = fetch_route_native(route_points, _t)
         except Exception as exc:
             native_cache[_key] = (pd.DataFrame(), {**_meta, "native_status": "FAILED", "native_error": f"{type(exc).__name__}: {exc}"})
-        performance_rows.append({"stage": "GFS_NOMADS_DOWNLOAD_DECODE", "elapsed_seconds": perf_counter()-_request_t0, "cache_status": "PREFETCH", "cache_key": str(_key)})
+        performance_rows.append({"stage": "GFS_NATIVE_DOWNLOAD_DECODE", "elapsed_seconds": perf_counter()-_request_t0, "cache_status": "PREFETCH", "cache_key": str(_key)})
         _progress(0.30 + 0.035 * (_i + 1) / max(1, len(gfs_requests)), f"GFS 原生雲微物理：{_i+1}/{len(gfs_requests)}")
     performance_rows.append({"stage": "GFS_PREFETCH_TOTAL", "elapsed_seconds": perf_counter()-_prefetch_t0, "cache_status": "PREFETCH"})
 

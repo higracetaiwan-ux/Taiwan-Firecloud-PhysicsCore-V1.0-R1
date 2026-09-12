@@ -29,6 +29,10 @@ import pandas as pd
 import requests
 
 from .gfs_native import decoder_available, resolve_run_and_lead, route_bbox
+from .gfs_aws_range import (
+    download_message_subset as download_aws_message_subset,
+    TRANSPORT_NAME as AWS_RANGE_TRANSPORT_NAME,
+)
 from ..native_cloud import NATIVE_CONDENSATE_THRESHOLD_KGKG
 from ..runtime_hardening import atomic_write_bytes, stamp_cache_artifact, cache_provenance
 
@@ -117,19 +121,63 @@ def download_probe_subset(points: list[dict], valid_time: datetime, *, cache_dir
     fp = _request_fingerprint(params)
     out = _cache_dir(cache_dir) / f"gfs_pgrb2b_{run:%Y%m%d%H}_f{lead:03d}_{fp}.grib2"
     audit = []
+    transport_used = "CACHE_REUSE_SOURCE_UNSPECIFIED"
+    aws_range_meta = {}
     if out.exists() and out.stat().st_size >= 1000:
         prov = cache_provenance(out, provider=PROVIDER_NAME, role="RAW_GRIB", cache_status="CACHE_HIT")
         audit.append({"action": "CACHE_USE", "status": "CACHE_HIT", "cache_file": out.name, "bytes": out.stat().st_size, **{k:v for k,v in prov.items() if str(k).startswith("cache_") or k in {"current_job_id","current_run_mode"}}})
     else:
         s = session or requests.Session()
-        r = s.get(url, params=params, timeout=(8, 35))
-        r.raise_for_status()
-        if len(r.content) < 1000 or b"GRIB" not in r.content[:32]:
-            raise RuntimeError(f"NOMADS pgrb2b did not return GRIB2 ({len(r.content)} bytes)")
-        atomic_write_bytes(out, r.content)
-        stamp_cache_artifact(out, provider=PROVIDER_NAME, role="RAW_GRIB", schema=PROVIDER_SCHEMA_VERSION, qc_state="CACHE_READY")
-        prov = cache_provenance(out, provider=PROVIDER_NAME, role="RAW_GRIB", cache_status="DOWNLOAD")
-        audit.append({"action": "DOWNLOAD", "status": "DOWNLOADED", "cache_file": out.name, "bytes": len(r.content), "http_status": getattr(r, "status_code", None), **{k:v for k,v in prov.items() if str(k).startswith("cache_") or k in {"current_job_id","current_run_mode"}}})
+        nomads_exc = None
+        try:
+            r = s.get(url, params=params, timeout=(8, 35))
+            r.raise_for_status()
+            if len(r.content) < 1000 or b"GRIB" not in r.content[:32]:
+                raise RuntimeError(f"NOMADS pgrb2b did not return GRIB2 ({len(r.content)} bytes)")
+            atomic_write_bytes(out, r.content)
+            stamp_cache_artifact(out, provider=PROVIDER_NAME, role="RAW_GRIB", schema=PROVIDER_SCHEMA_VERSION, qc_state="CACHE_READY")
+            prov = cache_provenance(out, provider=PROVIDER_NAME, role="RAW_GRIB", cache_status="DOWNLOAD")
+            transport_used = "NCEP_NOMADS_GRIB_FILTER_PGRB2B"
+            audit.append({"action": "DOWNLOAD", "status": "OK_NOMADS_FILTER", "transport": transport_used, "cache_file": out.name, "bytes": len(r.content), "http_status": getattr(r, "status_code", None), **{k:v for k,v in prov.items() if str(k).startswith("cache_") or k in {"current_job_id","current_run_mode"}}})
+        except Exception as exc:
+            nomads_exc = exc
+            audit.append({
+                "action":"NOMADS_DOWNLOAD_FAILED", "status":"FAILED_NOMADS_FILTER",
+                "transport":"NCEP_NOMADS_GRIB_FILTER_PGRB2B",
+                "http_status":getattr(getattr(exc, "response", None), "status_code", None),
+                "error":f"{type(exc).__name__}: {exc}",
+            })
+            allow_aws = str(os.getenv("FIRECLOUD_GFS_AWS_RANGE_FALLBACK", "1")).strip().lower() not in {"0","false","no","off"}
+            if not allow_aws:
+                raise
+            try:
+                aws_range_meta = download_aws_message_subset(
+                    run=run, lead_hour=lead, product="pgrb2b.0p25",
+                    variables=PROBE_SHORTNAMES.keys(),
+                    pressure_levels_hpa=SUPPLEMENT_PRESSURE_LEVELS_HPA,
+                    output_path=out, session=s,
+                )
+                transport_used = str(aws_range_meta.get("transport") or AWS_RANGE_TRANSPORT_NAME)
+                audit.append({
+                    "action":"DOWNLOAD", "status":"OK_AWS_IDX_RANGE",
+                    "transport":transport_used, "cache_file":out.name,
+                    "bytes":aws_range_meta.get("downloaded_bytes"),
+                    "selected_message_count":aws_range_meta.get("selected_message_count"),
+                    "range_request_count":aws_range_meta.get("range_request_count"),
+                    "full_object_size_bytes":aws_range_meta.get("full_object_size_bytes"),
+                    "idx_url":aws_range_meta.get("idx_url"), "data_url":aws_range_meta.get("data_url"),
+                })
+            except Exception as aws_exc:
+                audit.append({
+                    "action":"AWS_RANGE_DOWNLOAD_FAILED", "status":"FAILED_AWS_RANGE",
+                    "transport":AWS_RANGE_TRANSPORT_NAME,
+                    "error":f"{type(aws_exc).__name__}: {aws_exc}",
+                })
+                raise RuntimeError(
+                    f"GFS pgrb2b retrieval failed on NOMADS and AWS range fallback; "
+                    f"NOMADS={type(nomads_exc).__name__}: {nomads_exc}; "
+                    f"AWS={type(aws_exc).__name__}: {aws_exc}"
+                ) from aws_exc
     meta = {
         "provider": PROVIDER_NAME,
         "provider_schema_version": PROVIDER_SCHEMA_VERSION,
@@ -139,6 +187,9 @@ def download_probe_subset(points: list[dict], valid_time: datetime, *, cache_dir
         "requested_pressure_levels_hpa": list(SUPPLEMENT_PRESSURE_LEVELS_HPA),
         "requested_variables": sorted(PROBE_SHORTNAMES),
         "route_point_count": len(pts), "request_audit": audit,
+        "transport_used": transport_used,
+        "historical_aws_range_fallback_used": bool(transport_used == AWS_RANGE_TRANSPORT_NAME),
+        "aws_range_metadata": aws_range_meta,
         "probe_contract": "DIRECT_NATIVE_INTERMEDIATE_PRESSURE_LEVEL_EVIDENCE_ONLY;NO_FORMATION_PROMOTION",
     }
     return out, meta

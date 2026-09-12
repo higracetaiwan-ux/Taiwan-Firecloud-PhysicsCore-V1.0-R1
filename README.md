@@ -1,4 +1,15 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.3
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4
+
+
+## R5.7.41.3.4 Historical GFS AWS Indexed-Range Provider Routing
+
+- 修正歷史事件超出 NOMADS GRIB Filter 線上窗口時，GFS 0.25° native pgrb2 / pgrb2b 直接 403 而失去 CLWMR/ICMR 的問題。
+- 保持同一個 frozen GFS run/forecast lead；NOMADS 失敗後改讀 NOAA GFS AWS Open Data 的 `.idx` sidecar，再用 HTTP `Range` 只取指定 pressure-level GRIB messages。
+- 主 pgrb2 與 0–100 km pgrb2b intermediate-level optical probe 共用同一歷史 transport。
+- AWS Range 僅屬 transport fallback，不改 native condensate、Cloud Fraction、COT、Formation、Viewing、Glow 或 Photography semantics。
+- 若 archive object / `.idx` / required message 不存在，仍 fail-close 為 Missing；不改用 RH/CF 補造 condensate。
+- 若伺服器忽略 Range 回 HTTP 200，下載立即拒絕，避免意外抓取整個全球 GRIB2 大檔。
+- Regression：working-tree / trial fresh-extract / final fresh-extract 均 604/604 PASS；Release Gate CLOSED。
 
 
 ## R5.7.41.3.3 Historical Replay Empty Cloud-Volume Guard Hotfix
