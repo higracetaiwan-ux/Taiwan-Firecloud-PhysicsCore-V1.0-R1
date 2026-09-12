@@ -151,46 +151,6 @@ def _band_name(d: float) -> str:
     return "Outside"
 
 
-def _summarize_dwd_api_efficiency(dwd_icon_request_audit: pd.DataFrame) -> dict | None:
-    """R5.7.41.3.4.6 explicit DWD transfer/cache telemetry only."""
-    if not isinstance(dwd_icon_request_audit, pd.DataFrame) or dwd_icon_request_audit.empty:
-        return None
-    status = dwd_icon_request_audit.get("status", pd.Series(dtype=str)).astype(str).str.upper()
-    stage = dwd_icon_request_audit.get("stage", pd.Series(dtype=str)).astype(str).str.upper()
-    field = stage.eq("FIELD_FETCH")
-
-    def bool_col(name: str) -> pd.Series:
-        col = dwd_icon_request_audit.get(name, pd.Series(False, index=dwd_icon_request_audit.index))
-        try:
-            return col.map(lambda value: False if pd.isna(value) else bool(value)).astype(bool)
-        except Exception:
-            return pd.Series(False, index=dwd_icon_request_audit.index)
-
-    network_requested = field & bool_col("network_requested")
-    network_success = field & bool_col("network_success")
-    network_failure = field & bool_col("network_failure")
-    raw_cache_hit = field & bool_col("raw_cache_hit")
-    decoded_hit = field & (bool_col("decoded_field_cache_hit") | status.eq("DECODED_FIELD_CACHE_HIT"))
-    network_bytes = pd.to_numeric(
-        dwd_icon_request_audit.get("network_bytes", pd.Series(0, index=dwd_icon_request_audit.index)),
-        errors="coerce",
-    ).fillna(0.0)
-    negative_hits = int(status.eq("NEGATIVE_RUN_LEAD_CACHE_HIT").sum())
-    return {
-        "provider": "DWD_ICON_SECONDARY",
-        "logical_attempt_rows": int(len(dwd_icon_request_audit)),
-        "network_requests": int(network_requested.sum()),
-        "network_attempts": int(network_requested.sum()),
-        "network_successes": int(network_success.sum()),
-        "network_failures": int(network_failure.sum()),
-        "network_bytes": int(network_bytes[network_requested].sum()),
-        "raw_cache_hits": int(raw_cache_hit.sum()),
-        "decoded_cache_hits": int((status.str.contains("DECODED_OPTICS_CACHE_HIT") | decoded_hit).sum()),
-        "decoded_field_cache_hits": int(decoded_hit.sum()),
-        "negative_availability_cache_hits": negative_hits,
-        "failure_rows": int((field & (network_failure | status.str.contains("FAILED|HTTP_4|HTTP_5"))).sum()),
-        "reuse_scope": "EXACT_MODEL_PRODUCT_GRID_RUN_LEAD_VARIABLE_LEVEL_PERSISTENT_RAW_CACHE_WITH_IDENTITY_SHA256_GUARD;RUN_LEAD_ROUTE_GEOMETRY_RUNTIME_FIELD_CACHE;ROUTE_SURFACE_ANCHOR_PERSISTENT_OPTICS;ALL_404_NEGATIVE_CACHE",
-    }
 
 
 def build_geometry_diagnostics(cfg: ModelConfig) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -2505,16 +2465,27 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     _record_runtime_resource("POST_ANGLE_PROVIDER_CACHE_RELEASE", None)
     _progress(0.93, "彙整民用曙暮光時間軸與矩陣…")
     _aggregate_t0 = perf_counter()
-    _agg_profile_t0 = _aggregate_t0
-    def _record_aggregation_profile(stage: str, started_at: float, detail: str = "") -> float:
+    # R5.7.41.3.4.6: component-level aggregation profiler. Diagnostic only.
+    # R5.7.41.3.4.7 extends the Viewing/Photography stage into function-level
+    # timers. None of these timers participate in science or decisions.
+    _agg_stage_t0 = _aggregate_t0
+
+    def _append_aggregation_profile(stage: str, started: float, detail: str, *, status: str = "R5741346_DIAGNOSTIC_PROFILE_ONLY") -> float:
         now = perf_counter()
         performance_rows.append({
             "stage": stage,
-            "elapsed_seconds": max(0.0, now - started_at),
-            "cache_status": "R5741346_DIAGNOSTIC_PROFILE_ONLY",
-            "detail": detail or "Engineering telemetry only; no science/output decision dependency.",
+            "elapsed_seconds": max(0.0, now - started),
+            "cache_status": status,
+            "detail": detail,
         })
         return now
+
+    def _append_viewing_component(stage: str, started: float, detail: str = "") -> float:
+        return _append_aggregation_profile(
+            stage, started, detail or "Viewing/Photography component timer; diagnostic only.",
+            status="R5741347_COMPONENT_PROFILE_ONLY",
+        )
+
     summary = pd.DataFrame(result_rows).sort_values("time")
     # R5.7.21.1: the operational Core Formation/selection domain is the same
     # full 0°..-6° half-degree timeline used by the expensive physics scheduler.
@@ -2589,8 +2560,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
 
     illumination_matrix, dynamic_rez = build_geometry_diagnostics(cfg)
     _aggregation_checkpoint("幾何診斷完成", illumination_matrix=illumination_matrix, dynamic_rez=dynamic_rez)
-    _agg_profile_t0 = _record_aggregation_profile(
-        "AGGREGATION_TIMELINE_AND_GEOMETRY", _agg_profile_t0,
+    _agg_stage_t0 = _append_aggregation_profile(
+        "AGGREGATION_TIMELINE_AND_GEOMETRY", _agg_stage_t0,
         "Summary preselection, completeness-frame concat, geometry diagnostics, and checkpoint telemetry.",
     )
 
@@ -2613,8 +2584,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     native_optical_blocking_columns = _drain_detail_matrix("native_optical_columns", ensure_angle=True)
     _aggregation_checkpoint("雲光學阻擋矩陣完成", optical_blocking_voxel_matrix=optical_blocking_voxel_matrix, native_optical_blocking_voxel_matrix=native_optical_blocking_voxel_matrix)
     collect_and_trim()
-    _agg_profile_t0 = _record_aggregation_profile(
-        "AGGREGATION_CLOUD_MATRIX_DRAIN", _agg_profile_t0,
+    _agg_stage_t0 = _append_aggregation_profile(
+        "AGGREGATION_CLOUD_MATRIX_DRAIN", _agg_stage_t0,
         "Forecast/reconstructed/profile/native/optical cloud matrix rehydration and concat.",
     )
 
@@ -2632,8 +2603,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # their final matrices.  Remove the spool directory immediately.
     _angle_frame_spool.cleanup()
     collect_and_trim()
-    _agg_profile_t0 = _record_aggregation_profile(
-        "AGGREGATION_SPECTRAL_ATMOS_MATRIX_DRAIN", _agg_profile_t0,
+    _agg_stage_t0 = _append_aggregation_profile(
+        "AGGREGATION_SPECTRAL_ATMOS_MATRIX_DRAIN", _agg_stage_t0,
         "Spectral RT, aerosol, gas and viewing-route spool rehydration plus spool cleanup.",
     )
 
@@ -2661,14 +2632,21 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     )
     _aggregation_checkpoint("V1 Formation 證據矩陣完成", v1_cloud_layers=v1_cloud_layers, v1_canvas_candidates=v1_canvas_candidates, v1_spectral_optical_paths=v1_spectral_optical_paths, v1_red_light_reference=v1_red_light_reference)
     collect_and_trim()
-    _agg_profile_t0 = _record_aggregation_profile(
-        "AGGREGATION_FORMATION_EVIDENCE", _agg_profile_t0,
+    _agg_stage_t0 = _append_aggregation_profile(
+        "AGGREGATION_FORMATION_EVIDENCE", _agg_stage_t0,
         "V1 cloud/canvas/direct-solar/path/formation/red-light evidence concat and summaries.",
     )
+    _viewing_photography_t0 = perf_counter()
+
     # PhysicsCore V1.0-R5.7: projected-volume Cloud→Observer Viewing plus an
     # independent six-band viewing extinction branch. No Sun→CloudBase optical
     # quantity is reused here.
+    _component_t0 = perf_counter()
     v1_viewing_path_geometry = build_viewing_path_geometry(v1_cloud_layers, v1_canvas_candidates, earth_radius_km=cfg.earth_radius_km)
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_PATH_GEOMETRY", _component_t0,
+        f"build_viewing_path_geometry();rows={len(v1_viewing_path_geometry)}",
+    )
     _view_precip_frames=[]
     if not v1_viewing_path_geometry.empty and not _view_route_snapshots.empty:
         for (_vt,_va),_vg in v1_viewing_path_geometry.groupby(["time","solar_altitude_deg"],dropna=False,sort=False):
@@ -2678,6 +2656,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_viewing_precipitation_evidence = _concat_release(
         _view_precip_frames,
         pd.DataFrame(columns=VIEWING_PRECIPITATION_COLUMNS),
+    )
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_PRECIPITATION_EVIDENCE", _component_t0,
+        f"build_viewing_precipitation_evidence() grouped route path;rows={len(v1_viewing_precipitation_evidence)}",
     )
     # Aggregate target-cloud optical evidence before the Viewing spectral branch
     # consumes it. This variable must exist on every pipeline path, including
@@ -2712,12 +2694,20 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         v1_canvas_cot_semantic_migration
     )
     gfs_canvas_optical_probe_request_audit = pd.DataFrame(gfs_canvas_optical_probe_request_audit_rows)
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_TARGET_OPTICS_RECONCILIATION", _component_t0,
+        f"Target optics attach + native probe/conflict/vertical overlap/COT reconciliation;target_rows={len(v1_target_canvas_optical_evidence)};reconciliation_rows={len(v1_canvas_cot_reconciliation)}",
+    )
     # R5.7.41.3.4.5: one immutable lookup/prepared-HITRAN runtime context is
     # shared by the independent Viewing branch and the later Twilight Glow
     # observer path. It contains no target result and cannot change science.
     _viewing_runtime_context = prepare_viewing_spectral_runtime_context(
         v1_cloud_layers, v1_target_canvas_optical_evidence,
         aerosol_spectral_route_snapshots, gas_profile_route_snapshots,
+    )
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_PREPARE_SPECTRAL_RUNTIME_CONTEXT", _component_t0,
+        "prepare_viewing_spectral_runtime_context(); immutable lookup/prepared HITRAN context only.",
     )
     _viewing_runtime_stats = {}
     v1_viewing_spectral_extinction = build_viewing_spectral_extinction(
@@ -2726,14 +2716,36 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         v1_viewing_precipitation_evidence, earth_radius_km=cfg.earth_radius_km,
         runtime_context=_viewing_runtime_context, runtime_cache_stats=_viewing_runtime_stats,
     )
-    v1_viewing_spectral_summary = summarize_viewing_spectral_extinction(v1_viewing_spectral_extinction)
-    v1_viewing_path_geometry = attach_viewing_spectral_status(v1_viewing_path_geometry, v1_viewing_spectral_extinction)
-    v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry, v1_viewing_spectral_summary)
-    v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary, v1_viewing_spectral_summary)
-    _agg_profile_t0 = _record_aggregation_profile(
-        "AGGREGATION_VIEWING_AND_PHOTOGRAPHY", _agg_profile_t0,
-        "Viewing geometry/precipitation/target-optics reconciliation/spectral extinction and photography decision, excluding Glow.",
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_SPECTRAL_EXTINCTION", _component_t0,
+        f"build_viewing_spectral_extinction();rows={len(v1_viewing_spectral_extinction)};runtime_stats={_viewing_runtime_stats}",
     )
+    v1_viewing_spectral_summary = summarize_viewing_spectral_extinction(v1_viewing_spectral_extinction)
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_SPECTRAL_SUMMARY", _component_t0,
+        f"summarize_viewing_spectral_extinction();rows={len(v1_viewing_spectral_summary)}",
+    )
+    v1_viewing_path_geometry = attach_viewing_spectral_status(v1_viewing_path_geometry, v1_viewing_spectral_extinction)
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_ATTACH_SPECTRAL_STATUS", _component_t0,
+        f"attach_viewing_spectral_status();rows={len(v1_viewing_path_geometry)}",
+    )
+    v1_viewing_summary = summarize_viewing_path(v1_viewing_path_geometry, v1_viewing_spectral_summary)
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_PATH_SUMMARY", _component_t0,
+        f"summarize_viewing_path();rows={len(v1_viewing_summary)}",
+    )
+    v1_photography_decision = build_photography_decision(v1_formation, v1_viewing_summary, v1_viewing_spectral_summary)
+    _component_t0 = _append_viewing_component(
+        "VIEWING_COMPONENT_PHOTOGRAPHY_DECISION", _component_t0,
+        f"build_photography_decision();rows={len(v1_photography_decision)}",
+    )
+    performance_rows.append({
+        "stage": "AGGREGATION_VIEWING_AND_PHOTOGRAPHY",
+        "elapsed_seconds": max(0.0, perf_counter() - _viewing_photography_t0),
+        "cache_status": "R5741346_DIAGNOSTIC_PROFILE_ONLY",
+        "detail": "Viewing geometry/precipitation/target-optics reconciliation/spectral extinction and photography decision, excluding Glow.",
+    })
     # R5.7.30 independent third branch: Sun→atmospheric scatter volume→observer.
     # It reuses the virtual illuminated-atmosphere receivers only as geometry
     # and upstream evidence. It does not create a Canvas, write Formation, or
@@ -2788,7 +2800,6 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             f"previous_cache_contract=R5741344_GLOW_CLOUD_PROVENANCE_SHARED_CACHE"
         ),
     })
-    _agg_profile_t0 = perf_counter()
     _aggregation_checkpoint(
         "Glow 第三分支完成",
         v1_twilight_glow_scattering_volume=v1_twilight_glow_scattering_volume,
@@ -2798,6 +2809,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         v1_twilight_glow_single_scattering=v1_twilight_glow_single_scattering,
         v1_twilight_glow_aerosol_scattering=v1_twilight_glow_aerosol_scattering,
     )
+    _agg_stage_t0 = perf_counter()
     v1_spectral_colour = _concat_release(v1_spectral_colour_frames)
     v1_precipitation_path_evidence = _concat_release(v1_precipitation_path_frames)
     v1_target_canvas_optical_summary = _concat_release(v1_target_canvas_optical_summary_frames, pd.DataFrame(columns=["time", *TARGET_CANVAS_OPTICAL_SUMMARY_COLUMNS]))
@@ -2886,8 +2898,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
 
     _aggregation_checkpoint("Viewing / Glow / Tier-2 / 摘要完成", v1_viewing_path_geometry=v1_viewing_path_geometry, v1_viewing_spectral_extinction=v1_viewing_spectral_extinction, v1_twilight_glow_summary=v1_twilight_glow_summary)
     gc.collect()
-    _agg_profile_t0 = _record_aggregation_profile(
-        "AGGREGATION_TIER2_AND_CORE_SUMMARY", _agg_profile_t0,
+    _agg_stage_t0 = _append_aggregation_profile(
+        "AGGREGATION_TIER2_AND_CORE_SUMMARY", _agg_stage_t0,
         "Tier-2 readiness/foundation/LUT responses, penumbra diagnostics, validation tables and V1 core summary.",
     )
 
@@ -2968,13 +2980,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         selected_angle = float(ranked.iloc[0]["solar_altitude_deg"])
 
     _aggregation_checkpoint("完整性與營運摘要完成", physics_data_completeness=physics_data_completeness, v1_dependency_status=v1_dependency_status)
-    _agg_profile_t0 = _record_aggregation_profile(
-        "AGGREGATION_COMPLETENESS_AND_DECISION", _agg_profile_t0,
+    _agg_stage_t0 = _append_aggregation_profile(
+        "AGGREGATION_COMPLETENESS_AND_DECISION", _agg_stage_t0,
         "Mandatory-layer completeness, dependency handoff, red-light headline bridge and final angle selection.",
     )
     _spectral_diag_t0 = perf_counter()
     spectral_coverage_diagnostics = _build_spectral_coverage_diagnostics(spectral_rt_voxel_matrix)
-    _record_aggregation_profile(
+    _append_aggregation_profile(
         "AGGREGATION_SPECTRAL_COVERAGE_DIAGNOSTICS", _spectral_diag_t0,
         "Final spectral coverage diagnostics only.",
     )
@@ -3064,9 +3076,39 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "failure_rows":int(_cams_audit_df.get("final_status",pd.Series(dtype=str)).astype(str).str.upper().isin(["FAILED","TIMEOUT_DEFERRED"]).sum()),
             "reuse_scope":"RUN_LEAD_ROLE_RAW_GRIB_PLUS_PERSISTENT_DECODED_ROUTE"
         })
-    _dwd_efficiency = _summarize_dwd_api_efficiency(dwd_icon_request_audit)
-    if _dwd_efficiency is not None:
-        _api_eff_rows.append(_dwd_efficiency)
+    if isinstance(dwd_icon_request_audit,pd.DataFrame) and not dwd_icon_request_audit.empty:
+        _dwd_status=dwd_icon_request_audit.get("status",pd.Series(dtype=str)).astype(str).str.upper()
+        _dwd_stage=dwd_icon_request_audit.get("stage",pd.Series(dtype=str)).astype(str).str.upper()
+        _dwd_field = _dwd_stage.eq("FIELD_FETCH")
+        def _audit_bool_count(name: str, fallback=None) -> int:
+            if name in dwd_icon_request_audit.columns:
+                return int(pd.Series(dwd_icon_request_audit[name]).fillna(False).astype(bool).sum())
+            return int(fallback() if fallback is not None else 0)
+        _network_attempts = _audit_bool_count(
+            "network_attempted",
+            lambda: (_dwd_field & (_dwd_status.eq("DOWNLOADED") | _dwd_status.str.match(r"HTTP_[45]\d\d") | _dwd_status.eq("FAILED"))).sum(),
+        )
+        _network_successes = _audit_bool_count("network_success", lambda: (_dwd_field & _dwd_status.str.contains("DOWNLOADED")).sum())
+        _network_failures = _audit_bool_count("network_failure", lambda: max(0, _network_attempts - _network_successes))
+        _network_bytes = int(pd.to_numeric(dwd_icon_request_audit.get("network_bytes",0), errors="coerce").fillna(0).sum()) if "network_bytes" in dwd_icon_request_audit.columns else 0
+        _raw_hits = _audit_bool_count("raw_cache_hit", lambda: (_dwd_field & _dwd_status.str.contains("CACHE_HIT") & ~_dwd_status.eq("DECODED_FIELD_CACHE_HIT")).sum())
+        _decoded_field_hits = _audit_bool_count("decoded_field_cache_hit", lambda: (_dwd_field & _dwd_status.eq("DECODED_FIELD_CACHE_HIT")).sum())
+        _negative_hits = _audit_bool_count("negative_availability_cache_hit", lambda: _dwd_status.eq("NEGATIVE_RUN_LEAD_CACHE_HIT").sum())
+        _decoded_optics_hits = int(_dwd_status.str.contains("DECODED_OPTICS_CACHE_HIT").sum())
+        _api_eff_rows.append({
+            "provider":"DWD_ICON_SECONDARY", "logical_attempt_rows":int(len(dwd_icon_request_audit)),
+            "network_requests":int(_network_attempts),
+            "raw_cache_hits":int(_raw_hits),
+            "decoded_cache_hits":int(_decoded_optics_hits + _decoded_field_hits),
+            "negative_availability_cache_hits":int(_negative_hits),
+            "failure_rows":int((_dwd_field & _dwd_status.str.contains("FAILED|HTTP_4|HTTP_5")).sum()),
+            "reuse_scope":"EXACT_MODEL_PRODUCT_GRID_RUN_LEAD_VARIABLE_LEVEL_PERSISTENT_RAW_CACHE_WITH_IDENTITY_SHA256_GUARD;RUN_LEAD_ROUTE_GEOMETRY_RUNTIME_FIELD_CACHE;ROUTE_SURFACE_ANCHOR_PERSISTENT_OPTICS;ALL_404_NEGATIVE_CACHE",
+            "network_attempts":int(_network_attempts),
+            "network_successes":int(_network_successes),
+            "network_failures":int(_network_failures),
+            "network_bytes":int(_network_bytes),
+            "decoded_field_cache_hits":int(_decoded_field_hits),
+        })
     api_efficiency_audit=pd.DataFrame(_api_eff_rows)
 
     # R5.7.23 Runtime Hardening: preserve provider-cache origin separately from
