@@ -44,4 +44,4 @@ def test_single_flight_callback_repaints_ui_immediately():
 
 def test_release_version_is_r5724():
     import firecloud
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.7.1"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.8"
