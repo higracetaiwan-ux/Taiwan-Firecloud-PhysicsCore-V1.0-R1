@@ -58,7 +58,7 @@ PROBE_SHORTNAMES = {
 def _shortname(raw: str) -> str:
     r = str(raw).lower()
     return {
-        "clwmr": "CLWMR", "icmr": "ICMR", "tcc": "TCDC", "tcdc": "TCDC",
+        "clwmr": "CLWMR", "clmr": "CLWMR", "icmr": "ICMR", "tcc": "TCDC", "tcdc": "TCDC",
         "t": "TMP", "tmp": "TMP", "gh": "HGT", "hgt": "HGT",
     }.get(r, str(raw).upper())
 

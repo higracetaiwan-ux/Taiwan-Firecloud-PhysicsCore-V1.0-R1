@@ -1,6 +1,6 @@
-> Current release: **V1.0-R5.7.41.3.4.1** — Historical GFS AWS routing + Glow explicit-Missing integrity recognition.
+> Current release: **V1.0-R5.7.41.3.4.2** — Historical GFS cloud-liquid alias compatibility (`CLMR` ↔ `CLWMR`) on top of AWS indexed-range routing and Glow explicit-Missing integrity recognition.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.2
 
 
 ## R5.7.41.3.4 Historical GFS AWS Indexed-Range Provider Routing

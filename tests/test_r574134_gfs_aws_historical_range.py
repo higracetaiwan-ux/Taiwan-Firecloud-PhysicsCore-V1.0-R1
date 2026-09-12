@@ -176,3 +176,21 @@ def test_pgrb2b_probe_uses_same_aws_historical_transport_on_nomads_failure(tmp_p
     assert seen["product"] == "pgrb2b.0p25"
     assert meta["historical_aws_range_fallback_used"] is True
     assert any(r.get("status") == "OK_AWS_IDX_RANGE" for r in meta["request_audit"])
+
+
+def test_idx_selector_accepts_ncep_clmr_alias_as_native_clwmr():
+    idx = "\n".join([
+        "1:0:d=2026082918:CLMR:500 mb:3 hour fcst:",
+        "2:1000:d=2026082918:ICMR:500 mb:3 hour fcst:",
+        "3:2000:d=2026082918:CLMR:700 mb:3 hour fcst:",
+        "4:3000:d=2026082918:ICMR:700 mb:3 hour fcst:",
+    ])
+    records = a.parse_grib_index(idx)
+    selected = a.select_pressure_messages(records, ("CLWMR", "ICMR"), (500, 700))
+    assert [r.variable for r in selected] == ["CLMR", "ICMR", "CLMR", "ICMR"]
+    assert [a.canonical_index_variable(r.variable) for r in selected] == ["CLWMR", "ICMR", "CLWMR", "ICMR"]
+
+
+def test_provider_shortname_alias_maps_clmr_to_clwmr():
+    assert g._shortname("clmr") == "CLWMR"
+    assert p._shortname("clmr") == "CLWMR"

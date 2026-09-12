@@ -297,7 +297,7 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
 
 def _shortname(raw: str) -> str:
     r=raw.lower()
-    return {"clwmr":"CLWMR","icmr":"ICMR","rwmr":"RWMR","snmr":"SNMR","grle":"GRLE","tcc":"TCDC","tcdc":"TCDC","t":"TMP","tmp":"TMP","r":"RH","rh":"RH","gh":"HGT","hgt":"HGT"}.get(r, raw.upper())
+    return {"clwmr":"CLWMR","clmr":"CLWMR","icmr":"ICMR","rwmr":"RWMR","snmr":"SNMR","grle":"GRLE","tcc":"TCDC","tcdc":"TCDC","t":"TMP","tmp":"TMP","r":"RH","rh":"RH","gh":"HGT","hgt":"HGT"}.get(r, raw.upper())
 
 
 def decode_grib_to_route(grib_path: str|Path, points: list[dict], pressure_levels_hpa=DEFAULT_PRESSURE_LEVELS_HPA) -> pd.DataFrame:

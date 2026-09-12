@@ -32,9 +32,31 @@ from ..runtime_hardening import stamp_cache_artifact, cache_provenance
 
 AWS_GFS_BASE_URL = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
 TRANSPORT_NAME = "NOAA_GFS_AWS_IDX_HTTP_RANGE"
-SCHEMA_VERSION = "R5.7.41.3.4_GFS_AWS_IDX_RANGE_V1"
+SCHEMA_VERSION = "R5.7.41.3.4.2_GFS_AWS_IDX_RANGE_ALIAS_V2"
 
 _MB_LEVEL_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s*mb\b", re.IGNORECASE)
+
+# NCEP/GRIB naming compatibility.  The GRIB2 parameter table uses CLMR for
+# Cloud Mixing Ratio while GFS product inventories commonly expose CLWMR.
+# Treat both as the same native liquid-cloud-water field at the transport
+# selector only; no value inference or substitution is performed.
+_VARIABLE_ALIASES = {
+    "CLWMR": {"CLWMR", "CLMR"},
+    "CLMR": {"CLWMR", "CLMR"},
+}
+
+def canonical_index_variable(name: str) -> str:
+    v = str(name or "").strip().upper()
+    if v == "CLMR":
+        return "CLWMR"
+    return v
+
+def expand_index_variable_aliases(variables: Iterable[str]) -> set[str]:
+    out: set[str] = set()
+    for raw in variables:
+        v = str(raw or "").strip().upper()
+        out.update(_VARIABLE_ALIASES.get(v, {v}))
+    return out
 
 
 @dataclass(frozen=True)
@@ -122,7 +144,7 @@ def _level_hpa(level_text: str) -> float | None:
 
 def select_pressure_messages(records: Iterable[GribIndexRecord], variables: Iterable[str],
                              pressure_levels_hpa: Iterable[float]) -> list[GribIndexRecord]:
-    vars_wanted = {str(v).upper() for v in variables}
+    vars_wanted = expand_index_variable_aliases(variables)
     levels = {round(float(x), 6) for x in pressure_levels_hpa}
     out = []
     for rec in records:
@@ -317,6 +339,9 @@ def download_message_subset(*, run: datetime, lead_hour: int, product: str,
         "idx_url": idx_url,
         "product": product,
         "idx_record_count": len(records),
+        "idx_variable_counts": {v: sum(1 for r in records if r.variable.upper() == v) for v in sorted({r.variable.upper() for r in records})},
+        "selected_raw_variable_counts": {v: sum(1 for r in selected if r.variable.upper() == v) for v in sorted({r.variable.upper() for r in selected})},
+        "selected_canonical_variable_counts": {v: sum(1 for r in selected if canonical_index_variable(r.variable) == v) for v in sorted({canonical_index_variable(r.variable) for r in selected})},
         "selected_message_count": len(selected),
         "range_request_count": len(spans),
         "selected_payload_bytes": selected_payload,
