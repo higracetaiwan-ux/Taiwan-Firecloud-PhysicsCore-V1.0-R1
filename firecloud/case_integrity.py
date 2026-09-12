@@ -917,7 +917,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 pd.Series("", index=twilight_glow_observer_extinction.index),
             ).fillna("").astype(str)
             conflict = cloud_state.eq("GLOW_OBSERVER_CLOUD_DIRECT_EVIDENCE_CONFLICT_PRESERVED")
-            unresolved_missing = cloud_state.eq("GLOW_OBSERVER_CLOUD_OPTICS_UNRESOLVED_MISSING_PRESERVED")
+            unresolved_missing = cloud_state.isin({"GLOW_OBSERVER_CLOUD_OPTICS_UNRESOLVED_MISSING_PRESERVED", "GLOW_OBSERVER_CLOUD_EVIDENCE_MISSING"})
             missing_components = twilight_glow_observer_extinction.get(
                 "glow_observer_missing_components",
                 pd.Series("", index=twilight_glow_observer_extinction.index),

@@ -142,6 +142,19 @@ def test_r5733_integrity_accepts_molecular_closure_and_preserved_cloud_conflict(
     assert checks["TWILIGHT_GLOW_OBSERVER_CLOUD_CONFLICT_PRESERVATION"] == "PASS"
 
 
+def test_r5741341_integrity_accepts_explicit_cloud_evidence_missing_without_tau_promotion():
+    observer=_deep_observer_rows().copy()
+    observer["glow_observer_cloud_evidence_state"]="GLOW_OBSERVER_CLOUD_EVIDENCE_MISSING"
+    observer["glow_observer_missing_components"]="CLOUD"
+    observer["glow_observer_cloud_unresolved_blocker_count"]=0
+    observer["glow_observer_cloud_conflict_blocker_count"]=0
+    for w in SIX_BAND_WAVELENGTHS_NM:
+        observer[f"glow_observer_tau_cloud_{int(w)}nm"]=np.nan
+        observer[f"glow_observer_band_evidence_state_{int(w)}nm"]="MISSING"
+    checks=_integrity_status(observer)
+    assert checks["TWILIGHT_GLOW_OBSERVER_CLOUD_CONFLICT_PRESERVATION"] == "PASS"
+
+
 def test_r5733_integrity_rejects_unclosed_deep_range_molecular_path():
     checks=_integrity_status(_deep_observer_rows(molecular_resolved=False))
     assert checks["TWILIGHT_GLOW_OBSERVER_DEEP_RANGE_MOLECULAR_COVERAGE"] == "FAIL"
