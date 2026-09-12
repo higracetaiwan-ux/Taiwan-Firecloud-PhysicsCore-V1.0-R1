@@ -1,4 +1,13 @@
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.2
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.3
+
+
+## R5.7.41.3.3 Historical Replay Empty Cloud-Volume Guard Hotfix
+
+- 修正歷史回測／舊 provider replay 在 cloud-layer table 為 headerless empty DataFrame 或缺必要欄位時，`viewing_spectral._cloud_expected_tau()` 直接讀取 `direction_offset_deg` 而觸發 `KeyError`。
+- 缺 cloud-volume evidence 現在 fail-close 為 `VIEW_CLOUD_VOLUME_UNRESOLVED`；Missing 不得被視為 Clear。
+- cloud table schema 完整、僅該 time/angle/direction 無 blocker row 時，仍保留 `VIEW_CLOUD_PATH_CLEAR`。
+- 同步 harden route grouping，缺 `solar_altitude_deg` / `direction_offset_deg` / `distance_km` 時不再 crash。
+- 不修改 Formation、Production/Shadow COT、Viewing 物理公式、Twilight Glow、Photography 或六波段 science contract。
 
 
 ## R5.7.41.3.2 Direct Conflict Eligibility Handoff Hotfix

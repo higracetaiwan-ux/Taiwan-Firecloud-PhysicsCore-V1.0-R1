@@ -192,10 +192,25 @@ def _exact_cot_map(cloud_layers: pd.DataFrame, target_optics: pd.DataFrame):
 
 def _cloud_expected_tau(target, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame, earth_radius_km: float, *, prefiltered_layers=None, cotmap=None, support_cache=None):
     # Rebuild only the actual blocker volumes for the center of the target angular footprint.
+    #
+    # R5.7.41.3.3 historical-replay hardening:
+    # an old/partial provider replay can legitimately yield a headerless empty
+    # DataFrame.  Missing cloud-volume evidence must fail closed instead of
+    # raising KeyError (and must never be promoted to PATH_CLEAR).
     direction=float(target["direction_offset_deg"]); dt=float(target["target_distance_km"]); ht=0.5*(float(target["target_base_km"])+float(target["target_top_km"]))
     time=target.get("time"); angle=float(target.get("solar_altitude_deg"))
+    required_cloud_columns={"direction_offset_deg","distance_km","z_base_km","z_top_km"}
+    if cloud_layers is None or cloud_layers.empty:
+        return None,0.0,"VIEW_CLOUD_VOLUME_UNRESOLVED",0,""
+    if not required_cloud_columns.issubset(set(cloud_layers.columns)):
+        return None,0.0,"VIEW_CLOUD_VOLUME_UNRESOLVED",0,""
     cand=prefiltered_layers.copy() if prefiltered_layers is not None else cloud_layers.copy()
-    if prefiltered_layers is None:
+    if prefiltered_layers is not None:
+        # A supplied group should retain the cloud schema.  If it does not,
+        # treat it as missing evidence rather than an empty/clear route.
+        if not required_cloud_columns.issubset(set(cand.columns)):
+            return None,0.0,"VIEW_CLOUD_VOLUME_UNRESOLVED",0,""
+    else:
         if "solar_altitude_deg" in cand: cand=cand[(pd.to_numeric(cand["solar_altitude_deg"],errors="coerce")-angle).abs()<1e-8]
         cand=cand[(pd.to_numeric(cand["direction_offset_deg"],errors="coerce")-direction).abs()<1e-8]
         if "time" in cand and pd.notna(time): cand=cand[cand["time"].astype(str)==str(time)]
@@ -250,9 +265,11 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         out={}
         if df is None or df.empty: return out
         work=df.copy()
+        if "solar_altitude_deg" not in work.columns or "direction_offset_deg" not in work.columns or "distance_km" not in work.columns:
+            return out
         tser=work.get("time",pd.Series("",index=work.index)).astype(str)
-        aser=pd.to_numeric(work.get("solar_altitude_deg"),errors="coerce").round(8)
-        dser=pd.to_numeric(work.get("direction_offset_deg"),errors="coerce").round(8)
+        aser=pd.to_numeric(work["solar_altitude_deg"],errors="coerce").round(8)
+        dser=pd.to_numeric(work["direction_offset_deg"],errors="coerce").round(8)
         for k,g in work.groupby([tser,aser,dser],dropna=False,sort=False):
             key=(str(k[0]), None if pd.isna(k[1]) else float(k[1]), None if pd.isna(k[2]) else float(k[2]))
             gg=g.copy(); gg["distance_km"]=pd.to_numeric(gg["distance_km"],errors="coerce"); out[key]=gg.sort_values("distance_km")
