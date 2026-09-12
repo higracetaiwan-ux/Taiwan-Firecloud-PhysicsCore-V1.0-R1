@@ -1,6 +1,18 @@
-> Current release: **V1.0-R5.7.41.3.4.5** — Viewing→Glow observer-cloud provenance handoff + shared Viewing/Glow runtime context; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.6** — Runtime / I-O Hardening（DWD persistent raw cache + API audit correction + CASE buffered ZIP + aggregation profiling）；science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.5
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.6
+
+## R5.7.41.3.4.6 Runtime / I-O Hardening
+
+- DWD ICON raw model-level fields：正常 `WARM_PRODUCTION` 改用 `FIRECLOUD_STATE_DIR/provider_cache_shared/dwd_icon_raw` 跨 analysis worker / 後續分析持久重用；`COLD_ISOLATED_TEST` 仍隔離事件 raw cache。
+- DWD raw cache key 鎖死 model/product/grid/run/lead/variable/model-level/source URL/schema；cache hit 前需通過 exact identity JSON、QC stamp、byte size 與 SHA256。
+- raw cache 損壞、identity mismatch 或 provenance 不完整一律 fail-close 重新下載，不把 Missing/Error 改成 Clear/Zero。
+- 修正 DWD API efficiency audit：成功 decode 後的 `OK_DOWNLOADED` 不再漏算 network request；新增 network attempts/success/failure/bytes、raw-cache hits、decoded-field hits 與 negative availability cache hits。
+- CASE CSV 仍 streaming；新增固定上限 4 MiB 的 UTF-8 write coalescing buffer，保持 payload/SHA256/byte size/row count exact-equivalent。
+- CASE telemetry 新增 `CASE_PRE_EXPORT_PREPARATION`、`CASE_EXPORT_CSV_MEMBERS`、`CASE_EXPORT_JSON_MEMBERS`。
+- aggregation 只新增細分 profiler，不重構 science：timeline/geometry、cloud matrix drain、spectral/atmos matrix drain、Formation evidence、Viewing/Photography、Tier-2/core summary、completeness/decision、spectral diagnostics。
+- Runtime/I-O focused tests 12/12 PASS；working-tree / trial fresh-extract / final-candidate / exact-final fresh-extract 均為 628/628 PASS（1 個既有 pandas FutureWarning）；Release Gate CLOSED。
+- Science baseline：`R5.7.41.2_SHADOW_COT_AB_FROZEN`；Production/Shadow COT、Shadow eligibility、Earth Shadow、Formation、Viewing、Glow、Photography、六波段與 Missing semantics 全部不變。
 
 ## R5.7.41.3.4.5 Viewing→Glow Observer-Cloud Provenance Handoff + Shared Runtime Context
 

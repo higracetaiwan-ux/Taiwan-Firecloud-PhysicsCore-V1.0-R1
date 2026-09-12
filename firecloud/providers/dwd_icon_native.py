@@ -1,9 +1,11 @@
 """PhysicsCore DWD ICON Global native cloud-microphysics provider.
 
-R5.7.41.3.4.3 adds runtime-only decoded-field reuse and an all-404
-run/lead negative availability cache. These are I/O optimizations only; they do
-not alter native values, vertical geometry, optical evidence, or fail-closed
-semantics.
+R5.7.41.3.4.6 adds exact-identity persistent raw-field reuse with SHA256/QC
+provenance validation. Warm production workers share the raw cache namespace;
+Cold Test keeps raw event data isolated. R5.7.41.3.4.3 runtime-only decoded
+field reuse and all-404 run/lead negative availability suppression remain.
+These are I/O optimizations only; they do not alter native values, vertical
+geometry, optical evidence, or fail-closed semantics.
 
 R5.6.1 retains the ICON-global unstructured-grid decoder fix and closes the vertical-geometry gap without fabricating
 cloud optics. DWD ICON Global GRIB2 carries field values on the native triangular
@@ -28,6 +30,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import bz2
 import hashlib
+import json
 import math
 import os
 import tarfile
@@ -40,10 +43,17 @@ import pandas as pd
 import requests
 
 from ..cloud_optics import condensate_extinction_m1, DEFAULT_LIQUID_REFF_UM, DEFAULT_ICE_REFF_UM
-from ..runtime_hardening import stamp_cache_artifact, cache_provenance
+from ..runtime_hardening import (
+    atomic_write_json, cache_provenance, cache_stamp_path, read_cache_stamp,
+    sha256_file, stamp_cache_artifact,
+)
 
 PROVIDER_NAME = "DWD_ICON_GLOBAL_NATIVE_CLOUD_MICROPHYSICS"
 PROVIDER_SCHEMA_VERSION = "R5.6.1_ICON_GLOBAL_NATIVE_CLOUD_V3"
+RAW_CACHE_SCHEMA_VERSION = "R5.7.41.3.4.6_DWD_RAW_GRIB_V1"
+RAW_CACHE_MODEL = "ICON_GLOBAL"
+RAW_CACHE_PRODUCT = "ICOSAHEDRAL_MODEL_LEVEL"
+RAW_CACHE_GRID = "ICON_GLOBAL_NATIVE_ICOSAHEDRAL"
 BASE_URL = "https://opendata.dwd.de/weather/nwp/icon/grib"
 REMAP_BUNDLE_URL = "https://opendata.dwd.de/weather/lib/cdo/ICON_GLOBAL2WORLD_025_EASY.tar.bz2"
 REMAP_WEIGHTS_NAME = "weights_icogl2world_025.nc"
@@ -149,6 +159,9 @@ def provider_status() -> dict:
         "source_mode": "DWD_OPEN_DATA_ICON_GLOBAL_MODEL_LEVEL",
         "grid_locator_mode": "DWD_CDO_GNN_SOURCE_ADDRESS_FROM_ICON_GLOBAL2WORLD_025_EASY",
         "cache_dir": str(_cache_dir()),
+        "persistent_raw_cache_schema_version": RAW_CACHE_SCHEMA_VERSION,
+        "persistent_raw_cache_identity_contract": "MODEL_PRODUCT_GRID_RUN_LEAD_VARIABLE_LEVEL_EXACT",
+        "persistent_raw_cache_integrity_guard": "IDENTITY_JSON_PLUS_BYTE_SIZE_PLUS_SHA256",
         "remap_weights_path": str(wp),
         "remap_weights_present": bool(wp.exists() and wp.stat().st_size > 0),
     }
@@ -202,34 +215,148 @@ def _url(run: datetime, lead: int, level: int, var: str) -> str:
     )
 
 
-def _cache_path(url: str) -> Path:
+def _raw_cache_identity(run: datetime, lead: int, level: int, var: str, url: str) -> dict:
+    """Exact immutable identity for one DWD raw model-level field.
+
+    R5.7.41.3.4.6 deliberately keys persistent reuse by the complete forecast
+    identity.  A nearby cycle/lead/variable/level is never accepted as a cache
+    substitute.  This is an I/O contract only and cannot alter field values.
+    """
+    return {
+        "schema": RAW_CACHE_SCHEMA_VERSION,
+        "provider": PROVIDER_NAME,
+        "model": RAW_CACHE_MODEL,
+        "product": RAW_CACHE_PRODUCT,
+        "grid": RAW_CACHE_GRID,
+        "run_utc": run.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "forecast_lead_hours": int(lead),
+        "model_level": int(level),
+        "variable": str(var).upper(),
+        "source_url": str(url),
+    }
+
+
+def _raw_identity_path(path: Path) -> Path:
+    return path.with_name(path.name + ".dwd-raw-identity.json")
+
+
+def _cache_path(url: str, cache_identity: dict | None = None) -> Path:
     name = url.rsplit("/", 1)[-1]
-    h = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+    key_payload = cache_identity if cache_identity is not None else {
+        "schema": RAW_CACHE_SCHEMA_VERSION, "source_url": str(url)
+    }
+    canonical = json.dumps(key_payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    h = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:20]
     return _cache_dir() / f"{h}_{name[:-4]}"
 
 
-def _download_decompress(url: str, timeout_s: float = 20.0) -> tuple[Path | None, dict]:
-    dest = _cache_path(url)
-    if dest.exists() and dest.stat().st_size > 0:
-        prov=cache_provenance(dest,provider="DWD_ICON_SECONDARY",role="RAW_GRIB",cache_status="CACHE_HIT")
-        return dest, {"url":url,"status":"CACHE_HIT","bytes":int(dest.stat().st_size), **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}}}
+def _read_json_dict(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def _validate_persistent_raw_cache(dest: Path, expected_identity: dict) -> tuple[bool, str]:
+    """Fail closed unless raw bytes + exact identity + QC stamp all agree."""
+    if not dest.exists() or not dest.is_file() or dest.stat().st_size <= 0:
+        return False, "RAW_FILE_MISSING"
+    identity = _read_json_dict(_raw_identity_path(dest))
+    if identity != expected_identity:
+        return False, "IDENTITY_MISMATCH_OR_MISSING"
+    stamp = read_cache_stamp(dest)
+    if not stamp:
+        return False, "PROVENANCE_STAMP_MISSING"
+    if str(stamp.get("schema", "")) != RAW_CACHE_SCHEMA_VERSION:
+        return False, "SCHEMA_MISMATCH"
+    if str(stamp.get("qc_state", "")) != "CACHE_READY":
+        return False, "QC_STATE_NOT_READY"
+    if int(stamp.get("byte_size", -1) or -1) != int(dest.stat().st_size):
+        return False, "BYTE_SIZE_MISMATCH"
+    expected_sha = str(stamp.get("sha256", "") or "")
+    if not expected_sha:
+        return False, "SHA256_MISSING"
+    try:
+        if sha256_file(dest) != expected_sha:
+            return False, "SHA256_MISMATCH"
+    except Exception:
+        return False, "SHA256_VALIDATION_FAILED"
+    return True, "EXACT_IDENTITY_SHA256_READY"
+
+
+def _download_decompress(
+    url: str, timeout_s: float = 20.0, *, cache_identity: dict | None = None
+) -> tuple[Path | None, dict]:
+    identity = dict(cache_identity or {"schema": RAW_CACHE_SCHEMA_VERSION, "source_url": str(url)})
+    dest = _cache_path(url, identity)
+    cache_key = dest.name.split("_", 1)[0]
+    cache_valid, cache_validation = _validate_persistent_raw_cache(dest, identity)
+    if cache_valid:
+        prov = cache_provenance(
+            dest, provider="DWD_ICON_SECONDARY", role="RAW_GRIB", cache_status="PERSISTENT_RAW_CACHE_HIT"
+        )
+        return dest, {
+            "url": url, "status": "CACHE_HIT", "transfer_status": "PERSISTENT_RAW_CACHE_HIT",
+            "bytes": int(dest.stat().st_size), "cache_bytes": int(dest.stat().st_size),
+            "network_bytes": 0, "network_requested": False, "network_success": False,
+            "network_failure": False, "raw_cache_hit": True,
+            "raw_cache_validation_status": cache_validation, "raw_cache_key": cache_key,
+            **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}},
+        }
+
     tmp = None
     try:
         r = requests.get(url, timeout=timeout_s)
+        network_bytes = int(len(r.content or b""))
         if r.status_code != 200:
-            return None, {"url":url,"status":f"HTTP_{r.status_code}","bytes":0}
+            return None, {
+                "url":url, "status":f"HTTP_{r.status_code}", "transfer_status":f"HTTP_{r.status_code}",
+                "bytes":0, "cache_bytes":0, "network_bytes":network_bytes,
+                "network_requested":True, "network_success":False, "network_failure":True,
+                "raw_cache_hit":False, "raw_cache_validation_status":cache_validation,
+                "raw_cache_key":cache_key,
+            }
         raw = bz2.decompress(r.content)
         if not raw:
-            return None, {"url":url,"status":"EMPTY_BZ2","bytes":0}
+            return None, {
+                "url":url, "status":"EMPTY_BZ2", "transfer_status":"EMPTY_BZ2",
+                "bytes":0, "cache_bytes":0, "network_bytes":network_bytes,
+                "network_requested":True, "network_success":False, "network_failure":True,
+                "raw_cache_hit":False, "raw_cache_validation_status":cache_validation,
+                "raw_cache_key":cache_key,
+            }
         fd, tmpname = tempfile.mkstemp(prefix="icon_", suffix=".grib2", dir=str(dest.parent))
         os.close(fd); tmp = Path(tmpname)
         tmp.write_bytes(raw)
         os.replace(tmp,dest)
-        stamp_cache_artifact(dest,provider="DWD_ICON_SECONDARY",role="RAW_GRIB",schema=PROVIDER_SCHEMA_VERSION,qc_state="CACHE_READY")
-        prov=cache_provenance(dest,provider="DWD_ICON_SECONDARY",role="RAW_GRIB",cache_status="DOWNLOADED")
-        return dest, {"url":url,"status":"DOWNLOADED","bytes":int(len(raw)), **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}}}
+        # Commit identity/provenance only after the complete decompressed GRIB is
+        # atomically visible.  A crash between these steps leaves an untrusted
+        # raw file that the next run will reject and redownload.
+        atomic_write_json(_raw_identity_path(dest), identity)
+        stamp_cache_artifact(
+            dest, provider="DWD_ICON_SECONDARY", role="RAW_GRIB",
+            schema=RAW_CACHE_SCHEMA_VERSION, qc_state="CACHE_READY", include_sha256=True,
+        )
+        prov = cache_provenance(
+            dest, provider="DWD_ICON_SECONDARY", role="RAW_GRIB", cache_status="NETWORK_DOWNLOADED"
+        )
+        return dest, {
+            "url":url, "status":"DOWNLOADED", "transfer_status":"NETWORK_DOWNLOADED",
+            "bytes":int(len(raw)), "cache_bytes":int(len(raw)), "network_bytes":network_bytes,
+            "network_requested":True, "network_success":True, "network_failure":False,
+            "raw_cache_hit":False, "raw_cache_validation_status":cache_validation,
+            "raw_cache_key":cache_key,
+            **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}},
+        }
     except Exception as exc:
-        return None, {"url":url,"status":"FAILED","error":f"{type(exc).__name__}: {exc}","bytes":0}
+        return None, {
+            "url":url, "status":"FAILED", "transfer_status":"FAILED",
+            "error":f"{type(exc).__name__}: {exc}", "bytes":0, "cache_bytes":0,
+            "network_bytes":0, "network_requested":True, "network_success":False,
+            "network_failure":True, "raw_cache_hit":False,
+            "raw_cache_validation_status":cache_validation, "raw_cache_key":cache_key,
+        }
     finally:
         if tmp is not None and tmp.exists():
             try: tmp.unlink()
@@ -464,12 +591,22 @@ def _fetch_field(run: datetime, lead: int, level: int, var: str, points: list[di
                 "stage":"FIELD_FETCH","variable":var.upper(),"model_level":int(level),
                 "run":run,"lead_hours":int(lead),
                 "status":"DECODED_FIELD_CACHE_HIT","cache_layer":"RUNTIME_DECODED_NATIVE_FIELD",
-                "network_requested":False}
+                "transfer_status":"RUNTIME_DECODED_FIELD_CACHE_HIT",
+                "network_requested":False,"network_success":False,"network_failure":False,
+                "network_bytes":0,"raw_cache_hit":False,"decoded_field_cache_hit":True}
         return df0.copy(), meta
     url=_url(run,lead,level,var)
-    p,meta=_download_decompress(url,timeout_s=timeout_s)
-    meta.update({"stage":"FIELD_FETCH","variable":var.upper(),"model_level":int(level),"run":run,"lead_hours":int(lead),
-                 "network_requested": not str(meta.get("status","")).upper().endswith("CACHE_HIT")})
+    raw_identity=_raw_cache_identity(run,lead,level,var,url)
+    p,meta=_download_decompress(url,timeout_s=timeout_s,cache_identity=raw_identity)
+    meta.update({
+        "stage":"FIELD_FETCH","variable":var.upper(),"model_level":int(level),
+        "run":run,"lead_hours":int(lead),
+        # Preserve explicit transfer telemetry from _download_decompress.
+        "network_requested": bool(meta.get("network_requested", False)),
+        "network_success": bool(meta.get("network_success", False)),
+        "network_failure": bool(meta.get("network_failure", False)),
+        "raw_cache_hit": bool(meta.get("raw_cache_hit", False)),
+    })
     if p is None:
         return pd.DataFrame(),meta
     try:

@@ -33,7 +33,7 @@ def test_decoded_field_cache_ignores_surface_anchor_but_preserves_route_geometry
     grib.write_bytes(b"x")
     calls = {"download": 0, "decode": 0}
 
-    def fake_download(url, timeout_s=20.0):
+    def fake_download(url, timeout_s=20.0, *, cache_identity=None):
         calls["download"] += 1
         return grib, {"url": url, "status": "DOWNLOADED", "bytes": 1}
 
