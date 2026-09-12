@@ -2664,6 +2664,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         {"time": _time, "solar_altitude_deg": float(_angle), "solar_azimuth_deg": float(_az)}
         for _angle, _time, _az in candidates
     ])
+    _glow_cache_stats = {}
     v1_twilight_glow_scattering_volume, v1_twilight_glow_summary = build_twilight_glow_branch(
         red_light_reference=v1_red_light_reference,
         event_timeline=_glow_event_timeline,
@@ -2676,6 +2677,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         observer_lon_deg=float(lon),
         observer_alt_km=0.0,
         earth_radius_km=cfg.earth_radius_km,
+        runtime_cache_stats=_glow_cache_stats,
     )
     (
         v1_twilight_glow_sun_to_scatter_extinction,
@@ -2688,15 +2690,19 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     v1_twilight_glow_summary = attach_twilight_glow_aerosol_summary(
         v1_twilight_glow_summary, v1_twilight_glow_aerosol_scattering
     )
+    _glow_elapsed = perf_counter() - _glow_t0
     performance_rows.append({
         "stage": "TWILIGHT_GLOW_INDEPENDENT_BRANCH",
-        "elapsed_seconds": perf_counter() - _glow_t0,
-        "cache_status": "RAYLEIGH_SINGLE_SCATTERING_PROXY_NO_RADIANCE_CLAIM",
+        "elapsed_seconds": _glow_elapsed,
+        "cache_status": "R5741344_GLOW_CLOUD_PROVENANCE_SHARED_CACHE",
         "detail": (
             f"volumes={len(v1_twilight_glow_scattering_volume)};angles={len(v1_twilight_glow_summary)};"
             f"sun_extinction_rows={len(v1_twilight_glow_sun_to_scatter_extinction)};"
             f"observer_extinction_rows={len(v1_twilight_glow_scatter_to_observer_extinction)};"
-            f"aerosol_scattering_rows={len(v1_twilight_glow_aerosol_scattering)}"
+            f"aerosol_scattering_rows={len(v1_twilight_glow_aerosol_scattering)};"
+            f"cloud_groups={_glow_cache_stats.get('cloud_group_count', 0)};"
+            f"cloud_provenance_calls={_glow_cache_stats.get('cloud_provenance_call_count', 0)};"
+            f"support_cache_entries={_glow_cache_stats.get('support_cache_entry_count', 0)}"
         ),
     })
     _aggregation_checkpoint(
@@ -2875,7 +2881,19 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
 
     _aggregation_checkpoint("完整性與營運摘要完成", physics_data_completeness=physics_data_completeness, v1_dependency_status=v1_dependency_status)
     spectral_coverage_diagnostics = _build_spectral_coverage_diagnostics(spectral_rt_voxel_matrix)
-    performance_rows.append({"stage": "AGGREGATION_AND_MATRIX_BUILD", "elapsed_seconds": perf_counter()-_aggregate_t0, "cache_status": "COMPUTED"})
+    _aggregation_elapsed = perf_counter() - _aggregate_t0
+    performance_rows.append({
+        "stage": "AGGREGATION_AND_MATRIX_BUILD",
+        "elapsed_seconds": _aggregation_elapsed,
+        "cache_status": "COMPUTED_INCLUSIVE_OF_TWILIGHT_GLOW",
+        "detail": "Backward-compatible inclusive timer; contains TWILIGHT_GLOW_INDEPENDENT_BRANCH.",
+    })
+    performance_rows.append({
+        "stage": "AGGREGATION_EXCLUDING_TWILIGHT_GLOW",
+        "elapsed_seconds": max(0.0, _aggregation_elapsed - float(_glow_elapsed)),
+        "cache_status": "DERIVED_DIAGNOSTIC_ONLY",
+        "detail": "Engineering telemetry only; no science/output decision dependency.",
+    })
     _progress(1.0, "分析完成。")
     _analysis_elapsed = perf_counter() - _analysis_t0
     performance_rows.append({"stage": "TOTAL_ANALYSIS_CORE", "elapsed_seconds": _analysis_elapsed, "cache_status": "COMPUTED"})

@@ -1,6 +1,6 @@
-> Current release: **V1.0-R5.7.41.3.4.3** — DWD ICON secondary runtime decoded-field reuse + all-404 run/lead negative-cache hardening; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.4** — Twilight Glow observer-cloud provenance shared-cache hardening + inclusive/exclusive aggregation telemetry; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.3
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.4
 
 
 ## R5.7.41.3.4 Historical GFS AWS Indexed-Range Provider Routing
