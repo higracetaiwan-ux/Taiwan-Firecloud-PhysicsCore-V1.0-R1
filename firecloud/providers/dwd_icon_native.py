@@ -1,4 +1,9 @@
-"""PhysicsCore V1.0-R5.5.2 DWD ICON Global native cloud-microphysics provider.
+"""PhysicsCore DWD ICON Global native cloud-microphysics provider.
+
+R5.7.41.3.4.3 adds runtime-only decoded-field reuse and an all-404
+run/lead negative availability cache. These are I/O optimizations only; they do
+not alter native values, vertical geometry, optical evidence, or fail-closed
+semantics.
 
 R5.6.1 retains the ICON-global unstructured-grid decoder fix and closes the vertical-geometry gap without fabricating
 cloud optics. DWD ICON Global GRIB2 carries field values on the native triangular
@@ -54,6 +59,14 @@ TARGET_YINC = 0.25
 G0 = 9.80665
 R_D = 287.05
 _RUNTIME_CACHE: dict[tuple, tuple[pd.DataFrame, dict, pd.DataFrame]] = {}
+# R5.7.41.3.4.3 runtime-only caches.  These never manufacture optical evidence:
+# * decoded native field cache reuses QC/QI/T/P values for the same run/lead/route
+#   geometry while allowing per-angle surface anchors to rebuild vertical geometry;
+# * negative run/lead cache suppresses repeated historical HTTP-404 floods only
+#   after one complete QC/QI probe proved that every requested condensate field
+#   was unavailable for that exact run/lead.
+_FIELD_VALUE_CACHE: dict[tuple, tuple[pd.DataFrame, dict]] = {}
+_NEGATIVE_RUN_LEAD_CACHE: dict[tuple, dict] = {}
 _ROUTE_SOURCE_MAP_CACHE: dict[tuple, tuple[dict[str, dict], dict]] = {}
 _WEIGHT_MAP_CACHE: dict[tuple, np.ndarray] = {}
 
@@ -357,6 +370,46 @@ def _route_source_index_map(points: list[dict], timeout_s: float = 60.0) -> tupl
     return mapping,m
 
 
+
+
+def _route_geometry_signature(points: list[dict]) -> str:
+    """Hash only route geometry, excluding time-varying surface anchors.
+
+    Native ICON QC/QI/T/P values and the CDO source-address mapping depend on
+    route point identity/coordinates, not on interpolated surface pressure or
+    elevation anchors.  Keeping those anchors out of this signature is what
+    makes decoded-field reuse safe across the 13 solar-angle timestamps.
+    """
+    payload = "|".join(
+        f"{p.get('point_id','')}:{float(p.get('lat',0.0)):.6f}:{float(p.get('lon',0.0)):.6f}:"
+        f"{float(p.get('distance_km',0.0)):.3f}:{float(p.get('direction_offset_deg',0.0)):.3f}"
+        for p in points
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
+
+
+def _field_cache_key(run: datetime, lead: int, level: int, var: str, points: list[dict]) -> tuple:
+    return (run.strftime("%Y%m%d%H"), int(lead), int(level), str(var).upper(), _route_geometry_signature(points))
+
+
+def _negative_run_lead_key(run: datetime, lead: int, levels: list[int]) -> tuple:
+    return (run.strftime("%Y%m%d%H"), int(lead), tuple(int(x) for x in levels), "QC_QI")
+
+
+def _bounded_field_cache_put(key: tuple, df: pd.DataFrame, meta: dict) -> None:
+    # One analysis normally needs fewer than ~200 fields.  Bound the cache so a
+    # long-lived worker cannot grow without limit across unrelated analyses.
+    try:
+        max_items = max(64, int(os.getenv("FIRECLOUD_DWD_ICON_FIELD_CACHE_MAX_ITEMS", "512")))
+    except Exception:
+        max_items = 512
+    while len(_FIELD_VALUE_CACHE) >= max_items:
+        try:
+            _FIELD_VALUE_CACHE.pop(next(iter(_FIELD_VALUE_CACHE)))
+        except Exception:
+            _FIELD_VALUE_CACHE.clear(); break
+    _FIELD_VALUE_CACHE[key] = (df.copy(), dict(meta))
+
 def _decode_nearest(path: Path, points: list[dict], source_map: dict[str, dict] | None = None) -> tuple[pd.DataFrame, dict]:
     if not decoder_available():
         raise RuntimeError("ecCodes decoder unavailable")
@@ -403,14 +456,26 @@ def _decode_nearest(path: Path, points: list[dict], source_map: dict[str, dict] 
 
 
 def _fetch_field(run: datetime, lead: int, level: int, var: str, points: list[dict], timeout_s: float, source_map: dict[str,dict]) -> tuple[pd.DataFrame, dict]:
+    cache_key = _field_cache_key(run,lead,level,var,points)
+    cached = _FIELD_VALUE_CACHE.get(cache_key)
+    if cached is not None:
+        df0, dm0 = cached
+        meta = {**dict(dm0),
+                "stage":"FIELD_FETCH","variable":var.upper(),"model_level":int(level),
+                "run":run,"lead_hours":int(lead),
+                "status":"DECODED_FIELD_CACHE_HIT","cache_layer":"RUNTIME_DECODED_NATIVE_FIELD",
+                "network_requested":False}
+        return df0.copy(), meta
     url=_url(run,lead,level,var)
     p,meta=_download_decompress(url,timeout_s=timeout_s)
-    meta.update({"stage":"FIELD_FETCH","variable":var.upper(),"model_level":int(level),"run":run,"lead_hours":int(lead)})
+    meta.update({"stage":"FIELD_FETCH","variable":var.upper(),"model_level":int(level),"run":run,"lead_hours":int(lead),
+                 "network_requested": not str(meta.get("status","")).upper().endswith("CACHE_HIT")})
     if p is None:
         return pd.DataFrame(),meta
     try:
         df,dm=_decode_nearest(p,points,source_map=source_map)
         meta.update(dm); meta["status"] = "OK_" + meta.get("status","READY")
+        _bounded_field_cache_put(cache_key, df, dm)
         return df,meta
     except Exception as exc:
         meta["status"]="FIELD_DECODE_FAILED"; meta["error"]=f"{type(exc).__name__}: {exc}"
@@ -441,7 +506,32 @@ def fetch_icon_route_profiles(points: list[dict], valid_time: datetime) -> tuple
     if not remap_reader_available():
         meta["status"]="REMAP_READER_UNAVAILABLE"; return pd.DataFrame(),meta,pd.DataFrame()
     timeout=float(os.getenv("FIRECLOUD_DWD_ICON_TIMEOUT_S","20"))
-    # R5.5.2: resolve route->native source address once, before any QC/QI flood.
+    run,lead=resolve_run_and_lead(valid_time)
+    meta.update({"run":run,"lead_hours":lead})
+    if lead < 0 or lead > 180:
+        meta["status"]="LEAD_OUT_OF_RANGE"; return pd.DataFrame(),meta,pd.DataFrame(audit)
+    levels=_model_levels(); workers=max(1,min(12,int(os.getenv("FIRECLOUD_DWD_ICON_WORKERS","8"))))
+    negative_key=_negative_run_lead_key(run,lead,levels)
+    negative=_NEGATIVE_RUN_LEAD_CACHE.get(negative_key)
+    if negative is not None:
+        meta.update({
+            "status":"RUN_LEAD_UNAVAILABLE_CACHED",
+            "negative_run_lead_cache_status":"HIT",
+            "negative_run_lead_reason":str(negative.get("reason","ALL_QC_QI_HTTP_404")),
+            "negative_run_lead_original_field_count":int(negative.get("field_count",0)),
+        })
+        audit.append({
+            "stage":"RUN_LEAD_AVAILABILITY",
+            "status":"NEGATIVE_RUN_LEAD_CACHE_HIT",
+            "run":run,"lead_hours":int(lead),
+            "reason":meta["negative_run_lead_reason"],
+            "original_field_count":meta["negative_run_lead_original_field_count"],
+            "network_requested":False,
+        })
+        return pd.DataFrame(),meta,pd.DataFrame(audit)
+
+    # Resolve route->native source address once only after run/lead availability
+    # has not already been proven absent in this process.
     try:
         source_map,gmeta=_route_source_index_map(points,timeout_s=max(30.0,timeout))
         audit.append(gmeta)
@@ -451,19 +541,14 @@ def fetch_icon_route_profiles(points: list[dict], valid_time: datetime) -> tuple
         audit.append({"stage":"GRID_MAPPING","status":"GRID_MAPPING_FAILED","error":meta["error"]})
         return pd.DataFrame(),meta,pd.DataFrame(audit)
 
-    run,lead=resolve_run_and_lead(valid_time)
-    meta.update({"run":run,"lead_hours":lead})
-    if lead < 0 or lead > 180:
-        meta["status"]="LEAD_OUT_OF_RANGE"; return pd.DataFrame(),meta,pd.DataFrame(audit)
-    levels=_model_levels(); workers=max(1,min(12,int(os.getenv("FIRECLOUD_DWD_ICON_WORKERS","8"))))
-    qc={}; qi={}; decoded_pairs=set()
+    qc={}; qi={}; decoded_pairs=set(); condensate_fetch_audit=[]
     with ThreadPoolExecutor(max_workers=workers) as ex:
         fut={ex.submit(_fetch_field,run,lead,lev,var,points,timeout,source_map):(lev,var) for lev in levels for var in ("QC","QI")}
         for f in as_completed(fut):
             lev,var=fut[f]
             try: df,m=f.result()
             except Exception as exc: df,m=pd.DataFrame(),{"stage":"FIELD_FETCH","status":"FAILED","variable":var,"model_level":lev,"error":f"{type(exc).__name__}: {exc}"}
-            audit.append(m)
+            audit.append(m); condensate_fetch_audit.append(m)
             if not df.empty:
                 (qc if var=="QC" else qi)[lev]=df; decoded_pairs.add((lev,var))
     positive=_positive_condensate_levels(qc,qi)
@@ -479,7 +564,20 @@ def fetch_icon_route_profiles(points: list[dict], valid_time: datetime) -> tuple
             meta["status"]="NATIVE_MICROPHYSICS_PRESENT_NO_POSITIVE_CLOUD_OPTICS"
             audit.append({"stage":"CONDENSATE_AGGREGATE","status":"ZERO_CONDENSATE","decoded_field_count":decoded_count,"expected_field_count":expected_pairs})
         elif decoded_count == 0:
-            meta["status"]="NATIVE_MICROPHYSICS_UNRESOLVED"
+            # R5.7.41.3.4.3: only a complete all-404 QC/QI probe may create a
+            # process-local negative availability cache.  Mixed HTTP/decode/
+            # timeout failures remain unresolved and are retried normally.
+            statuses=[str(r.get("status","")) for r in condensate_fetch_audit if str(r.get("stage",""))=="FIELD_FETCH"]
+            all_http_404=(len(statuses)==expected_pairs and expected_pairs>0 and all(x=="HTTP_404" for x in statuses))
+            if all_http_404:
+                _NEGATIVE_RUN_LEAD_CACHE[negative_key]={"reason":"ALL_QC_QI_HTTP_404","field_count":expected_pairs}
+                meta["status"]="RUN_LEAD_UNAVAILABLE_ALL_QC_QI_HTTP_404"
+                meta["negative_run_lead_cache_status"]="MISS_WRITE"
+                audit.append({"stage":"RUN_LEAD_AVAILABILITY","status":"NEGATIVE_RUN_LEAD_CACHE_WRITE",
+                              "run":run,"lead_hours":int(lead),"reason":"ALL_QC_QI_HTTP_404",
+                              "original_field_count":expected_pairs,"network_requested":False})
+            else:
+                meta["status"]="NATIVE_MICROPHYSICS_UNRESOLVED"
             audit.append({"stage":"CONDENSATE_AGGREGATE","status":"MICROPHYSICS_UNRESOLVED","decoded_field_count":0,"expected_field_count":expected_pairs})
         else:
             meta["status"]="NATIVE_MICROPHYSICS_PARTIAL_UNRESOLVED"

@@ -2951,13 +2951,17 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         })
     if isinstance(dwd_icon_request_audit,pd.DataFrame) and not dwd_icon_request_audit.empty:
         _dwd_status=dwd_icon_request_audit.get("status",pd.Series(dtype=str)).astype(str).str.upper()
+        _dwd_stage=dwd_icon_request_audit.get("stage",pd.Series(dtype=str)).astype(str).str.upper()
+        _dwd_field = _dwd_stage.eq("FIELD_FETCH")
+        _dwd_network = _dwd_field & (_dwd_status.eq("DOWNLOADED") | _dwd_status.str.match(r"HTTP_[45]\d\d"))
         _api_eff_rows.append({
             "provider":"DWD_ICON_SECONDARY", "logical_attempt_rows":int(len(dwd_icon_request_audit)),
-            "network_requests":int(_dwd_status.eq("DOWNLOADED").sum()),
-            "raw_cache_hits":int(_dwd_status.str.contains("CACHE_HIT").sum()),
-            "decoded_cache_hits":int(_dwd_status.str.contains("DECODED_OPTICS_CACHE_HIT").sum()),
-            "failure_rows":int(_dwd_status.str.contains("FAILED|HTTP_4|HTTP_5").sum()),
-            "reuse_scope":"RUN_LEAD_ROUTE_SURFACE_ANCHOR_PERSISTENT_OPTICS"
+            "network_requests":int(_dwd_network.sum()),
+            "raw_cache_hits":int((_dwd_field & _dwd_status.eq("OK_CACHE_HIT")).sum()),
+            "decoded_cache_hits":int((_dwd_status.str.contains("DECODED_OPTICS_CACHE_HIT") | (_dwd_field & _dwd_status.eq("DECODED_FIELD_CACHE_HIT"))).sum()),
+            "negative_availability_cache_hits":int(_dwd_status.eq("NEGATIVE_RUN_LEAD_CACHE_HIT").sum()),
+            "failure_rows":int((_dwd_field & _dwd_status.str.contains("FAILED|HTTP_4|HTTP_5")).sum()),
+            "reuse_scope":"RUN_LEAD_ROUTE_GEOMETRY_RUNTIME_FIELD_CACHE_PLUS_ROUTE_SURFACE_ANCHOR_PERSISTENT_OPTICS;ALL_404_NEGATIVE_CACHE"
         })
     api_efficiency_audit=pd.DataFrame(_api_eff_rows)
 

@@ -1,6 +1,6 @@
-> Current release: **V1.0-R5.7.41.3.4.2** — Historical GFS cloud-liquid alias compatibility (`CLMR` ↔ `CLWMR`) on top of AWS indexed-range routing and Glow explicit-Missing integrity recognition.
+> Current release: **V1.0-R5.7.41.3.4.3** — DWD ICON secondary runtime decoded-field reuse + all-404 run/lead negative-cache hardening; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.2
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.3
 
 
 ## R5.7.41.3.4 Historical GFS AWS Indexed-Range Provider Routing
