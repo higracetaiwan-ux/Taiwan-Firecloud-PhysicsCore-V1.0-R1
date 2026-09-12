@@ -18,7 +18,68 @@ import pandas as pd
 import streamlit as st
 
 from firecloud import PROGRAM_NAME, __version__, __baseline__
-from firecloud.case_archive_stream import write_csv_member_stream
+
+# R5.7.41.3.4.7.1 deployment hotfix:
+# Streamlit Cloud can briefly run a mixed commit/worktree during manual file
+# replacement, where app.py is newer than firecloud/case_archive_stream.py.
+# A missing/stale engineering-only CASE streaming helper must not prevent the
+# whole application from starting. Prefer the canonical helper; fall back to
+# the exact same bounded UTF-8 streaming contract only for import failures.
+try:
+    from firecloud.case_archive_stream import write_csv_member_stream
+except (ImportError, ModuleNotFoundError):
+    class _CaseArchiveFallbackBufferedWriter:
+        def __init__(self, raw, *, buffer_bytes=4 * 1024 * 1024):
+            self.raw = raw
+            self.buffer_bytes = max(1, int(buffer_bytes))
+            self.buffer = bytearray()
+            self.digest = hashlib.sha256()
+            self.byte_count = 0
+            self.raw_write_count = 0
+
+        def _flush_buffer(self):
+            if not self.buffer:
+                return
+            self.raw.write(self.buffer)
+            self.raw_write_count += 1
+            self.buffer.clear()
+
+        def write(self, text):
+            text = str(text)
+            data = text.encode("utf-8")
+            self.digest.update(data)
+            self.byte_count += len(data)
+            self.buffer.extend(data)
+            if len(self.buffer) >= self.buffer_bytes:
+                self._flush_buffer()
+            return len(text)
+
+        def flush(self):
+            self._flush_buffer()
+
+        def hexdigest(self):
+            return self.digest.hexdigest()
+
+    def write_csv_member_stream(
+        zf, arcname, df, *, chunksize=8192, buffer_bytes=4 * 1024 * 1024
+    ):
+        frame = df if isinstance(df, pd.DataFrame) else pd.DataFrame()
+        with zf.open(arcname, mode="w") as raw:
+            writer = _CaseArchiveFallbackBufferedWriter(
+                raw, buffer_bytes=buffer_bytes
+            )
+            frame.to_csv(writer, index=False, chunksize=chunksize)
+            writer.flush()
+        return {
+            "artifact": arcname,
+            "status": "WRITTEN",
+            "row_count": int(len(frame)),
+            "byte_size": int(writer.byte_count),
+            "sha256": writer.hexdigest(),
+            "detail": "CSV uncompressed payload; bounded UTF-8 coalescing buffer",
+            "stream_buffer_bytes": int(buffer_bytes),
+            "stream_raw_write_count": int(writer.raw_write_count),
+        }
 from firecloud.scenic_spots import (
     DEFAULT_SITE_ID, REGISTRY_VERSION as SCENIC_SPOT_REGISTRY_VERSION,
     event_is_compatible, filter_scenic_spots, match_scenic_spot,
@@ -1101,7 +1162,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
 st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.41.3.4.7 Viewing / Photography Runtime Hotspot Decomposition + R5.7.41.3.4.6 Runtime / I-O Hardening + R5.7.41.3.4.5 Viewing→Glow Observer-Cloud Provenance Handoff + Shared Runtime Context + R5.7.41.3.4.4 Twilight Glow Observer-Cloud Provenance Cache Hardening + R5.7.41.3.4.3 DWD Secondary Runtime Cache Hardening + R5.7.41.3.4.2 GFS Cloud-Liquid Alias Compatibility Hotfix + R5.7.41.3.4.1 Twilight Glow Explicit-Missing Integrity Hotfix + R5.7.41.3.4 Historical GFS AWS Indexed-Range Provider Routing + R5.7.41.3.3 Historical Replay Empty Cloud-Volume Guard Hotfix + R5.7.41.3.2 Direct Conflict Eligibility Handoff Hotfix + R5.7.41.3.1 Direct Conflict Qualification Coverage Hotfix + R5.7.41.3 Shadow Validation Collection Readiness + Shared Scenic Spot Selector + R5.7.41.2 Production COT Semantic Migration Shadow Mode + R5.7.41.1 COT Diagnostic Reconciliation + R5.7.41 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap + R5.7.40.1 Vertical Conflict Integrity Handoff Hotfix + R5.7.40 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification + R5.7.39.1 pgrb2b Secondary Filter Endpoint Hotfix + R5.7.39 Canvas Optical Truth Phase 1 / GFS pgrb2b Native Condensate Probe + R5.7.38 CAMS Post-success Download Recovery + R5.7.37 Near-Surface Molecular Boundary Closure + R5.7.36 Formation Canvas Eligibility / Low-Cloud Role Separation + R5.7.35.2 Zero-Eligible Viewing Precipitation Integrity Semantics + R5.7.35.1 Aerosol Missing-Reason Handoff Hotfix + R5.7.35 Aerosol Scattering Physics Phase 1 + R5.7.34 CAMS ADS Stateful Deadline / Request-ID Recovery + R5.7.33.1 Native 3D Aerosol Readiness Integrity Hotfix + R5.7.33 Glow Deep-Range Gas/Rayleigh/Cloud Closure + R5.7.32 Glow Observer-Path Aerosol Coverage Robustness + R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1 + R5.7.30.1 Integrity Regression Restore + R5.7.30 Independent Twilight Glow Third Branch + R5.7.29.1 Viewing Precipitation Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.41.3.4.7.1 Deployment Import Compatibility Hotfix + R5.7.41.3.4.7 Viewing / Photography Runtime Hotspot Decomposition + R5.7.41.3.4.6 Runtime / I-O Hardening + R5.7.41.3.4.5 Viewing→Glow Observer-Cloud Provenance Handoff + Shared Runtime Context + R5.7.41.3.4.4 Twilight Glow Observer-Cloud Provenance Cache Hardening + R5.7.41.3.4.3 DWD Secondary Runtime Cache Hardening + R5.7.41.3.4.2 GFS Cloud-Liquid Alias Compatibility Hotfix + R5.7.41.3.4.1 Twilight Glow Explicit-Missing Integrity Hotfix + R5.7.41.3.4 Historical GFS AWS Indexed-Range Provider Routing + R5.7.41.3.3 Historical Replay Empty Cloud-Volume Guard Hotfix + R5.7.41.3.2 Direct Conflict Eligibility Handoff Hotfix + R5.7.41.3.1 Direct Conflict Qualification Coverage Hotfix + R5.7.41.3 Shadow Validation Collection Readiness + Shared Scenic Spot Selector + R5.7.41.2 Production COT Semantic Migration Shadow Mode + R5.7.41.1 COT Diagnostic Reconciliation + R5.7.41 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap + R5.7.40.1 Vertical Conflict Integrity Handoff Hotfix + R5.7.40 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification + R5.7.39.1 pgrb2b Secondary Filter Endpoint Hotfix + R5.7.39 Canvas Optical Truth Phase 1 / GFS pgrb2b Native Condensate Probe + R5.7.38 CAMS Post-success Download Recovery + R5.7.37 Near-Surface Molecular Boundary Closure + R5.7.36 Formation Canvas Eligibility / Low-Cloud Role Separation + R5.7.35.2 Zero-Eligible Viewing Precipitation Integrity Semantics + R5.7.35.1 Aerosol Missing-Reason Handoff Hotfix + R5.7.35 Aerosol Scattering Physics Phase 1 + R5.7.34 CAMS ADS Stateful Deadline / Request-ID Recovery + R5.7.33.1 Native 3D Aerosol Readiness Integrity Hotfix + R5.7.33 Glow Deep-Range Gas/Rayleigh/Cloud Closure + R5.7.32 Glow Observer-Path Aerosol Coverage Robustness + R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1 + R5.7.30.1 Integrity Regression Restore + R5.7.30 Independent Twilight Glow Third Branch + R5.7.29.1 Viewing Precipitation Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
 )
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
