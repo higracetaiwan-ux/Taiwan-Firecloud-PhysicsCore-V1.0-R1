@@ -21,7 +21,7 @@ def _model_source():
 
 
 def test_version_is_r5741347():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.1"
 
 
 def test_all_nine_viewing_photography_component_stages_are_present():

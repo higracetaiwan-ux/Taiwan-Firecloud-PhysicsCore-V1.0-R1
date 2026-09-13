@@ -143,7 +143,7 @@ def _call(monkeypatch, stats=None):
 
 
 def test_version_r57413410():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.1"
 
 
 def test_glow_internal_profiler_is_output_exact(monkeypatch):

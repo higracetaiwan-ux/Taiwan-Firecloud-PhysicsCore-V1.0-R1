@@ -1,4 +1,15 @@
-> Current release: **V1.0-R5.7.41.3.4.10** — Twilight Glow runtime hotspot decomposition; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.1** — Twilight Glow / Viewing observer aerosol numeric-route runtime context; science baseline remains frozen.
+
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.1
+
+## R5.7.41.3.4.10.1 Twilight Glow Observer Aerosol Numeric Route Context
+
+- `.3.4.10` TWS106 Field CASE 將 Twilight Glow 60.523 s 拆為 10 個 components；Observer Spectral Extinction 21.376 s 為第一大戶。
+- Actual-CASE function profile 顯示 `build_viewing_spectral_extinction()` 內 `_integrate_view_aerosol()` 為主要成本：每個 Glow target 重複篩選相同 route DataFrame、重建 CAMS 532 nm pressure-level profile 與六波段 AOD lookup。
+- 本版新增 process-local numeric aerosol route context：每個 time/angle/direction route 僅整理一次 native geopotential/ext532 arrays、temporal provenance 與 explicit 550/575/600/650/700/750 nm AOD。
+- Target integration 仍逐 segment 使用相同 curved-Earth observer LOS、相同 CAMS native 532 nm vertical interpolation、相同 0.05 km Glow endpoint tolerance、相同 temporal fallback/partial semantics。
+- TWS106 actual-CASE offline A/B：1092 Glow targets output `check_exact=True`；observer spectral standalone 6.116 → 3.440 s。585 main Viewing targets output `check_exact=True`；3.105 → 1.843 s。prepared context 為一次性 runtime cost，不宣稱為 Field speedup。
+- 不改 Formation、Viewing/Glow science、CAMS evidence values、六波段、Missing 語義、Shadow/Production COT 或 Photography decision。
 
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.5
 

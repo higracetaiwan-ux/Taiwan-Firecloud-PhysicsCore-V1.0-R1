@@ -135,6 +135,118 @@ def _integrate_view_aerosol(target, aerosol_rows: pd.DataFrame, earth_radius_km:
     return taus,"VIEW_AEROSOL_3D_RESOLVED",path_km,meta
 
 
+
+def _prepare_aerosol_numeric_route_context(aerosol_groups: dict) -> dict:
+    """Prepare immutable numeric CAMS aerosol route records for exact reuse.
+
+    Runtime-only helper.  Each time/angle/direction route keeps the same ordered
+    distance grid and the same first-row-at-distance semantics used by
+    ``_integrate_view_aerosol``.  Pressure-level geopotential/extinction arrays
+    and explicit six-band AOD values are materialized once instead of being
+    reconstructed for every Viewing/Glow target.
+    """
+    out={}
+    for key,group in (aerosol_groups or {}).items():
+        if group is None or group.empty:
+            out[key]={"distances":[],"records":{}}
+            continue
+        try:
+            distances=sorted(group["distance_km"].astype(float).unique())
+        except Exception:
+            distances=[]
+        records={}
+        for distance in distances:
+            row=group[(group["distance_km"]-float(distance)).abs()<1e-8]
+            if row.empty:
+                continue
+            r=row.iloc[0]
+            zz=[]; ee=[]
+            for c in r.index:
+                if not str(c).startswith("cams_aerext532_m1_") or not str(c).endswith("hPa"):
+                    continue
+                pressure=str(c).split("_")[-1][:-3]
+                z=_finite(r.get(f"cams_geopotential_height_m_{pressure}hPa"))
+                e=_finite(r.get(c))
+                if z is not None and e is not None and e>=0:
+                    zz.append(z/1000.0); ee.append(e)
+            if len(zz)>=2:
+                order=np.argsort(zz)
+                z_arr=np.asarray(zz,dtype=float)[order]
+                e_arr=np.asarray(ee,dtype=float)[order]
+            else:
+                z_arr=np.asarray([],dtype=float); e_arr=np.asarray([],dtype=float)
+            temporal_ok,temporal_state=_aerosol_temporal_provenance_valid(r)
+            aod={int(w):_spectral_aod_from_row(r,int(w),explicit_only=True) for w in SIX_BAND_WAVELENGTHS_NM}
+            records[float(distance)]={
+                "z":z_arr,
+                "e":e_arr,
+                "temporal_ok":bool(temporal_ok),
+                "temporal_state":str(temporal_state),
+                "aod":aod,
+            }
+        out[key]={"distances":[float(d) for d in distances],"records":records}
+    return out
+
+
+def _interp_prepared_aerosol_ext532(record: dict, z_km: float, lowest_endpoint_tolerance_km: float=0.0):
+    z=np.asarray(record.get("z",[]),dtype=float)
+    e=np.asarray(record.get("e",[]),dtype=float)
+    if len(z)<2 or len(e)<2:
+        return None,False
+    if z_km > z[-1]+1e-9:
+        return None,False
+    if z_km < z[0]-1e-9:
+        if lowest_endpoint_tolerance_km>0.0 and (z[0]-float(z_km))<=float(lowest_endpoint_tolerance_km)+1e-12:
+            return float(e[0]),True
+        return None,False
+    return float(np.interp(z_km,z,e)),False
+
+
+def _integrate_view_aerosol_prepared(target, prepared_route: dict, earth_radius_km: float, *, lowest_endpoint_tolerance_km: float=0.0):
+    """Exact-equivalent numeric-context variant of ``_integrate_view_aerosol``."""
+    dt=float(target["target_distance_km"]); ht=0.5*(float(target["target_base_km"])+float(target["target_top_km"]))
+    empty_meta={"required_segment_count":0,"resolved_segment_count":0,"temporal_fallback_segment_count":0,"temporal_missing_segment_count":0,"lowest_endpoint_snap_segment_count":0}
+    if not prepared_route:
+        return None,"VIEW_AEROSOL_3D_MISSING",0.0,empty_meta
+    distances=[float(d) for d in prepared_route.get("distances",[]) if float(d)<=dt+1e-8]
+    if len(distances)<2:
+        return None,"VIEW_AEROSOL_ROUTE_INCOMPLETE",0.0,empty_meta
+    records=prepared_route.get("records",{})
+    taus={int(w):0.0 for w in SIX_BAND_WAVELENGTHS_NM}; used=0; required=0; path_km=0.0; fallback=0; temporal_missing=0; endpoint_snap=0
+    for d0,d1 in zip(distances[:-1],distances[1:]):
+        if d0>=dt: break
+        d1=min(d1,dt)
+        if d1<=d0: continue
+        required+=1; dm=0.5*(d0+d1); z0=observer_los_height_agl_km(dt,ht,d0,earth_radius_km); z1=observer_los_height_agl_km(dt,ht,d1,earth_radius_km); zm=observer_los_height_agl_km(dt,ht,dm,earth_radius_km)
+        record=records.get(float(d0))
+        if record is None:
+            continue
+        if not bool(record.get("temporal_ok",False)):
+            temporal_missing+=1; continue
+        temporal_state=str(record.get("temporal_state") or "")
+        fallback+=int(temporal_state=="REAL_ONE_SIDED_TEMPORAL_FALLBACK")
+        ext532,snapped=_interp_prepared_aerosol_ext532(record,zm,lowest_endpoint_tolerance_km)
+        endpoint_snap+=int(snapped)
+        aod=record.get("aod",{})
+        a550=_finite(aod.get(550))
+        if ext532 is None or a550 is None or a550<=0:
+            continue
+        path=math.hypot((d1-d0)*1000.0,(z1-z0)*1000.0); path_km+=path/1000.0
+        ok=True; local={}
+        for wl in SIX_BAND_WAVELENGTHS_NM:
+            aw=_finite(aod.get(int(wl)))
+            if aw is None:
+                ok=False; break
+            local[int(wl)]=ext532*(aw/a550)*path
+        if not ok:
+            continue
+        used+=1
+        for wl,v in local.items(): taus[wl]+=v
+    meta={"required_segment_count":required,"resolved_segment_count":used,"temporal_fallback_segment_count":fallback,"temporal_missing_segment_count":temporal_missing,"lowest_endpoint_snap_segment_count":endpoint_snap}
+    if required==0 or used<required:
+        return taus if used else None,"VIEW_AEROSOL_3D_PARTIAL",path_km,meta
+    return taus,"VIEW_AEROSOL_3D_RESOLVED",path_km,meta
+
 def _integrate_view_gas(target, gas_rows: pd.DataFrame, earth_radius_km: float, prepared_context=None):
     if gas_rows is None or gas_rows.empty: return None,"VIEW_GAS_PROFILE_MISSING",0.0
     ctx=prepared_context if prepared_context is not None else prepare_gas_rt_context(gas_rows)
@@ -241,6 +353,7 @@ def prepare_viewing_spectral_runtime_context(
     projected-support cache; it contains no target result and no science gate.
     """
     gas_groups=_route_group_map(gas_profiles)
+    aerosol_groups=_route_group_map(aerosol_snapshots)
     return {
         "contract":"R5.7.41.3.4.5_VIEWING_GLOW_SHARED_RUNTIME_CONTEXT_V1",
         "source_ids":{
@@ -249,7 +362,8 @@ def prepare_viewing_spectral_runtime_context(
             "aerosol_snapshots":id(aerosol_snapshots),
             "gas_profiles":id(gas_profiles),
         },
-        "aerosol_groups":_route_group_map(aerosol_snapshots),
+        "aerosol_groups":aerosol_groups,
+        "aerosol_numeric_groups":_prepare_aerosol_numeric_route_context(aerosol_groups),
         "gas_groups":gas_groups,
         "cloud_groups":_route_group_map(cloud_layers),
         "gas_contexts":{k:prepare_gas_rt_context(g) for k,g in gas_groups.items()},
@@ -392,6 +506,7 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         cloud_layers,target_optics,aerosol_snapshots,gas_profiles
     )
     aerosol_groups=ctx.get("aerosol_groups",{})
+    aerosol_numeric_groups=ctx.get("aerosol_numeric_groups",{})
     gas_groups=ctx.get("gas_groups",{})
     cloud_groups=ctx.get("cloud_groups",{})
     gas_contexts=ctx.get("gas_contexts",{})
@@ -402,6 +517,7 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         runtime_cache_stats.clear(); runtime_cache_stats.update({
             "runtime_context_reused":bool(_ctx_reused),
             "aerosol_group_count":len(aerosol_groups),
+            "aerosol_numeric_group_count":len(aerosol_numeric_groups),
             "gas_group_count":len(gas_groups),
             "cloud_group_count":len(cloud_groups),
             "prepared_gas_context_count":len(gas_contexts),
@@ -430,7 +546,11 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         k=_key(t.get("time"),angle,direction)
         ar=aerosol_groups.get(k,pd.DataFrame()); ar=ar[ar["distance_km"].notna() & (ar["distance_km"]<=dt+1e-8)] if not ar.empty else ar
         gr=gas_groups.get(k,pd.DataFrame()); gr=gr[gr["distance_km"].notna() & (gr["distance_km"]<=dt+1e-8)] if not gr.empty else gr
-        atau,astatus,apath,ameta=_integrate_view_aerosol(t,ar,earth_radius_km,lowest_endpoint_tolerance_km=aerosol_lowest_endpoint_tolerance_km)
+        _aprepared=aerosol_numeric_groups.get(k)
+        if _aprepared is not None:
+            atau,astatus,apath,ameta=_integrate_view_aerosol_prepared(t,_aprepared,earth_radius_km,lowest_endpoint_tolerance_km=aerosol_lowest_endpoint_tolerance_km)
+        else:
+            atau,astatus,apath,ameta=_integrate_view_aerosol(t,ar,earth_radius_km,lowest_endpoint_tolerance_km=aerosol_lowest_endpoint_tolerance_km)
         gtau,gstatus,gpath=_integrate_view_gas(t,gr,earth_radius_km,prepared_context=gas_contexts.get(k))
         cg=cloud_groups.get(k)
         _cloud_diag={}
