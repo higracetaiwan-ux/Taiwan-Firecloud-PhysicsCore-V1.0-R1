@@ -282,11 +282,52 @@ def build_precipitation_path_evidence(canvases, route_snapshot: pd.DataFrame | N
     return pd.DataFrame(rows)
 
 
+def _integrate_view_path(target_distance_km: float, target_mid_alt_km: float, cells: list[dict], earth_radius_km: float,
+                         support_groups: list[tuple[float,float,list[dict]]] | None = None) -> tuple[float,int,int,float]:
+    """Integrate Cloud→Observer precipitation extinction with exact ray reuse.
+
+    R5.7.41.3.4.10.3 runtime optimization only.  Vertical hydrometeor cells that
+    share one horizontal support interval also share the exact same 17-point
+    curved-Earth observer LOS segment.  Compute that geometry once, then preserve
+    the original per-pressure-level intersection and accumulation order.
+    """
+    tau=0.0; hits=0; unresolved=0; path_km=0.0
+    dt=float(target_distance_km); hs=float(target_mid_alt_km)
+    groups = support_groups if support_groups is not None else _group_cells_by_horizontal_support(cells)
+    for support_start_km,support_end_km,group_cells in groups:
+        a=max(0.0,float(support_start_km)); b=min(dt,float(support_end_km))
+        if b<=a+1e-9:
+            continue
+        xs,zz=sample_observer_los_segment(dt,hs,a,b,sample_count=17,radius_km=earth_radius_km)
+        finite_mask=np.isfinite(zz)
+        finite=zz[finite_mask]
+        if finite.size == 0:
+            continue
+        finite_min=float(np.min(finite)); finite_max=float(np.max(finite))
+        for c in group_cells:
+            lo=float(c["z_base_km"]); hi=float(c["z_top_km"])
+            if finite_max<lo or finite_min>hi:
+                continue
+            inside=finite_mask&(zz>=lo)&(zz<=hi)
+            if not inside.any():
+                continue
+            hits+=1
+            if not bool(c["all_hydrometeor_fields_resolved"]):
+                unresolved+=1
+            seg_km=sampled_segment_path_km(xs,zz,inside)
+            seg=seg_km*1000.0
+            if seg>0:
+                path_km += seg_km
+                tau += max(0.0,float(c["extinction_m1"]))*seg
+    return float(tau),int(hits),int(unresolved),float(path_km)
+
+
 def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_snapshot: pd.DataFrame | None, *, earth_radius_km: float=6371.0) -> pd.DataFrame:
     """Cloud->Observer native-hydrometeor extinction, independent of Formation."""
     if viewing_targets is None or viewing_targets.empty:
         return pd.DataFrame(columns=VIEWING_PRECIPITATION_COLUMNS)
     cells_by_dir,meta=_prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
+    support_groups_by_dir={float(direction): _group_cells_by_horizontal_support(cells) for direction,cells in cells_by_dir.items()}
     rows=[]
     for _,r in viewing_targets.iterrows():
         if not bool(r.get("photographic_target_eligible",False)):
@@ -295,21 +336,10 @@ def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_sn
         base={"time":r.get("time"),"solar_altitude_deg":r.get("solar_altitude_deg"),"canvas_id":r.get("canvas_id")}
         if None in (dt,zb,zt,direction) or dt<=0 or zt<=zb:
             rows.append({**base,"view_precipitation_status":"VIEW_PRECIPITATION_GEOMETRY_UNRESOLVED","view_precipitation_path_km":np.nan,"view_precipitation_intersection_count":0,"note":"FORMATION_UNCHANGED;VIEWING_ONLY"}); continue
-        hs=0.5*(zb+zt); tau=0.0; hits=0; unresolved=0; path_km=0.0
+        hs=0.5*(zb+zt)
         cells=cells_by_dir.get(float(direction),[])
-        for c in cells:
-            a=max(0.0,float(c["support_start_km"])); b=min(float(dt),float(c["support_end_km"]))
-            if b<=a+1e-9: continue
-            lo=float(c["z_base_km"]); hi=float(c["z_top_km"])
-            xs,zz=sample_observer_los_segment(dt,hs,a,b,sample_count=17,radius_km=earth_radius_km)
-            inside=np.isfinite(zz)&(zz>=lo)&(zz<=hi)
-            if not inside.any(): continue
-            hits+=1
-            if not bool(c["all_hydrometeor_fields_resolved"]): unresolved+=1
-            seg_km=sampled_segment_path_km(xs,zz,inside)
-            seg=seg_km*1000.0
-            if seg>0:
-                path_km += seg_km; tau += max(0.0,float(c["extinction_m1"]))*seg
+        support_groups=support_groups_by_dir.get(float(direction),[])
+        tau,hits,unresolved,path_km=_integrate_view_path(dt,hs,cells,float(earth_radius_km),support_groups=support_groups)
         if not cells:
             status="VIEW_PRECIPITATION_VOLUME_UNRESOLVED"; val=None
         elif unresolved:

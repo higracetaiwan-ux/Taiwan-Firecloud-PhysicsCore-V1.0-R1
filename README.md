@@ -1,6 +1,12 @@
-> Current release: **V1.0-R5.7.41.3.4.10.2** — Twilight Glow molecular numeric-route runtime context; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.3** — Twilight Glow observer-precipitation horizontal-support ray reuse; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.2
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.3
+
+## R5.7.41.3.4.10.3 Twilight Glow Observer Precipitation Horizontal-Support Ray Reuse
+
+- `.3.4.10.2` TWS134 Field CASE：Volume Assembly 25.414 → 6.047 s，`.3.4.10.2` FIELD PASS；Glow 新第一大戶為 Observer Precipitation 14.309 s。
+- 本版將同一 target / horizontal support 上各 pressure-level hydrometeor cell 重複的 17-point Cloud→Observer LOS 改為一次計算、逐垂直層共用。
+- 不減 pressure levels、不減 17-point sampling、不改 RWMR/SNMR/GRLE extinction、Missing semantics 或六波段。
 
 ## R5.7.41.3.4.10.2 Twilight Glow Molecular Numeric Route Context
 
