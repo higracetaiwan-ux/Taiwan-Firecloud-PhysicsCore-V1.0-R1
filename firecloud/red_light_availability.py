@@ -17,6 +17,7 @@ reach it through the resolved atmosphere and upstream blockers?"
 from __future__ import annotations
 
 import math
+from time import perf_counter
 from typing import Iterable
 
 import numpy as np
@@ -157,6 +158,7 @@ def build_red_light_reference_evidence(
     secondary_forecast_optics: pd.DataFrame | None = None,
     cloud_geometry_completeness: float = 1.0,
     gas_prepared_context=None,
+    runtime_profile_rows: list[dict] | None = None,
 ) -> pd.DataFrame:
     """Build six-band Red-Light Availability on virtual forward receivers.
 
@@ -166,12 +168,26 @@ def build_red_light_reference_evidence(
     intersects the reference ray.  Molecular/aerosol attenuation is retained in
     the six-band availability values and may be strong even on an "open" path.
     """
+    def _profile(stage: str, t0: float, detail: str = "") -> None:
+        if runtime_profile_rows is not None:
+            runtime_profile_rows.append({
+                "stage": stage,
+                "elapsed_seconds": perf_counter() - t0,
+                "detail": detail,
+            })
+
+    _t0 = perf_counter()
     receivers = build_reference_receiver_targets(
         native_optical_voxels, solar_altitude_deg=float(solar_altitude_deg)
+    )
+    _profile(
+        "RED_LIGHT_COMPONENT_BUILD_RECEIVERS", _t0,
+        f"reference_receivers={len(receivers)};R5741349_COMPONENT_PROFILE_ONLY",
     )
     if receivers.empty:
         return pd.DataFrame()
 
+    _t0 = perf_counter()
     spectral = build_spectral_rt(
         receivers, float(solar_altitude_deg),
         aerosol_snapshot=aerosol_spectral_snapshot,
@@ -182,6 +198,12 @@ def build_red_light_reference_evidence(
         prepared_route_spectral_aod=aerosol_spectral_snapshot,
         gas_prepared_context=gas_prepared_context,
     )
+    _profile(
+        "RED_LIGHT_COMPONENT_SPECTRAL_RT", _t0,
+        f"rows={len(spectral)};bands={','.join(map(str, SIX_BAND_WAVELENGTHS_NM))};R5741349_COMPONENT_PROFILE_ONLY",
+    )
+
+    _t0 = perf_counter()
     cloud = build_reference_receiver_cloud_path_evidence(
         scene, receivers,
         solar_altitude_deg=float(solar_altitude_deg),
@@ -189,19 +211,36 @@ def build_red_light_reference_evidence(
         secondary_forecast_optics=secondary_forecast_optics,
         cloud_geometry_completeness=float(cloud_geometry_completeness),
     )
+    _profile(
+        "RED_LIGHT_COMPONENT_CLOUD_PATH", _t0,
+        f"rows={len(cloud)};R5741349_COMPONENT_PROFILE_ONLY",
+    )
+
+    _t0 = perf_counter()
     virtual = _virtual_canvases(receivers)
+    _profile(
+        "RED_LIGHT_COMPONENT_VIRTUAL_CANVAS", _t0,
+        f"virtual_canvases={len(virtual)};R5741349_COMPONENT_PROFILE_ONLY",
+    )
+
+    _t0 = perf_counter()
     precip = build_precipitation_path_evidence(
         virtual, route_snapshot, valid_time=valid_time,
         solar_altitude_deg=float(solar_altitude_deg), earth_radius_km=float(earth_radius_km),
     )
     if not precip.empty:
         precip = precip.rename(columns={"canvas_id": "reference_receiver_id"})
+    _profile(
+        "RED_LIGHT_COMPONENT_PRECIPITATION_PATH", _t0,
+        f"rows={len(precip)};R5741349_COMPONENT_PROFILE_ONLY",
+    )
 
     base_cols = [
         "reference_receiver_id", "reference_domain", "reference_cloud_base_km",
         "sampled_receiver_altitude_km", "direction_offset_deg", "distance_km",
         "v1_direct_solar_fraction", "point_id",
     ]
+    _t0 = perf_counter()
     out = spectral.copy()
     out = out.merge(cloud, on=[c for c in ["reference_receiver_id","direction_offset_deg","distance_km","reference_cloud_base_km","sampled_receiver_altitude_km"] if c in out.columns and c in cloud.columns], how="left", suffixes=("", "_cloudref"))
     if not precip.empty:
@@ -214,7 +253,12 @@ def build_red_light_reference_evidence(
             "optical_evidence":"precipitation_optical_evidence",
         })
         out = out.merge(p, on="reference_receiver_id", how="left")
+    _profile(
+        "RED_LIGHT_COMPONENT_MERGE", _t0,
+        f"rows={len(out)};R5741349_COMPONENT_PROFILE_ONLY",
+    )
 
+    _t0 = perf_counter()
     fsun = pd.to_numeric(out.get("v1_direct_solar_fraction"), errors="coerce").fillna(0.0)
     gas_comp = pd.to_numeric(out.get("gas_path_completeness", pd.Series(0.0, index=out.index)), errors="coerce").fillna(0.0)
     gas_domain = out.get("gas_rt_domain_status", pd.Series("MISSING", index=out.index)).astype(str)
@@ -241,7 +285,12 @@ def build_red_light_reference_evidence(
         total_band_ready &= valid
         out[f"reference_total_transmission_{int(wl)}nm"] = t.where(valid, np.nan)
         out[f"red_light_availability_{int(wl)}nm"] = (fsun * t).where(valid, np.nan)
+    _profile(
+        "RED_LIGHT_COMPONENT_SIX_BAND_AVAILABILITY", _t0,
+        f"rows={len(out)};bands={','.join(map(str, SIX_BAND_WAVELENGTHS_NM))};R5741349_COMPONENT_PROFILE_ONLY",
+    )
 
+    _t0 = perf_counter()
     evidence_ready = gas_ready & aerosol_ready & cloud_ready & precip_ready & total_band_ready
     aerosol_temporal = out.get(
         "aerosol_rt_temporal_evidence_state",
@@ -299,6 +348,10 @@ def build_red_light_reference_evidence(
     )
     out["time"] = valid_time
     out["solar_altitude_deg"] = float(solar_altitude_deg)
+    _profile(
+        "RED_LIGHT_COMPONENT_PATH_STATE", _t0,
+        f"rows={len(out)};R5741349_COMPONENT_PROFILE_ONLY",
+    )
     return out
 
 

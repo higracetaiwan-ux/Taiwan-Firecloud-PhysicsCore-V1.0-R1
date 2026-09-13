@@ -2150,6 +2150,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             if not _cg.empty:
                 _cv = pd.to_numeric(_cg["completeness"], errors="coerce").dropna()
                 _cloud_geom_comp = float(_cv.iloc[0]) if len(_cv) else 0.0
+        _red_ref_component_profile = []
         _red_ref = build_red_light_reference_evidence(
             native_optical_voxels=native_optical_voxels,
             scene=_v1["scene"], route_snapshot=snap,
@@ -2160,7 +2161,17 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             secondary_forecast_optics=_secondary_validated,
             cloud_geometry_completeness=_cloud_geom_comp,
             gas_prepared_context=gas_rt_context,
+            runtime_profile_rows=_red_ref_component_profile,
         )
+        for _profile_row in _red_ref_component_profile:
+            performance_rows.append({
+                "time": t,
+                "solar_altitude_deg": float(angle),
+                "stage": str(_profile_row.get("stage", "RED_LIGHT_COMPONENT_UNKNOWN")),
+                "elapsed_seconds": float(_profile_row.get("elapsed_seconds", 0.0)),
+                "cache_status": "R5741349_COMPONENT_PROFILE_ONLY",
+                "detail": str(_profile_row.get("detail", "")),
+            })
         if _red_ref is not None and not _red_ref.empty:
             v1_red_light_reference_frames.append(_red_ref)
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle),
