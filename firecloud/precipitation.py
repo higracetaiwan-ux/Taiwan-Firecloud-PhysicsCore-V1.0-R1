@@ -174,9 +174,19 @@ def _integrate_sun_path(canvas, cells: list[dict], solar_altitude_deg: float, ea
     return float(tau),hit,0,path_km
 
 
+def prepare_native_hydrometeor_context(route_snapshot: pd.DataFrame | None = None) -> tuple[dict[float,list[dict]], dict]:
+    """Prepare immutable native-hydrometeor geometry/optics context for exact reuse.
+
+    Scheduling/runtime helper only.  The returned content is identical to the
+    internal preparation previously rebuilt on every precipitation-path call.
+    """
+    return _prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
+
+
 def build_precipitation_path_evidence(canvases, route_snapshot: pd.DataFrame | None = None, *, valid_time=None,
                                       path_optics: pd.DataFrame | None = None, solar_altitude_deg: float | None=None,
-                                      earth_radius_km: float=6371.0) -> pd.DataFrame:
+                                      earth_radius_km: float=6371.0,
+                                      prepared_native_hydrometeor_context: tuple[dict[float,list[dict]], dict] | None = None) -> pd.DataFrame:
     rows=[]
     precip_present=False; max_rate=None; surface_field_available=False
     if route_snapshot is not None and not route_snapshot.empty:
@@ -186,7 +196,10 @@ def build_precipitation_path_evidence(canvases, route_snapshot: pd.DataFrame | N
                 if vals.notna().any():
                     surface_field_available=True; max_rate=float(vals.max()); precip_present=max_rate>0.0; break
     explicit = path_optics if path_optics is not None else pd.DataFrame()
-    cells_by_dir,volume_meta=_prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
+    if prepared_native_hydrometeor_context is None:
+        cells_by_dir,volume_meta=_prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
+    else:
+        cells_by_dir,volume_meta=prepared_native_hydrometeor_context
     for c in canvases:
         rec={
             "time":valid_time,"canvas_id":c.canvas_id,

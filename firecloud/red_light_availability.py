@@ -159,6 +159,7 @@ def build_red_light_reference_evidence(
     cloud_geometry_completeness: float = 1.0,
     gas_prepared_context=None,
     runtime_profile_rows: list[dict] | None = None,
+    prepared_precipitation_context=None,
 ) -> pd.DataFrame:
     """Build six-band Red-Light Availability on virtual forward receivers.
 
@@ -227,6 +228,7 @@ def build_red_light_reference_evidence(
     precip = build_precipitation_path_evidence(
         virtual, route_snapshot, valid_time=valid_time,
         solar_altitude_deg=float(solar_altitude_deg), earth_radius_km=float(earth_radius_km),
+        prepared_native_hydrometeor_context=prepared_precipitation_context,
     )
     if not precip.empty:
         precip = precip.rename(columns={"canvas_id": "reference_receiver_id"})

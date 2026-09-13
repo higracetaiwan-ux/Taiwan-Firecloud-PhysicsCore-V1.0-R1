@@ -99,6 +99,7 @@ from .precipitation import (
     VIEWING_PRECIPITATION_COLUMNS,
     build_precipitation_path_evidence,
     build_viewing_precipitation_evidence,
+    prepare_native_hydrometeor_context,
 )
 from .spectroscopy_readiness import build_six_band_spectroscopy_readiness
 from .formation_gates import build_formation_gate_table
@@ -1413,6 +1414,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     gfs_canvas_optical_probe_cache = {}
     gfs_canvas_optical_probe_request_audit_rows = []
     native_volume_cache = {}
+    precipitation_native_context_cache = {}
     voxel_topology_cache = {}
     native_optical_base_cache = {}
     gas_profile_cache = {}
@@ -2151,6 +2153,20 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
                 _cv = pd.to_numeric(_cg["completeness"], errors="coerce").dropna()
                 _cloud_geom_comp = float(_cv.iloc[0]) if len(_cv) else 0.0
         _red_ref_component_profile = []
+        if cache_key in precipitation_native_context_cache:
+            _red_precip_context = precipitation_native_context_cache[cache_key]
+            _red_precip_context_status = "HIT_CROSS_ANGLE"
+        else:
+            _red_precip_context = prepare_native_hydrometeor_context(snap)
+            precipitation_native_context_cache[cache_key] = _red_precip_context
+            _red_precip_context_status = "MISS_BUILT"
+        performance_rows.append({
+            "time": t, "solar_altitude_deg": float(angle),
+            "stage": "RED_LIGHT_PRECIPITATION_NATIVE_CONTEXT",
+            "elapsed_seconds": 0.0, "cache_status": _red_precip_context_status,
+            "cache_key": str(cache_key),
+            "detail": "R57413491_EXACT_REUSE_SAME_FORECAST_SNAPSHOT",
+        })
         _red_ref = build_red_light_reference_evidence(
             native_optical_voxels=native_optical_voxels,
             scene=_v1["scene"], route_snapshot=snap,
@@ -2162,6 +2178,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             cloud_geometry_completeness=_cloud_geom_comp,
             gas_prepared_context=gas_rt_context,
             runtime_profile_rows=_red_ref_component_profile,
+            prepared_precipitation_context=_red_precip_context,
         )
         for _profile_row in _red_ref_component_profile:
             performance_rows.append({
