@@ -322,12 +322,18 @@ def _integrate_view_path(target_distance_km: float, target_mid_alt_km: float, ce
     return float(tau),int(hits),int(unresolved),float(path_km)
 
 
-def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_snapshot: pd.DataFrame | None, *, earth_radius_km: float=6371.0) -> pd.DataFrame:
+def build_viewing_precipitation_evidence(viewing_targets: pd.DataFrame, route_snapshot: pd.DataFrame | None, *, earth_radius_km: float=6371.0, prepared_native_hydrometeor_context: tuple[dict[float,list[dict]], dict] | None = None) -> pd.DataFrame:
     """Cloud->Observer native-hydrometeor extinction, independent of Formation."""
     if viewing_targets is None or viewing_targets.empty:
         return pd.DataFrame(columns=VIEWING_PRECIPITATION_COLUMNS)
-    cells_by_dir,meta=_prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
-    support_groups_by_dir={float(direction): _group_cells_by_horizontal_support(cells) for direction,cells in cells_by_dir.items()}
+    if prepared_native_hydrometeor_context is None:
+        cells_by_dir,meta=_prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
+        support_groups_by_dir={float(direction): _group_cells_by_horizontal_support(cells) for direction,cells in cells_by_dir.items()}
+    else:
+        cells_by_dir,meta=prepared_native_hydrometeor_context
+        support_groups_by_dir=meta.get("_ray_support_groups_by_dir", {}) if isinstance(meta, dict) else {}
+        if not support_groups_by_dir:
+            support_groups_by_dir={float(direction): _group_cells_by_horizontal_support(cells) for direction,cells in cells_by_dir.items()}
     rows=[]
     for _,r in viewing_targets.iterrows():
         if not bool(r.get("photographic_target_eligible",False)):

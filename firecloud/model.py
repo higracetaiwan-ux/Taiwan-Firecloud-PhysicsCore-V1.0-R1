@@ -2676,10 +2676,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         f"build_viewing_path_geometry();rows={len(v1_viewing_path_geometry)}",
     )
     _view_precip_frames=[]
+    _view_hydrometeor_contexts={}
     if not v1_viewing_path_geometry.empty and not _view_route_snapshots.empty:
         for (_vt,_va),_vg in v1_viewing_path_geometry.groupby(["time","solar_altitude_deg"],dropna=False,sort=False):
             _rs=_view_route_snapshots[(_view_route_snapshots["time"].astype(str)==str(_vt)) & (pd.to_numeric(_view_route_snapshots["solar_altitude_deg"],errors="coerce").sub(float(_va)).abs()<1e-8)]
-            _vp=build_viewing_precipitation_evidence(_vg,_rs,earth_radius_km=cfg.earth_radius_km)
+            _ctx=prepare_native_hydrometeor_context(_rs)
+            _view_hydrometeor_contexts[(str(_vt),float(_va))]=_ctx
+            _vp=build_viewing_precipitation_evidence(_vg,_rs,earth_radius_km=cfg.earth_radius_km,prepared_native_hydrometeor_context=_ctx)
             if not _vp.empty: _view_precip_frames.append(_vp)
     v1_viewing_precipitation_evidence = _concat_release(
         _view_precip_frames,
@@ -2798,6 +2801,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         earth_radius_km=cfg.earth_radius_km,
         runtime_cache_stats=_glow_cache_stats,
         viewing_runtime_context=_viewing_runtime_context,
+        viewing_hydrometeor_contexts=_view_hydrometeor_contexts,
     )
     _glow_phase1_t0 = perf_counter()
     (
@@ -2869,6 +2873,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             f"aerosol_scattering_rows={len(v1_twilight_glow_aerosol_scattering)};"
             f"view_runtime_reused={_glow_cache_stats.get('viewing_runtime_context_reused', False)};"
             f"shared_gas_context={_glow_cache_stats.get('shared_gas_context_source', '')};"
+            f"hydrometeor_context_reused={_glow_cache_stats.get('viewing_hydrometeor_context_reused', False)};"
+            f"hydrometeor_context_count={_glow_cache_stats.get('viewing_hydrometeor_context_count', 0)};"
             f"cloud_handoff_hits={_glow_cache_stats.get('cloud_handoff_hit_count', 0)};"
             f"cloud_provenance_fallback_calls={_glow_cache_stats.get('cloud_provenance_call_count', 0)};"
             f"support_cache_entries={_glow_cache_stats.get('support_cache_entry_count', 0)};"

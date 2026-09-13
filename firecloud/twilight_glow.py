@@ -1054,6 +1054,7 @@ def _observer_precipitation(
     route_snapshots: pd.DataFrame,
     *,
     earth_radius_km: float,
+    prepared_hydrometeor_contexts: dict[tuple[str,float], tuple[dict[float,list[dict]], dict]] | None = None,
 ) -> pd.DataFrame:
     if targets is None or targets.empty:
         return pd.DataFrame()
@@ -1067,7 +1068,10 @@ def _observer_precipitation(
                 route_snapshots["time"].astype(str).eq(str(time_value))
                 & (pd.to_numeric(route_snapshots["solar_altitude_deg"], errors="coerce") - float(angle)).abs().le(1e-8)
             ]
-        frame = build_viewing_precipitation_evidence(group, route, earth_radius_km=float(earth_radius_km))
+        _ctx = None
+        if prepared_hydrometeor_contexts:
+            _ctx = prepared_hydrometeor_contexts.get((str(time_value), float(angle)))
+        frame = build_viewing_precipitation_evidence(group, route, earth_radius_km=float(earth_radius_km), prepared_native_hydrometeor_context=_ctx)
         if frame is not None and not frame.empty:
             frames.append(frame)
     return pd.concat(frames, ignore_index=True, copy=False) if frames else pd.DataFrame()
@@ -1088,6 +1092,7 @@ def build_twilight_glow_branch(
     earth_radius_km: float = 6371.0,
     runtime_cache_stats: dict[str, Any] | None = None,
     viewing_runtime_context: dict[str, Any] | None = None,
+    viewing_hydrometeor_contexts: dict[tuple[str,float], tuple[dict[float,list[dict]], dict]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build target-volume evidence and per-angle Twilight Glow summaries."""
     _component_seconds: dict[str, float] = {}
@@ -1125,8 +1130,9 @@ def build_twilight_glow_branch(
         return pd.DataFrame(), empty_summary
 
     _component_t0 = perf_counter()
-    precipitation = _observer_precipitation(targets, route_snapshots, earth_radius_km=float(earth_radius_km))
+    precipitation = _observer_precipitation(targets, route_snapshots, earth_radius_km=float(earth_radius_km), prepared_hydrometeor_contexts=viewing_hydrometeor_contexts)
     _component_seconds["OBSERVER_PRECIPITATION"] = max(0.0, perf_counter() - _component_t0)
+    _shared_hydrometeor_context_count = len(viewing_hydrometeor_contexts) if isinstance(viewing_hydrometeor_contexts, dict) else 0
 
     _view_runtime_stats: dict[str, Any] = {}
     _component_t0 = perf_counter()
@@ -1220,6 +1226,9 @@ def build_twilight_glow_branch(
             "shared_gas_context_source": _gas_context_source,
             "molecular_numeric_route_count": len(molecular_routes),
             "molecular_numeric_context_contract": "R574134102_GLOW_MOLECULAR_NUMERIC_ROUTE_CONTEXT",
+            "viewing_hydrometeor_context_count": int(_shared_hydrometeor_context_count),
+            "viewing_hydrometeor_context_reused": bool(_shared_hydrometeor_context_count > 0),
+            "viewing_hydrometeor_context_contract": "R574134107_VIEWING_GLOW_NATIVE_HYDROMETEOR_CONTEXT_REUSE",
         })
     rows: list[dict[str, Any]] = []
     _component_t0 = perf_counter()

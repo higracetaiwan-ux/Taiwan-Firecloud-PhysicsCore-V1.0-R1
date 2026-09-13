@@ -1,6 +1,14 @@
-> Current release: **V1.0-R5.7.41.3.4.10.6** — Viewing / Glow Cloud Numeric Route Context; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.7** — Viewing↔Glow Shared Hydrometeor Context; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.6
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.7
+
+
+## R5.7.41.3.4.10.7 Viewing↔Glow Shared Hydrometeor Context
+
+- Main Viewing prepares each exact `(time, solar_altitude_deg)` native RWMR/SNMR/GRLE hydrometeor route context once.
+- Twilight Glow reuses the same immutable hydrometeor cells and horizontal-support ray groups instead of rebuilding them from the identical route DataFrame.
+- Glow still integrates every Cloud→Observer target independently with the same 17-point curved-Earth LOS, pressure-level intersections, Qext/reff/density assumptions, Missing semantics, and accumulation order.
+- No Formation, Viewing decision, Glow physics, spectroscopy, COT, Earth Shadow, or Photography threshold changes.
 
 ## R5.7.41.3.4.10.6 Viewing / Glow Cloud Numeric Route Context
 
