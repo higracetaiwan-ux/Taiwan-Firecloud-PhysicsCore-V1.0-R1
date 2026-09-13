@@ -209,6 +209,117 @@ def _prepare_glow_molecular_numeric_routes(
     return out
 
 
+
+def _prepare_glow_molecular_numeric_routes_from_viewing_context(
+    viewing_runtime_context: dict[str, Any] | None,
+) -> dict[tuple[str, float | None, float], dict[str, Any]]:
+    """Rebuild Glow molecular T/P routes from the already-prepared Viewing context.
+
+    R5.7.41.3.4.10.8 runtime-only handoff.  It reuses the exact numeric z/T/P
+    arrays held by ``prepare_gas_rt_context()`` and reconstructs only the
+    independent near-surface boundary metadata required by Glow Rayleigh/local
+    molecular diagnostics.  The handoff is accepted only when every exact
+    Viewing gas route has a valid prepared gas context; callers must fall back
+    to ``_prepare_glow_molecular_numeric_routes()`` otherwise so Rayleigh
+    readiness never becomes coupled to HITRAN species readiness.
+    """
+    if not isinstance(viewing_runtime_context, dict):
+        return {}
+    gas_groups = viewing_runtime_context.get("gas_groups")
+    gas_contexts = viewing_runtime_context.get("gas_contexts")
+    if not isinstance(gas_groups, dict) or not gas_groups:
+        return {}
+    if not isinstance(gas_contexts, dict) or not gas_contexts:
+        return {}
+
+    out: dict[tuple[str, float | None, float], dict[str, Any]] = {}
+    for key, group in gas_groups.items():
+        ctx = gas_contexts.get(key)
+        if ctx is None or not getattr(ctx, "valid", False):
+            return {}
+        prepared = getattr(ctx, "prepared_profile", None)
+        if not isinstance(prepared, dict):
+            return {}
+        direction = key[2] if isinstance(key, tuple) and len(key) >= 3 else None
+        drec = prepared.get(float(direction)) if direction is not None else None
+        if not isinstance(drec, dict) or "distances" not in drec or "profiles" not in drec:
+            return {}
+        if not isinstance(group, pd.DataFrame) or group.empty:
+            return {}
+        required = {"distance_km", "altitude_agl_km", "temperature_k", "pressure_hpa"}
+        if not required.issubset(group.columns):
+            return {}
+
+        distance_values = pd.to_numeric(group["distance_km"], errors="coerce").to_numpy(float)
+        z_values = pd.to_numeric(group["altitude_agl_km"], errors="coerce").to_numpy(float)
+        t_values = pd.to_numeric(group["temperature_k"], errors="coerce").to_numpy(float)
+        p_values = pd.to_numeric(group["pressure_hpa"], errors="coerce").to_numpy(float)
+        if "near_surface_boundary_state" in group.columns:
+            boundary_states = group["near_surface_boundary_state"].fillna("").astype(str).to_numpy()
+        else:
+            boundary_states = np.asarray([""] * len(group), dtype=object)
+
+        # Match the legacy helper's dropna(T/P/z) contract exactly; infinities
+        # remain present just as they do after pandas dropna and are excluded
+        # from the lower-boundary minimum only when z itself is non-finite.
+        nonmissing = ~(
+            np.isnan(distance_values)
+            | np.isnan(z_values)
+            | np.isnan(t_values)
+            | np.isnan(p_values)
+        )
+        boundary_meta: dict[float, tuple[float, float | None, float | None]] = {}
+        for distance in np.unique(distance_values[nonmissing]):
+            mask = nonmissing & (distance_values == distance)
+            z = z_values[mask]
+            states = boundary_states[mask]
+            finite_z = np.isfinite(z)
+            if not finite_z.any():
+                continue
+            anchor_mask = finite_z & (states == "READY")
+            pressure_mask = finite_z & (states != "READY")
+            boundary_meta[float(distance)] = (
+                float(np.min(z[finite_z])),
+                float(np.min(z[anchor_mask])) if anchor_mask.any() else None,
+                float(np.min(z[pressure_mask])) if pressure_mask.any() else None,
+            )
+
+        profiles: dict[float, dict[str, Any]] = {}
+        for distance, rec in drec["profiles"].items():
+            meta = boundary_meta.get(float(distance))
+            if meta is None or not isinstance(rec, dict):
+                return {}
+            if not {"z", "temperature_k", "pressure_hpa"}.issubset(rec):
+                return {}
+            profiles[float(distance)] = {
+                "z": rec["z"],
+                "temperature_k": rec["temperature_k"],
+                "pressure_hpa": rec["pressure_hpa"],
+                "actual_lo": meta[0],
+                "anchor_lo": meta[1],
+                "pressure_lo": meta[2],
+            }
+        out[key] = {
+            "distances": np.asarray(drec["distances"], dtype=float),
+            "profiles": profiles,
+            "contract": "R574134108_VIEWING_GLOW_MOLECULAR_CONTEXT_HANDOFF",
+        }
+
+    return out if len(out) == len(gas_groups) else {}
+
+
+
+def _select_glow_molecular_numeric_routes(
+    gas_profiles: pd.DataFrame,
+    viewing_runtime_context: dict[str, Any] | None,
+) -> tuple[dict[tuple[str, float | None, float], dict[str, Any]], str]:
+    """Select exact shared molecular routes or preserve the independent fallback."""
+    shared = _prepare_glow_molecular_numeric_routes_from_viewing_context(viewing_runtime_context)
+    if shared:
+        return shared, "SHARED_VIEWING_GAS_CONTEXT"
+    return _prepare_glow_molecular_numeric_routes(gas_profiles), "GLOW_LOCAL_PREPARE_FALLBACK"
+
+
 def _interp_glow_molecular_profile(
     rec: dict[str, Any] | None,
     altitude_km: float,
@@ -1165,7 +1276,9 @@ def build_twilight_glow_branch(
         _gas_context_source = "GLOW_LOCAL_PREPARE"
     else:
         _gas_context_source = "SHARED_VIEWING_RUNTIME_CONTEXT"
-    molecular_routes = _prepare_glow_molecular_numeric_routes(gas_profiles)
+    molecular_routes, _molecular_context_source = _select_glow_molecular_numeric_routes(
+        gas_profiles, viewing_runtime_context
+    )
     _component_seconds["LOOKUP_CONTEXT_PREP"] = max(0.0, perf_counter() - _component_t0)
 
     # R5.7.41.3.4.5 Viewing hands unresolved cloud-blocker provenance forward
@@ -1225,7 +1338,12 @@ def build_twilight_glow_branch(
             "viewing_runtime_context_reused": bool(_view_runtime_stats.get("runtime_context_reused", False)),
             "shared_gas_context_source": _gas_context_source,
             "molecular_numeric_route_count": len(molecular_routes),
-            "molecular_numeric_context_contract": "R574134102_GLOW_MOLECULAR_NUMERIC_ROUTE_CONTEXT",
+            "molecular_numeric_context_source": _molecular_context_source,
+            "molecular_numeric_context_contract": (
+                "R574134108_VIEWING_GLOW_MOLECULAR_CONTEXT_HANDOFF"
+                if _molecular_context_source == "SHARED_VIEWING_GAS_CONTEXT"
+                else "R574134102_GLOW_MOLECULAR_NUMERIC_ROUTE_CONTEXT"
+            ),
             "viewing_hydrometeor_context_count": int(_shared_hydrometeor_context_count),
             "viewing_hydrometeor_context_reused": bool(_shared_hydrometeor_context_count > 0),
             "viewing_hydrometeor_context_contract": "R574134107_VIEWING_GLOW_NATIVE_HYDROMETEOR_CONTEXT_REUSE",

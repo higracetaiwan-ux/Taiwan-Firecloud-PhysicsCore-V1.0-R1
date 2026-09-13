@@ -1,7 +1,11 @@
-> Current release: **V1.0-R5.7.41.3.4.10.7** — Viewing↔Glow Shared Hydrometeor Context; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.8** — Viewing→Glow Molecular Context Handoff; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.7
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.8
 
+
+## R5.7.41.3.4.10.8 Viewing→Glow Molecular Context Handoff
+
+Runtime-only exact-reuse release。Twilight Glow 優先從 Main Viewing 已建立的 gas runtime context 取得相同 z/T/P numeric arrays，僅重建 Glow 獨立需要的 near-surface boundary metadata；若任一 exact gas route 的 shared gas context 無效或結構不完整，整體退回既有 `.10.2` independent molecular preparation，避免把 Rayleigh/local molecular readiness 錯綁到 HITRAN species readiness。
 
 ## R5.7.41.3.4.10.7 Viewing↔Glow Shared Hydrometeor Context
 
