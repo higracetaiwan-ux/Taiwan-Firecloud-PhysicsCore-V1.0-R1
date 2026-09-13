@@ -108,4 +108,4 @@ def test_prepared_context_science_dataframe_remains_exact():
 
 def test_version_is_r57413492():
     import firecloud
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.1"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.2"

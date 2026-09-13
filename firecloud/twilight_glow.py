@@ -139,6 +139,268 @@ def _gas_profile_index(gas_profiles: pd.DataFrame) -> dict[tuple[str, float | No
     return out
 
 
+def _prepare_glow_molecular_numeric_routes(
+    gas_profiles: pd.DataFrame,
+) -> dict[tuple[str, float | None, float], dict[str, Any]]:
+    """Prepare exact-equivalent numeric T/P + boundary metadata for Glow.
+
+    R5.7.41.3.4.10.2 removes repeated per-volume pandas conversion from the
+    independent Twilight Glow molecular observer path.  This context is kept
+    independent of HITRAN gas-species readiness because Rayleigh and local
+    molecular state require only the frozen temperature/pressure profile.
+    """
+    out: dict[tuple[str, float | None, float], dict[str, Any]] = {}
+    if gas_profiles is None or gas_profiles.empty:
+        return out
+    required = {
+        "time", "solar_altitude_deg", "direction_offset_deg", "distance_km",
+        "altitude_agl_km", "temperature_k", "pressure_hpa",
+    }
+    if not required.issubset(gas_profiles.columns):
+        return out
+    cols = list(required)
+    if "near_surface_boundary_state" in gas_profiles.columns:
+        cols.append("near_surface_boundary_state")
+    q = gas_profiles[cols].copy()
+    q["solar_altitude_deg"] = pd.to_numeric(q["solar_altitude_deg"], errors="coerce").round(8)
+    q["direction_offset_deg"] = pd.to_numeric(q["direction_offset_deg"], errors="coerce").round(8)
+    q["distance_km"] = pd.to_numeric(q["distance_km"], errors="coerce")
+    q["altitude_agl_km"] = pd.to_numeric(q["altitude_agl_km"], errors="coerce")
+    q["temperature_k"] = pd.to_numeric(q["temperature_k"], errors="coerce")
+    q["pressure_hpa"] = pd.to_numeric(q["pressure_hpa"], errors="coerce")
+    if "near_surface_boundary_state" not in q.columns:
+        q["near_surface_boundary_state"] = ""
+
+    route_profiles: dict[tuple[str, float | None, float], dict[float, dict[str, Any]]] = {}
+    group_keys = [q["time"].astype(str), "solar_altitude_deg", "direction_offset_deg", "distance_km"]
+    for keys, group in q.groupby(group_keys, dropna=False, sort=False):
+        time_value, angle, direction, distance = keys
+        if pd.isna(angle) or pd.isna(direction) or pd.isna(distance):
+            continue
+        profile = group.dropna(subset=["altitude_agl_km", "temperature_k", "pressure_hpa"]).sort_values("altitude_agl_km")
+        if profile.empty:
+            continue
+        z = profile["altitude_agl_km"].to_numpy(float)
+        t = profile["temperature_k"].to_numpy(float)
+        p = profile["pressure_hpa"].to_numpy(float)
+        states = profile["near_surface_boundary_state"].fillna("").astype(str).to_numpy()
+        finite_z = np.isfinite(z)
+        if not finite_z.any():
+            continue
+        anchor_mask = finite_z & (states == "READY")
+        pressure_mask = finite_z & (states != "READY")
+        rec = {
+            "z": z,
+            "temperature_k": t,
+            "pressure_hpa": p,
+            "actual_lo": float(np.min(z[finite_z])),
+            "anchor_lo": float(np.min(z[anchor_mask])) if anchor_mask.any() else None,
+            "pressure_lo": float(np.min(z[pressure_mask])) if pressure_mask.any() else None,
+        }
+        key = (str(time_value), round(float(angle), 8), round(float(direction), 8))
+        route_profiles.setdefault(key, {})[float(distance)] = rec
+
+    for key, profiles in route_profiles.items():
+        out[key] = {
+            "distances": np.asarray(sorted(profiles), dtype=float),
+            "profiles": profiles,
+            "contract": "R574134102_GLOW_MOLECULAR_NUMERIC_ROUTE_CONTEXT",
+        }
+    return out
+
+
+def _interp_glow_molecular_profile(
+    rec: dict[str, Any] | None,
+    altitude_km: float,
+    *,
+    lowest_endpoint_tolerance_km: float = 0.0,
+    lowest_endpoint_quantization_km: float = 0.0,
+) -> tuple[float, float] | None:
+    """Numeric-array equivalent of ``_profile_state``."""
+    if not rec:
+        return None
+    z = np.asarray(rec.get("z"), dtype=float)
+    t = np.asarray(rec.get("temperature_k"), dtype=float)
+    p = np.asarray(rec.get("pressure_hpa"), dtype=float)
+    valid = np.isfinite(z) & np.isfinite(t) & np.isfinite(p) & (t > 0.0) & (p > 0.0)
+    z, t, p = z[valid], t[valid], p[valid]
+    if len(z) < 2:
+        return None
+    # The prepared profile already preserves legacy altitude sort order; keep
+    # the explicit sort here so standalone callers remain exact-equivalent.
+    order = np.argsort(z)
+    z, t, p = z[order], t[order], p[order]
+    query = float(altitude_km)
+    lo = float(z.min()); hi = float(z.max())
+    tol = max(0.0, float(lowest_endpoint_tolerance_km))
+    if query < lo:
+        quantum = max(0.0, float(lowest_endpoint_quantization_km))
+        if quantum > 0.0:
+            q_cmp = round(query / quantum) * quantum
+            lo_cmp = round(lo / quantum) * quantum
+            gap_cmp = max(0.0, lo_cmp - q_cmp)
+        else:
+            gap_cmp = lo - query
+        if gap_cmp <= tol + 1e-12:
+            query = lo
+        else:
+            return None
+    if query > hi + 1e-9:
+        return None
+    return float(np.interp(query, z, t)), float(np.interp(query, z, p))
+
+
+def _rayleigh_observer_path_prepared(
+    target: pd.Series,
+    route_context: dict[str, Any] | None,
+    earth_radius_km: float,
+) -> tuple[dict[int, float] | None, str, int, int]:
+    """Exact-equivalent numeric-context version of ``_rayleigh_observer_path``."""
+    distance = _finite(target.get("target_distance_km"))
+    base = _finite(target.get("target_base_km"))
+    top = _finite(target.get("target_top_km"))
+    if distance is None or base is None or top is None or distance <= 0.0 or top <= base:
+        return None, "GLOW_OBSERVER_RAYLEIGH_GEOMETRY_UNRESOLVED", 0, 0
+    if not route_context:
+        return None, "GLOW_OBSERVER_RAYLEIGH_PROFILE_MISSING", 0, 0
+    native_distances = route_context.get("distances")
+    profiles = route_context.get("profiles", {})
+    if native_distances is None:
+        return None, "GLOW_OBSERVER_RAYLEIGH_PROFILE_MISSING", 0, 0
+    distances = [float(x) for x in native_distances if float(x) <= distance + 1e-8]
+    if not distances or distances[0] > 1e-8:
+        return None, "GLOW_OBSERVER_RAYLEIGH_OBSERVER_ENDPOINT_MISSING", 0, 0
+    if distances[-1] < distance - 1e-8:
+        distances.append(float(distance))
+    target_altitude = 0.5 * (base + top)
+    tau = {int(w): 0.0 for w in SIX_BAND_WAVELENGTHS_NM}
+    required = 0
+    resolved = 0
+    for d0, d1 in zip(distances[:-1], distances[1:]):
+        if d1 <= d0:
+            continue
+        required += 1
+        midpoint = 0.5 * (d0 + d1)
+        nearest = min(native_distances, key=lambda x: abs(float(x) - midpoint))
+        rec = profiles.get(float(nearest))
+        if rec is None:
+            continue
+        altitude = observer_los_height_agl_km(distance, target_altitude, midpoint, earth_radius_km)
+        state = _interp_glow_molecular_profile(
+            rec, altitude,
+            lowest_endpoint_tolerance_km=GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM,
+            lowest_endpoint_quantization_km=GLOW_OBSERVER_MOLECULAR_BOUNDARY_QUANTIZATION_KM,
+        )
+        if state is None:
+            continue
+        temperature_k, pressure_hpa = state
+        number_density_m3 = pressure_hpa * 100.0 / (BOLTZMANN * temperature_k)
+        z0 = observer_los_height_agl_km(distance, target_altitude, d0, earth_radius_km)
+        z1 = observer_los_height_agl_km(distance, target_altitude, d1, earth_radius_km)
+        path_m = math.hypot((d1 - d0) * 1000.0, (z1 - z0) * 1000.0)
+        for wavelength in SIX_BAND_WAVELENGTHS_NM:
+            tau[int(wavelength)] += rayleigh_cross_section_m2(int(wavelength)) * number_density_m3 * path_m
+        resolved += 1
+    if required == 0 or resolved < required:
+        return (tau if resolved else None), "GLOW_OBSERVER_RAYLEIGH_PATH_PARTIAL", required, resolved
+    return tau, "GLOW_OBSERVER_RAYLEIGH_PATH_RESOLVED", required, resolved
+
+
+def _local_molecular_state_prepared(
+    target: pd.Series,
+    route_context: dict[str, Any] | None,
+) -> tuple[float, float, float] | None:
+    if not route_context:
+        return None
+    distance = _finite(target.get("target_distance_km"))
+    base = _finite(target.get("target_base_km"))
+    top = _finite(target.get("target_top_km"))
+    if distance is None or base is None or top is None:
+        return None
+    native_distances = route_context.get("distances")
+    profiles = route_context.get("profiles", {})
+    if native_distances is None or len(native_distances) == 0:
+        return None
+    nearest = min(native_distances, key=lambda x: abs(float(x) - distance))
+    state = _interp_glow_molecular_profile(profiles.get(float(nearest)), 0.5 * (base + top))
+    if state is None:
+        return None
+    temperature_k, pressure_hpa = state
+    return temperature_k, pressure_hpa, pressure_hpa * 100.0 / (BOLTZMANN * temperature_k)
+
+
+def _molecular_boundary_diagnostics_prepared(
+    target: pd.Series,
+    route_context: dict[str, Any] | None,
+    earth_radius_km: float,
+) -> dict[str, float | int]:
+    """Exact-equivalent numeric-context version of lower-boundary diagnostics."""
+    out = {
+        "snap_segment_count": 0,
+        "raw_max_gap_km": 0.0,
+        "quantized_max_gap_km": 0.0,
+        "pressure_level_only_raw_max_gap_km": 0.0,
+        "near_surface_anchor_segment_count": 0,
+        "near_surface_bridge_segment_count": 0,
+        "near_surface_anchor_min_km": float("nan"),
+    }
+    if not route_context:
+        return out
+    distance = _finite(target.get("target_distance_km"))
+    base = _finite(target.get("target_base_km"))
+    top = _finite(target.get("target_top_km"))
+    if distance is None or base is None or top is None or distance <= 0.0 or top <= base:
+        return out
+    target_altitude = 0.5 * (base + top)
+    native_distances = route_context.get("distances")
+    profiles = route_context.get("profiles", {})
+    if native_distances is None:
+        return out
+    distances = [float(d) for d in native_distances if float(d) <= distance + 1e-8]
+    if not distances:
+        return out
+    if distances[-1] < distance - 1e-8:
+        distances.append(float(distance))
+    q = GLOW_OBSERVER_MOLECULAR_BOUNDARY_QUANTIZATION_KM
+    tol = GLOW_OBSERVER_MOLECULAR_BOUNDARY_TOLERANCE_KM
+    for d0, d1 in zip(distances[:-1], distances[1:]):
+        if d1 <= d0:
+            continue
+        midpoint = 0.5 * (d0 + d1)
+        altitude = observer_los_height_agl_km(distance, target_altitude, midpoint, earth_radius_km)
+        nearest = min(native_distances, key=lambda d: abs(float(d) - midpoint))
+        rec = profiles.get(float(nearest))
+        if rec is None:
+            continue
+        actual_lo = float(rec["actual_lo"])
+        anchor_lo = rec.get("anchor_lo")
+        pressure_lo = rec.get("pressure_lo")
+        if anchor_lo is not None:
+            anchor_lo = float(anchor_lo)
+            out["near_surface_anchor_segment_count"] = int(out["near_surface_anchor_segment_count"]) + 1
+            cur = out["near_surface_anchor_min_km"]
+            out["near_surface_anchor_min_km"] = anchor_lo if not math.isfinite(float(cur)) else min(float(cur), anchor_lo)
+            if pressure_lo is not None:
+                pressure_lo = float(pressure_lo)
+                if anchor_lo - 1e-12 <= altitude < pressure_lo - 1e-12:
+                    out["near_surface_bridge_segment_count"] = int(out["near_surface_bridge_segment_count"]) + 1
+                    out["pressure_level_only_raw_max_gap_km"] = max(
+                        float(out["pressure_level_only_raw_max_gap_km"]), pressure_lo - float(altitude)
+                    )
+        if altitude >= actual_lo:
+            continue
+        raw_gap = max(0.0, actual_lo - float(altitude))
+        if q > 0.0:
+            quantized_gap = max(0.0, round(actual_lo / q) * q - round(float(altitude) / q) * q)
+        else:
+            quantized_gap = raw_gap
+        out["raw_max_gap_km"] = max(float(out["raw_max_gap_km"]), raw_gap)
+        out["quantized_max_gap_km"] = max(float(out["quantized_max_gap_km"]), quantized_gap)
+        if quantized_gap <= tol + 1e-12:
+            out["snap_segment_count"] = int(out["snap_segment_count"]) + 1
+    return out
+
+
 def _profile_state(
     profile: pd.DataFrame | None,
     altitude_km: float,
@@ -891,13 +1153,13 @@ def build_twilight_glow_branch(
         _key(row.get("time"), row.get("solar_altitude_deg"), row.get("canvas_id")): row
         for _, row in observer_spectral.iterrows()
     }
-    gas_index = _gas_profile_index(gas_profiles)
     gas_contexts = (viewing_runtime_context or {}).get("gas_contexts") if isinstance(viewing_runtime_context, dict) else None
     if not isinstance(gas_contexts, dict) or not gas_contexts:
         gas_contexts = _gas_context_index(gas_profiles)
         _gas_context_source = "GLOW_LOCAL_PREPARE"
     else:
         _gas_context_source = "SHARED_VIEWING_RUNTIME_CONTEXT"
+    molecular_routes = _prepare_glow_molecular_numeric_routes(gas_profiles)
     _component_seconds["LOOKUP_CONTEXT_PREP"] = max(0.0, perf_counter() - _component_t0)
 
     # R5.7.41.3.4.5 Viewing hands unresolved cloud-blocker provenance forward
@@ -956,6 +1218,8 @@ def build_twilight_glow_branch(
             "support_cache_entry_count": 0,
             "viewing_runtime_context_reused": bool(_view_runtime_stats.get("runtime_context_reused", False)),
             "shared_gas_context_source": _gas_context_source,
+            "molecular_numeric_route_count": len(molecular_routes),
+            "molecular_numeric_context_contract": "R574134102_GLOW_MOLECULAR_NUMERIC_ROUTE_CONTEXT",
         })
     rows: list[dict[str, Any]] = []
     _component_t0 = perf_counter()
@@ -970,7 +1234,8 @@ def build_twilight_glow_branch(
             None if angle is None else round(angle, 8),
             None if direction is None else round(direction, 8),
         )
-        profiles = gas_index.get(gas_key)
+        gas_context = gas_contexts.get(gas_key)
+        molecular_route = molecular_routes.get(gas_key)
         target = pd.Series({
             "time": geom.get("time"),
             "solar_altitude_deg": angle,
@@ -979,14 +1244,16 @@ def build_twilight_glow_branch(
             "target_base_km": geom.get("scatter_layer_bottom_km"),
             "target_top_km": geom.get("scatter_layer_top_km"),
         })
-        rayleigh_tau, rayleigh_status, required_segments, resolved_segments = _rayleigh_observer_path(
-            target, profiles, float(earth_radius_km)
+        rayleigh_tau, rayleigh_status, required_segments, resolved_segments = _rayleigh_observer_path_prepared(
+            target, molecular_route, float(earth_radius_km)
         )
         observer_gas_species, observer_gas_species_status, gas_required_segments, gas_resolved_segments, gas_path_km = _observer_gas_species_path(
-            target, gas_contexts.get(gas_key), float(earth_radius_km)
+            target, gas_context, float(earth_radius_km)
         )
-        local = _local_molecular_state(target, profiles)
-        molecular_boundary_diag = _molecular_boundary_diagnostics(target, profiles, float(earth_radius_km))
+        local = _local_molecular_state_prepared(target, molecular_route)
+        molecular_boundary_diag = _molecular_boundary_diagnostics_prepared(
+            target, molecular_route, float(earth_radius_km)
+        )
         if observer is not None and "view_cloud_provenance_state" in observer.index:
             glow_cloud_handoff_hits += 1
             cloud_diag = {

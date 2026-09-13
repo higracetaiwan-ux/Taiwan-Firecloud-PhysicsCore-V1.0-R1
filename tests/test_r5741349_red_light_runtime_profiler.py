@@ -98,7 +98,7 @@ def _call(profile=None):
 
 
 def test_version_r5741349():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.1"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.2"
 
 
 def test_red_light_profiler_emits_all_eight_components_without_changing_science_output(monkeypatch):

@@ -30,8 +30,3 @@ V1.0-R5.7.41.3.4.10.1 — Twilight Glow Observer Aerosol Numeric Route Context
 
 ## Science baseline
 `R5.7.41.2_SHADOW_COT_AB_FROZEN`；Production COT、Shadow promotion gates、Formation / Viewing / Glow independence 全部維持凍結。
-
-## Release gate
-- Working-tree：654/654 PASS。
-- FULL-CLEAN fresh-extract：654/654 PASS。
-- Field performance gate：OPEN（等待 `.3.4.10.1` TWS106 CASE）。

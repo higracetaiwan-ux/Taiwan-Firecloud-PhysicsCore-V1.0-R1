@@ -22,7 +22,6 @@ Twilight Glow Observer Aerosol Numeric Route Context
 ## 驗證
 - Targeted Viewing/Glow tests：19/19 PASS。
 - Full regression：654/654 PASS（1 existing pandas FutureWarning）。
-- FULL-CLEAN fresh-extract：654/654 PASS。
 - TWS106 actual-CASE Glow targets：1092 rows，legacy/optimized `check_exact=True`。
 - TWS106 main Viewing targets：585 rows，legacy/optimized `check_exact=True`。
 - Field gate：OPEN；等待 `.3.4.10.1` CASE。

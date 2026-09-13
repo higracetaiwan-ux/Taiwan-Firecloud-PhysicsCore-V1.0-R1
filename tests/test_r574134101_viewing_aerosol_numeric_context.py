@@ -49,7 +49,7 @@ def _target():
 
 
 def test_version_contract():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.1"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.2"
 
 
 def test_prepared_aerosol_integrator_is_exact_equivalent():

@@ -6,6 +6,4 @@
 - Production algorithm change：numeric prepared context only；science formulas unchanged
 - Actual-CASE exact-equivalence：PASS（Glow 1092 / Viewing 585 targets）
 - Working-tree regression：654/654 PASS
-- FULL-CLEAN fresh-extract：654/654 PASS
-- Package release gate：CLOSED
-- Field performance gate：OPEN
+- Field gate：OPEN

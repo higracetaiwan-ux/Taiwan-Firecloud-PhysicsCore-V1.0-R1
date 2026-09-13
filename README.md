@@ -1,6 +1,13 @@
-> Current release: **V1.0-R5.7.41.3.4.10.1** — Twilight Glow / Viewing observer aerosol numeric-route runtime context; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.2** — Twilight Glow molecular numeric-route runtime context; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.2
+
+## R5.7.41.3.4.10.2 Twilight Glow Molecular Numeric Route Context
+
+- `.3.4.10.1` TWS134 Field CASE：Observer Spectral Extinction 11.765 s，`.3.4.10.1` FIELD PASS；Glow 新第一大戶為 Volume Assembly 25.414 s。
+- 本版把 Glow Rayleigh/local molecular/boundary diagnostics 的重複 pandas profile conversion 改成 route-scoped numeric T/P context。
+- TWS134 actual-case 1092 volumes：三條 molecular helper 1092/1092 exact-equivalent；helper runtime 約 4.07 → 0.30 s。
+- 不改 Rayleigh/HITRAN、六波段、10 m boundary tolerance、1 m quantization、ML137 bridge、Missing semantics、Formation/Viewing/Glow science 或 Shadow/Production COT。
 
 ## R5.7.41.3.4.10.1 Twilight Glow Observer Aerosol Numeric Route Context
 

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_version_bumped_for_deployment_import_hotfix():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.1"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.2"
 
 
 def test_app_guards_case_archive_stream_import_with_local_fallback():

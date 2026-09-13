@@ -20,7 +20,7 @@ def _transect():
 
 
 def test_version_r5741348():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.1"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.2"
 
 
 def test_prepared_plan_matches_legacy_support_and_cf_helpers():

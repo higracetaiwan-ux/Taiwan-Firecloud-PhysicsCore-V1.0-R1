@@ -16,6 +16,4 @@ TWS106 `.3.4.10` evidence reconstructed into identical target inputs。
 上述為 local/offline benchmark，不等同 Field Streamlit speedup。
 
 ## Fresh-extract gate
-- FULL-CLEAN fresh-extract regression：654/654 PASS。
-- 1 個既有 pandas FutureWarning，非 failure。
-- Release gate：CLOSED。
+Pending final FULL-CLEAN package test at document creation time；final package must pass 654/654 before release.
