@@ -1,6 +1,13 @@
-> Current release: **V1.0-R5.7.41.3.4.10.4** — Viewing / Glow gas spectroscopy-state memoization; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.5** — Viewing / Glow route-group direct reuse; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.4
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.5
+
+## R5.7.41.3.4.10.5 Viewing / Glow Route Group Direct Reuse
+
+- Reuse exact time/angle/direction aerosol and gas route groups directly.
+- Remove redundant per-target pandas distance slicing; integrators keep their original target-distance bounds.
+- No science equations, thresholds, Missing semantics, six-band rules, or HITRAN/CAMS logic changed.
+- TWS134 same-input Glow/Main Viewing A/B: `check_exact=True`.
 
 ## R5.7.41.3.4.10.4 Viewing / Glow Gas Spectroscopy State Memo
 

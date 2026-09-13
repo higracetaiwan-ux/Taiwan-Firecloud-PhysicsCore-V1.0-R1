@@ -582,8 +582,13 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
             rec["note"]="CLOUD_TO_OBSERVER_ONLY;FORMATION_UNCHANGED;LOCAL_OR_INVALID_VIEW_GEOMETRY_FAIL_CLOSED"
             rows.append(rec); continue
         k=_key(t.get("time"),angle,direction)
-        ar=aerosol_groups.get(k,pd.DataFrame()); ar=ar[ar["distance_km"].notna() & (ar["distance_km"]<=dt+1e-8)] if not ar.empty else ar
-        gr=gas_groups.get(k,pd.DataFrame()); gr=gr[gr["distance_km"].notna() & (gr["distance_km"]<=dt+1e-8)] if not gr.empty else gr
+        # Route groups are already exact time/angle/direction partitions.
+        # The aerosol/gas integrators enforce the target-distance bound
+        # internally, so per-target DataFrame slicing here is redundant.
+        # Reuse the immutable route group directly to avoid 2 boolean-frame
+        # materializations for every Viewing/Glow target.
+        ar=aerosol_groups.get(k,pd.DataFrame())
+        gr=gas_groups.get(k,pd.DataFrame())
         _aprepared=aerosol_numeric_groups.get(k)
         if _aprepared is not None:
             atau,astatus,apath,ameta=_integrate_view_aerosol_prepared(t,_aprepared,earth_radius_km,lowest_endpoint_tolerance_km=aerosol_lowest_endpoint_tolerance_km)
