@@ -2799,17 +2799,64 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         runtime_cache_stats=_glow_cache_stats,
         viewing_runtime_context=_viewing_runtime_context,
     )
+    _glow_phase1_t0 = perf_counter()
     (
         v1_twilight_glow_sun_to_scatter_extinction,
         v1_twilight_glow_scatter_to_observer_extinction,
         v1_twilight_glow_single_scattering,
     ) = build_twilight_glow_phase1_exports(v1_twilight_glow_scattering_volume)
+    _glow_phase1_elapsed = max(0.0, perf_counter() - _glow_phase1_t0)
+
+    _glow_aerosol_t0 = perf_counter()
     v1_twilight_glow_aerosol_scattering = build_twilight_glow_aerosol_scattering(
         v1_twilight_glow_scattering_volume, cams_native_aerosol_route_snapshots
     )
+    _glow_aerosol_elapsed = max(0.0, perf_counter() - _glow_aerosol_t0)
+
+    _glow_summary_attach_t0 = perf_counter()
     v1_twilight_glow_summary = attach_twilight_glow_aerosol_summary(
         v1_twilight_glow_summary, v1_twilight_glow_aerosol_scattering
     )
+    _glow_summary_attach_elapsed = max(0.0, perf_counter() - _glow_summary_attach_t0)
+
+    _glow_component_seconds = _glow_cache_stats.get("component_seconds", {}) if isinstance(_glow_cache_stats, dict) else {}
+    _glow_component_specs = (
+        ("GEOMETRY", "TWILIGHT_GLOW_COMPONENT_GEOMETRY", "build_twilight_glow_geometry()"),
+        ("TARGETS", "TWILIGHT_GLOW_COMPONENT_TARGETS", "_view_targets_from_glow_geometry()"),
+        ("OBSERVER_PRECIPITATION", "TWILIGHT_GLOW_COMPONENT_OBSERVER_PRECIPITATION", "_observer_precipitation(); Cloud→Observer precipitation evidence for Glow targets"),
+        ("OBSERVER_SPECTRAL_EXTINCTION", "TWILIGHT_GLOW_COMPONENT_OBSERVER_SPECTRAL_EXTINCTION", "build_viewing_spectral_extinction(); shared Viewing runtime context allowed"),
+        ("LOOKUP_CONTEXT_PREP", "TWILIGHT_GLOW_COMPONENT_LOOKUP_CONTEXT_PREP", "source/observer/gas lookup context preparation"),
+        ("VOLUME_ASSEMBLY", "TWILIGHT_GLOW_COMPONENT_VOLUME_ASSEMBLY", "per-volume Rayleigh/gas/cloud provenance and six-band single-scattering proxy assembly"),
+        ("SUMMARY", "TWILIGHT_GLOW_COMPONENT_SUMMARY", "summarize_twilight_glow() before aerosol summary attach"),
+    )
+    for _glow_key, _glow_stage, _glow_detail in _glow_component_specs:
+        if _glow_key in _glow_component_seconds:
+            performance_rows.append({
+                "stage": _glow_stage,
+                "elapsed_seconds": float(_glow_component_seconds.get(_glow_key, 0.0) or 0.0),
+                "cache_status": "R57413410_COMPONENT_PROFILE_ONLY",
+                "detail": _glow_detail,
+            })
+    performance_rows.extend([
+        {
+            "stage": "TWILIGHT_GLOW_COMPONENT_PHASE1_EXPORTS",
+            "elapsed_seconds": _glow_phase1_elapsed,
+            "cache_status": "R57413410_COMPONENT_PROFILE_ONLY",
+            "detail": "build_twilight_glow_phase1_exports(); sun/scatter, scatter/observer and single-scattering export tables",
+        },
+        {
+            "stage": "TWILIGHT_GLOW_COMPONENT_AEROSOL_SCATTERING",
+            "elapsed_seconds": _glow_aerosol_elapsed,
+            "cache_status": "R57413410_COMPONENT_PROFILE_ONLY",
+            "detail": "build_twilight_glow_aerosol_scattering(); independent CAMS native aerosol scattering evidence",
+        },
+        {
+            "stage": "TWILIGHT_GLOW_COMPONENT_AEROSOL_SUMMARY_ATTACH",
+            "elapsed_seconds": _glow_summary_attach_elapsed,
+            "cache_status": "R57413410_COMPONENT_PROFILE_ONLY",
+            "detail": "attach_twilight_glow_aerosol_summary(); summary-only handoff",
+        },
+    ])
     _glow_elapsed = perf_counter() - _glow_t0
     performance_rows.append({
         "stage": "TWILIGHT_GLOW_INDEPENDENT_BRANCH",

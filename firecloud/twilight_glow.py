@@ -15,6 +15,7 @@ scattering and radiometric calibration; unavailable terms remain explicit.
 from __future__ import annotations
 
 import math
+from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -827,6 +828,8 @@ def build_twilight_glow_branch(
     viewing_runtime_context: dict[str, Any] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build target-volume evidence and per-angle Twilight Glow summaries."""
+    _component_seconds: dict[str, float] = {}
+    _component_t0 = perf_counter()
     geometry = build_twilight_glow_geometry(
         red_light_reference,
         event_timeline,
@@ -835,11 +838,36 @@ def build_twilight_glow_branch(
         observer_alt_km=float(observer_alt_km),
         earth_radius_km=float(earth_radius_km),
     )
+    _component_seconds["GEOMETRY"] = max(0.0, perf_counter() - _component_t0)
+
+    _component_t0 = perf_counter()
     targets = _view_targets_from_glow_geometry(geometry)
+    _component_seconds["TARGETS"] = max(0.0, perf_counter() - _component_t0)
     if targets.empty:
-        return pd.DataFrame(), summarize_twilight_glow(pd.DataFrame(), event_timeline)
+        _component_t0 = perf_counter()
+        empty_summary = summarize_twilight_glow(pd.DataFrame(), event_timeline)
+        _component_seconds["SUMMARY"] = max(0.0, perf_counter() - _component_t0)
+        if runtime_cache_stats is not None:
+            runtime_cache_stats.clear()
+            runtime_cache_stats.update({
+                "component_seconds": dict(_component_seconds),
+                "cloud_group_count": 0,
+                "cotmap_entry_count": 0,
+                "truth_map_entry_count": 0,
+                "cloud_provenance_call_count": 0,
+                "cloud_handoff_hit_count": 0,
+                "support_cache_entry_count": 0,
+                "viewing_runtime_context_reused": False,
+                "shared_gas_context_source": "",
+            })
+        return pd.DataFrame(), empty_summary
+
+    _component_t0 = perf_counter()
     precipitation = _observer_precipitation(targets, route_snapshots, earth_radius_km=float(earth_radius_km))
+    _component_seconds["OBSERVER_PRECIPITATION"] = max(0.0, perf_counter() - _component_t0)
+
     _view_runtime_stats: dict[str, Any] = {}
+    _component_t0 = perf_counter()
     observer_spectral = build_viewing_spectral_extinction(
         targets,
         cloud_layers if isinstance(cloud_layers, pd.DataFrame) else pd.DataFrame(),
@@ -852,6 +880,9 @@ def build_twilight_glow_branch(
         runtime_context=viewing_runtime_context,
         runtime_cache_stats=_view_runtime_stats,
     )
+    _component_seconds["OBSERVER_SPECTRAL_EXTINCTION"] = max(0.0, perf_counter() - _component_t0)
+
+    _component_t0 = perf_counter()
     source_map = {
         _key(row.get("time"), row.get("solar_altitude_deg"), row.get("reference_receiver_id")): row
         for _, row in red_light_reference.iterrows()
@@ -867,6 +898,7 @@ def build_twilight_glow_branch(
         _gas_context_source = "GLOW_LOCAL_PREPARE"
     else:
         _gas_context_source = "SHARED_VIEWING_RUNTIME_CONTEXT"
+    _component_seconds["LOOKUP_CONTEXT_PREP"] = max(0.0, perf_counter() - _component_t0)
 
     # R5.7.41.3.4.5 Viewing hands unresolved cloud-blocker provenance forward
     # from the same observer-LOS pass used for cloud extinction. The R5.7.41.3.4.4
@@ -926,6 +958,7 @@ def build_twilight_glow_branch(
             "shared_gas_context_source": _gas_context_source,
         })
     rows: list[dict[str, Any]] = []
+    _component_t0 = perf_counter()
     for _, geom in geometry.iterrows():
         angle = _finite(geom.get("solar_altitude_deg"))
         direction = _finite(geom.get("direction_offset_deg"))
@@ -1194,6 +1227,11 @@ def build_twilight_glow_branch(
             record["glow_proxy_state"] = "GLOW_RAYLEIGH_SINGLE_SCATTERING_UNRESOLVED"
         rows.append(record)
     detail = pd.DataFrame(rows)
+    _component_seconds["VOLUME_ASSEMBLY"] = max(0.0, perf_counter() - _component_t0)
+
+    _component_t0 = perf_counter()
+    summary = summarize_twilight_glow(detail, event_timeline)
+    _component_seconds["SUMMARY"] = max(0.0, perf_counter() - _component_t0)
     if runtime_cache_stats is not None:
         runtime_cache_stats["cloud_group_count"] = len(glow_cloud_groups)
         runtime_cache_stats["cotmap_entry_count"] = len(glow_cloud_cotmap)
@@ -1203,7 +1241,8 @@ def build_twilight_glow_branch(
         runtime_cache_stats["support_cache_entry_count"] = int(
             sum(len(cache) for cache in glow_cloud_support_caches.values())
         )
-    return detail, summarize_twilight_glow(detail, event_timeline)
+        runtime_cache_stats["component_seconds"] = dict(_component_seconds)
+    return detail, summary
 
 
 
