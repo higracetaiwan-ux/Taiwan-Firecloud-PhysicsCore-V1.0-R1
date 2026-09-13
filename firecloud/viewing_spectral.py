@@ -404,8 +404,145 @@ def prepare_viewing_spectral_runtime_context(
         "cotmap":_exact_cot_map(cloud_layers,target_optics),
         "truth_map":_target_optical_truth_map(target_optics),
         "cloud_support_caches":{},
+        "cloud_numeric_groups":{},
+        "cloud_numeric_max_distance":{},
     }
 
+
+
+def _prepare_cloud_numeric_routes_for_targets(
+    viewing_geometry: pd.DataFrame,
+    cloud_groups: dict,
+    cloud_support_caches: dict,
+    numeric_groups: dict,
+    numeric_max_distance: dict,
+):
+    """Prepare exact-order numeric cloud rows once per route.
+
+    Runtime-only optimization. The projected-support interval is still computed
+    by the frozen Viewing helper and cached under the same layer-id/index key.
+    Rows remain in the exact order provided by _route_group_map().
+    """
+    if viewing_geometry is None or viewing_geometry.empty:
+        return numeric_groups
+
+    max_distance_by_route={}
+    for _,t in viewing_geometry.iterrows():
+        if not bool(t.get("photographic_target_eligible",False)):
+            continue
+        a=_finite(t.get("solar_altitude_deg")); d=_finite(t.get("direction_offset_deg")); dt=_finite(t.get("target_distance_km"))
+        if None in (a,d,dt) or dt<=0:
+            continue
+        k=(str(t.get("time")),round(a,8),round(d,8))
+        max_distance_by_route[k]=max(float(dt),float(max_distance_by_route.get(k,0.0)))
+
+    for k,max_dt in max_distance_by_route.items():
+        if float(numeric_max_distance.get(k,-1.0)) >= float(max_dt)-1e-12:
+            continue
+        g=cloud_groups.get(k)
+        if g is None or g.empty:
+            numeric_groups[k]=[]
+            numeric_max_distance[k]=float(max_dt)
+            continue
+        if "distance_km" not in g.columns:
+            numeric_groups[k]=[]
+            numeric_max_distance[k]=float(max_dt)
+            continue
+        dist=pd.to_numeric(g["distance_km"],errors="coerce")
+        cand=g[dist<float(max_dt)-1e-8]
+        support_cache=cloud_support_caches.setdefault(k,{})
+        recs=[]
+        for _,b in cand.iterrows():
+            bb=_finite(b.get("z_base_km")); bt=_finite(b.get("z_top_km"))
+            s0=s1=np.nan
+            if bb is not None and bt is not None and bt>bb:
+                _sk=str(b.get("layer_id",""))+"@"+str(b.name)
+                if _sk not in support_cache:
+                    support_cache[_sk]=_projected_support_interval(b,g)
+                s0,s1,_,_=support_cache[_sk]
+            recs.append((
+                _finite(b.get("distance_km")), bb, bt, _finite(b.get("cloud_fraction")),
+                str(b.get("layer_id")), b.get("time"), b.get("solar_altitude_deg"),
+                str(b.get("evidence_consistency") or ""), s0, s1,
+            ))
+        numeric_groups[k]=recs
+        numeric_max_distance[k]=float(max_dt)
+    return numeric_groups
+
+
+def _cloud_expected_tau_prepared(target, cloud_layers: pd.DataFrame, target_optics: pd.DataFrame, earth_radius_km: float, *, prepared_route, cotmap, truth_map, diagnostic_sink=None):
+    """Exact-equivalent numeric-route version of observer cloud extinction."""
+    diag={
+        "state":"GLOW_OBSERVER_CLOUD_NOT_EVALUATED",
+        "blocker_count":0,
+        "unresolved_blocker_count":0,
+        "conflict_blocker_count":0,
+        "unresolved_layer_ids":"",
+        "conflict_states":"",
+    }
+    def _commit_diag():
+        if diagnostic_sink is not None:
+            diagnostic_sink.clear(); diagnostic_sink.update(diag)
+
+    direction=float(target["direction_offset_deg"]); dt=float(target["target_distance_km"]); ht=0.5*(float(target["target_base_km"])+float(target["target_top_km"]))
+    required_cloud_columns={"direction_offset_deg","distance_km","z_base_km","z_top_km"}
+    if cloud_layers is None or cloud_layers.empty or not required_cloud_columns.issubset(set(cloud_layers.columns)):
+        diag["state"]="GLOW_OBSERVER_CLOUD_EVIDENCE_MISSING"; _commit_diag()
+        return None,0.0,"VIEW_CLOUD_VOLUME_UNRESOLVED",0,""
+
+    expected_t=1.0; conditional_tau=0.0; blockers=0; unresolved=0; sources=[]
+    unresolved_ids=[]; conflict_states=[]; conflict_count=0
+    for dist,bb,bt,cf,bid,timev,angv,consistency,s0,s1 in (prepared_route or []):
+        if dist is None or not (float(dist)<dt-1e-8):
+            continue
+        if bb is None or bt is None or bt<=bb:
+            continue
+        if not (math.isfinite(float(s0)) and math.isfinite(float(s1))) or s1<=s0:
+            continue
+        xs,zz=sample_observer_los_segment(dt,ht,max(0.0,s0),min(dt,s1),sample_count=25,radius_km=earth_radius_km)
+        if len(xs)<2:
+            continue
+        inside=np.isfinite(zz)&(zz>=bb)&(zz<=bt)
+        if not inside.any():
+            continue
+        blockers+=1; evidence_key=_evidence_key(timev,angv,bid); cotrec=cotmap.get(evidence_key)
+        if cotrec is None or cf is None:
+            unresolved+=1; unresolved_ids.append(bid)
+            truth_state,cot_semantics,resolver_state=truth_map.get(evidence_key,("","",""))
+            is_conflict=(
+                truth_state in {"DIRECT_EVIDENCE_CONFLICT","MULTISOURCE_DISAGREEMENT"}
+                or cot_semantics=="UNRESOLVED_CONFLICT"
+                or consistency in {"CF_CLOUD_CONDENSATE_ZERO","CONDENSATE_CLOUD_CF_LOW"}
+                or "CONFLICT" in resolver_state.upper()
+            )
+            if is_conflict:
+                conflict_count+=1
+                conflict_states.append("|".join(x for x in (consistency,truth_state,cot_semantics,resolver_state) if x))
+            continue
+        cot,src=cotrec; seg=sampled_segment_path_km(xs,zz,inside)*1000.0
+        thick=(bt-bb)*1000.0
+        if seg<=0 or thick<=0:
+            continue
+        slant_tau=max(0.0,cot)*seg/thick; conditional_tau+=slant_tau; cf=min(1.0,max(0.0,cf))
+        expected_t *= (1.0-cf)+cf*math.exp(-slant_tau); sources.append(src)
+
+    diag.update({
+        "blocker_count":int(blockers),
+        "unresolved_blocker_count":int(unresolved),
+        "conflict_blocker_count":int(conflict_count),
+        "unresolved_layer_ids":";".join(sorted(set(unresolved_ids))),
+        "conflict_states":";".join(sorted(set(conflict_states))),
+    })
+    if blockers==0:
+        diag["state"]="GLOW_OBSERVER_CLOUD_PATH_CLEAR_DIAGNOSTIC"; _commit_diag()
+        return 0.0,0.0,"VIEW_CLOUD_PATH_CLEAR",0,""
+    if unresolved:
+        diag["state"]=("GLOW_OBSERVER_CLOUD_DIRECT_EVIDENCE_CONFLICT_PRESERVED" if conflict_count==unresolved else "GLOW_OBSERVER_CLOUD_OPTICS_UNRESOLVED_MISSING_PRESERVED")
+        _commit_diag()
+        return None,conditional_tau,"VIEW_CLOUD_OPTICS_PARTIAL",blockers,";".join(sorted(str(x) for x in set(sources)))
+    diag["state"]="GLOW_OBSERVER_CLOUD_OPTICS_RESOLVED_DIAGNOSTIC"; _commit_diag()
+    eff_tau=-math.log(max(1e-300,expected_t))
+    return eff_tau,conditional_tau,"VIEW_CLOUD_OPTICS_RESOLVED_OCCUPANCY_EXPECTATION",blockers,";".join(sorted(str(x) for x in set(sources)))
 
 def _runtime_context_matches(ctx, cloud_layers, target_optics, aerosol_snapshots, gas_profiles):
     if not isinstance(ctx,dict):
@@ -549,6 +686,11 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
     cotmap=ctx.get("cotmap",{})
     truth_map=ctx.get("truth_map",{})
     cloud_support_caches=ctx.setdefault("cloud_support_caches",{})
+    cloud_numeric_groups=ctx.setdefault("cloud_numeric_groups",{})
+    cloud_numeric_max_distance=ctx.setdefault("cloud_numeric_max_distance",{})
+    _prepare_cloud_numeric_routes_for_targets(
+        viewing_geometry,cloud_groups,cloud_support_caches,cloud_numeric_groups,cloud_numeric_max_distance
+    )
     if runtime_cache_stats is not None:
         runtime_cache_stats.clear(); runtime_cache_stats.update({
             "runtime_context_reused":bool(_ctx_reused),
@@ -600,10 +742,19 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         )
         cg=cloud_groups.get(k)
         _cloud_diag={}
-        ctau,cconditional,cstatus,blockers,csrc=_cloud_expected_tau(
-            t,cloud_layers,target_optics,earth_radius_km,prefiltered_layers=cg,cotmap=cotmap,
-            support_cache=cloud_support_caches.setdefault(k,{}),truth_map=truth_map,diagnostic_sink=_cloud_diag,
-        )
+        if k in cloud_numeric_groups and cg is not None and not cg.empty:
+            ctau,cconditional,cstatus,blockers,csrc=_cloud_expected_tau_prepared(
+                t,cloud_layers,target_optics,earth_radius_km,prepared_route=cloud_numeric_groups.get(k,[]),
+                cotmap=cotmap,truth_map=truth_map,diagnostic_sink=_cloud_diag,
+            )
+        else:
+            # Preserve the legacy/fail-closed helper path when this exact route
+            # has no prepared numeric context (including empty/headerless cloud
+            # evidence).  This is also the established test/injection contract.
+            ctau,cconditional,cstatus,blockers,csrc=_cloud_expected_tau(
+                t,cloud_layers,target_optics,earth_radius_km,prefiltered_layers=cg,cotmap=cotmap,
+                support_cache=cloud_support_caches.setdefault(k,{}),truth_map=truth_map,diagnostic_sink=_cloud_diag,
+            )
         pr=pmap.get(_evidence_key(t.get("time"),angle,t.get("canvas_id")))
         rec={"time":t.get("time"),"solar_altitude_deg":angle,"canvas_id":t.get("canvas_id"),"cloud_layer_id":t.get("cloud_layer_id"),"direction_offset_deg":direction,"target_distance_km":dt,"target_base_km":zb,"target_top_km":zt,
              "view_gas_status":gstatus,"view_aerosol_status":astatus,"view_cloud_status":cstatus,"view_cloud_conditional_slant_tau":cconditional,"view_cloud_blocker_count":blockers,"view_cloud_optical_sources":csrc,
@@ -650,6 +801,8 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         rows.append(rec)
     if runtime_cache_stats is not None:
         runtime_cache_stats["cloud_support_cache_entry_count"]=int(sum(len(v) for v in cloud_support_caches.values()))
+        runtime_cache_stats["cloud_numeric_route_count"]=len(cloud_numeric_groups)
+        runtime_cache_stats["cloud_numeric_row_count"]=int(sum(len(v) for v in cloud_numeric_groups.values()))
         runtime_cache_stats["gas_sigma_cache_entry_count_after"]=len(gas_sigma_cache)
     return pd.DataFrame(rows)
 

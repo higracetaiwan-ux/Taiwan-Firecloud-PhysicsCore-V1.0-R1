@@ -1,6 +1,14 @@
-> Current release: **V1.0-R5.7.41.3.4.10.5** — Viewing / Glow route-group direct reuse; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.6** — Viewing / Glow Cloud Numeric Route Context; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.5
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.6
+
+## R5.7.41.3.4.10.6 Viewing / Glow Cloud Numeric Route Context
+
+- `.3.4.10.5` TWS134 Field：67/67 `v1_*.csv` 與 `.10.4` byte-for-byte identical，但 Observer Spectral Extinction 6.642 → 7.085 s，因此 `.10.5` science exactness PASS / runtime NOT FIELD PASS。
+- Actual-case profiling 將剩餘 observer spectral 主成本定位在 `_cloud_expected_tau()` 的重複 pandas cloud-row materialization。
+- 本版把 exact time/angle/direction cloud route 依原 row order 數值化一次；projected-support 仍由 frozen Viewing helper 產生，25-point LOS、COT/CF、occupancy expectation、conflict/Missing diagnostics 與 τ 累加順序不變。
+- TWS134 actual-input A/B：Main Viewing 585 targets 與 Glow 1092 targets 均 `check_dtype=True, check_exact=True`；輸出 CSV SHA256 完全一致。
+- 不改 Formation、Viewing/Glow science、Gas RT、Aerosol RT、Cloud optical semantics、Earth Shadow、Production COT 或 Photography decision。
 
 ## R5.7.41.3.4.10.5 Viewing / Glow Route Group Direct Reuse
 
