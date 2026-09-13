@@ -7,6 +7,7 @@ No Sun->CloudBase transmission is reused.
 """
 from __future__ import annotations
 import math
+import hashlib
 import numpy as np
 import pandas as pd
 
@@ -247,7 +248,25 @@ def _integrate_view_aerosol_prepared(target, prepared_route: dict, earth_radius_
         return taus if used else None,"VIEW_AEROSOL_3D_PARTIAL",path_km,meta
     return taus,"VIEW_AEROSOL_3D_RESOLVED",path_km,meta
 
-def _integrate_view_gas(target, gas_rows: pd.DataFrame, earth_radius_km: float, prepared_context=None):
+def _gas_lut_content_signature(lut) -> str:
+    """Return a deterministic content signature for one prepared spectroscopy LUT.
+
+    Runtime-only provenance key.  It allows exact sigma memoization to be shared
+    only across gas contexts that contain byte-identical T/P/sigma grids.
+    """
+    h=hashlib.sha256()
+    for key in sorted((lut or {}).keys()):
+        h.update(repr(key).encode("utf-8"))
+        rec=lut[key]
+        for arr in rec:
+            a=np.ascontiguousarray(np.asarray(arr))
+            h.update(str(a.dtype).encode("ascii"))
+            h.update(repr(tuple(a.shape)).encode("ascii"))
+            h.update(a.tobytes())
+    return h.hexdigest()
+
+
+def _integrate_view_gas(target, gas_rows: pd.DataFrame, earth_radius_km: float, prepared_context=None, *, sigma_cache=None, lut_signature: str | None=None):
     if gas_rows is None or gas_rows.empty: return None,"VIEW_GAS_PROFILE_MISSING",0.0
     ctx=prepared_context if prepared_context is not None else prepare_gas_rt_context(gas_rows)
     if not ctx.valid: return None,"VIEW_GAS_RT_CONTEXT_MISSING",0.0
@@ -272,7 +291,15 @@ def _integrate_view_gas(target, gas_rows: pd.DataFrame, earth_radius_km: float, 
         for wl in SIX_BAND_WAVELENGTHS_NM:
             total=0.0
             for gas,density in dens.items():
-                sig=_sigma_fast(ctx.lut,gas,int(wl),tk,ph)
+                if sigma_cache is not None and lut_signature is not None:
+                    _sigma_key=(str(lut_signature),str(gas),int(wl),float(tk),float(ph))
+                    if _sigma_key in sigma_cache:
+                        sig=sigma_cache[_sigma_key]
+                    else:
+                        sig=_sigma_fast(ctx.lut,gas,int(wl),tk,ph)
+                        sigma_cache[_sigma_key]=sig
+                else:
+                    sig=_sigma_fast(ctx.lut,gas,int(wl),tk,ph)
                 if not math.isfinite(float(sig)): ok=False; break
                 total += float(sig)*density*path
             if not ok: break
@@ -354,6 +381,11 @@ def prepare_viewing_spectral_runtime_context(
     """
     gas_groups=_route_group_map(gas_profiles)
     aerosol_groups=_route_group_map(aerosol_snapshots)
+    gas_contexts={k:prepare_gas_rt_context(g) for k,g in gas_groups.items()}
+    gas_lut_signatures={
+        k:(_gas_lut_content_signature(v.lut) if getattr(v,"valid",False) else None)
+        for k,v in gas_contexts.items()
+    }
     return {
         "contract":"R5.7.41.3.4.5_VIEWING_GLOW_SHARED_RUNTIME_CONTEXT_V1",
         "source_ids":{
@@ -366,7 +398,9 @@ def prepare_viewing_spectral_runtime_context(
         "aerosol_numeric_groups":_prepare_aerosol_numeric_route_context(aerosol_groups),
         "gas_groups":gas_groups,
         "cloud_groups":_route_group_map(cloud_layers),
-        "gas_contexts":{k:prepare_gas_rt_context(g) for k,g in gas_groups.items()},
+        "gas_contexts":gas_contexts,
+        "gas_lut_signatures":gas_lut_signatures,
+        "gas_sigma_cache":{},
         "cotmap":_exact_cot_map(cloud_layers,target_optics),
         "truth_map":_target_optical_truth_map(target_optics),
         "cloud_support_caches":{},
@@ -510,6 +544,8 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
     gas_groups=ctx.get("gas_groups",{})
     cloud_groups=ctx.get("cloud_groups",{})
     gas_contexts=ctx.get("gas_contexts",{})
+    gas_lut_signatures=ctx.get("gas_lut_signatures",{})
+    gas_sigma_cache=ctx.setdefault("gas_sigma_cache",{})
     cotmap=ctx.get("cotmap",{})
     truth_map=ctx.get("truth_map",{})
     cloud_support_caches=ctx.setdefault("cloud_support_caches",{})
@@ -521,6 +557,8 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
             "gas_group_count":len(gas_groups),
             "cloud_group_count":len(cloud_groups),
             "prepared_gas_context_count":len(gas_contexts),
+            "gas_sigma_cache_entry_count_before":len(gas_sigma_cache),
+            "gas_lut_signature_count":len(set(x for x in gas_lut_signatures.values() if x)),
             "cotmap_entry_count":len(cotmap),
             "truth_map_entry_count":len(truth_map),
         })
@@ -551,7 +589,10 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
             atau,astatus,apath,ameta=_integrate_view_aerosol_prepared(t,_aprepared,earth_radius_km,lowest_endpoint_tolerance_km=aerosol_lowest_endpoint_tolerance_km)
         else:
             atau,astatus,apath,ameta=_integrate_view_aerosol(t,ar,earth_radius_km,lowest_endpoint_tolerance_km=aerosol_lowest_endpoint_tolerance_km)
-        gtau,gstatus,gpath=_integrate_view_gas(t,gr,earth_radius_km,prepared_context=gas_contexts.get(k))
+        gtau,gstatus,gpath=_integrate_view_gas(
+            t,gr,earth_radius_km,prepared_context=gas_contexts.get(k),
+            sigma_cache=gas_sigma_cache,lut_signature=gas_lut_signatures.get(k),
+        )
         cg=cloud_groups.get(k)
         _cloud_diag={}
         ctau,cconditional,cstatus,blockers,csrc=_cloud_expected_tau(
@@ -604,6 +645,7 @@ def build_viewing_spectral_extinction(viewing_geometry: pd.DataFrame, cloud_laye
         rows.append(rec)
     if runtime_cache_stats is not None:
         runtime_cache_stats["cloud_support_cache_entry_count"]=int(sum(len(v) for v in cloud_support_caches.values()))
+        runtime_cache_stats["gas_sigma_cache_entry_count_after"]=len(gas_sigma_cache)
     return pd.DataFrame(rows)
 
 def summarize_viewing_spectral_extinction(df: pd.DataFrame) -> pd.DataFrame:

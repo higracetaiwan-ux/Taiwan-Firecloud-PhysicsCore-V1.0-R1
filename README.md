@@ -1,6 +1,15 @@
-> Current release: **V1.0-R5.7.41.3.4.10.3** — Twilight Glow observer-precipitation horizontal-support ray reuse; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.4** — Viewing / Glow gas spectroscopy-state memoization; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.3
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.4
+
+## R5.7.41.3.4.10.4 Viewing / Glow Gas Spectroscopy State Memo
+
+- `.3.4.10.3` TWS134 同地點 Field A/B：Observer Precipitation 14.309 → 5.463 s（−61.8%），Glow total 42.331 → 25.573 s（−39.6%）；`.3.4.10.3` FIELD PASS。
+- `.10.2 ↔ .10.3` 同一 TWS134 CASE 的 67/67 `v1_*.csv` byte-for-byte identical，確認 precipitation runtime optimization 不改 science output。
+- `.10.3` Glow 新第一大戶為 Observer Spectral Extinction 8.533 s。函式級 profile 顯示 Gas RT `_sigma_fast()` 約 157k calls；8736 gas segments 其實只出現 264 組 exact T/P state。
+- 本版新增 content-scoped spectroscopy-state memo：key = LUT content signature + gas + wavelength + exact T + exact P。相同 state 直接重用同一 sigma；`sigma × density × path` 仍按 legacy 順序逐氣體累加。
+- 不修改 `gas_rt.py`、HITRAN/LUT、六波段、O₃/O₂/H₂O、Rayleigh、cloud optics、Missing semantics、Formation/Viewing/Glow physics、Shadow/Production COT。
+- TWS134 actual-case 1092-target A/B：observer spectral output CSV SHA256 exact；standalone runtime 約 3.24 → 2.17 s，profile Gas RT 約 2.77 → 1.09 s。僅為離線 benchmark，不先宣稱 Field speedup。
 
 ## R5.7.41.3.4.10.3 Twilight Glow Observer Precipitation Horizontal-Support Ray Reuse
 
