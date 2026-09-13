@@ -1,4 +1,4 @@
-> Current release: **V1.0-R5.7.41.3.4.5** — Viewing→Glow observer-cloud provenance handoff + shared Viewing/Glow runtime context; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.9.2** — Red-Light precipitation horizontal-support ray reuse; science baseline remains frozen.
 
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.5
 

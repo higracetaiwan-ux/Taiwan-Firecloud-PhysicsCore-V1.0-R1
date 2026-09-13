@@ -141,27 +141,50 @@ def _prepare_native_hydrometeor_cells(route_snapshot: pd.DataFrame) -> tuple[dic
     return cells_by_dir,{"status":status,"field_completeness":float(comp),"nonzero_value_count":int(nonzero),"pressure_level_count":len(levels)}
 
 
-def _integrate_sun_path(canvas, cells: list[dict], solar_altitude_deg: float, earth_radius_km: float) -> tuple[float|None,int,int,float]:
-    """Integrate large-particle extinction through native hydrometeor cells."""
+def _group_cells_by_horizontal_support(cells: list[dict]) -> list[tuple[float,float,list[dict]]]:
+    """Group vertical hydrometeor layers that share identical horizontal support.
+
+    R5.7.41.3.4.9.2 runtime helper only.  The original cell order is preserved
+    exactly so optical accumulation order and fail-closed semantics do not change.
+    """
+    groups: dict[tuple[float,float], list[dict]] = {}
+    for c in cells:
+        key=(float(c["support_start_km"]), float(c["support_end_km"]))
+        groups.setdefault(key, []).append(c)
+    return [(k[0], k[1], v) for k,v in groups.items()]
+
+
+def _integrate_sun_path(canvas, cells: list[dict], solar_altitude_deg: float, earth_radius_km: float,
+                        support_groups: list[tuple[float,float,list[dict]]] | None = None) -> tuple[float|None,int,int,float]:
+    """Integrate large-particle extinction through native hydrometeor cells.
+
+    R5.7.41.3.4.9.2 preserves the exact legacy vertical-cell integration but
+    computes the identical 17-point ray only once for all pressure layers that
+    share one horizontal support interval.
+    """
     if not cells: return None,0,0,0.0
     tau=0.0; hit=0; unresolved=0; path_km=0.0
     td=float(canvas.distance_km); tz=float(canvas.cloud_base_altitude_km)
-    for c in cells:
-        if float(c["support_end_km"]) < td-1e-9: continue
-        a=max(td,float(c["support_start_km"])); b=float(c["support_end_km"])
+    groups = support_groups if support_groups is not None else _group_cells_by_horizontal_support(cells)
+    for support_start_km,support_end_km,group_cells in groups:
+        if float(support_end_km) < td-1e-9: continue
+        a=max(td,float(support_start_km)); b=float(support_end_km)
         if b<=a+1e-9: continue
         xs,zz=sample_sun_ray_segment(td,tz,a,b,solar_altitude_deg,sample_count=17,radius_km=earth_radius_km)
         finite=zz[np.isfinite(zz)]
         if finite.size == 0: continue
-        lo=float(c["z_base_km"]); hi=float(c["z_top_km"])
-        if float(np.max(finite))<lo or float(np.min(finite))>hi: continue
-        hit+=1
-        if not bool(c["all_hydrometeor_fields_resolved"]): unresolved+=1
-        inside=np.isfinite(zz)&(zz>=lo)&(zz<=hi)
-        seg_km=sampled_segment_path_km(xs,zz,inside)
-        if seg_km>0:
-            path_km += seg_km
-            tau += max(0.0,float(c["extinction_m1"]))*seg_km*1000.0
+        finite_min=float(np.min(finite)); finite_max=float(np.max(finite))
+        finite_mask=np.isfinite(zz)
+        for c in group_cells:
+            lo=float(c["z_base_km"]); hi=float(c["z_top_km"])
+            if finite_max<lo or finite_min>hi: continue
+            hit+=1
+            if not bool(c["all_hydrometeor_fields_resolved"]): unresolved+=1
+            inside=finite_mask&(zz>=lo)&(zz<=hi)
+            seg_km=sampled_segment_path_km(xs,zz,inside)
+            if seg_km>0:
+                path_km += seg_km
+                tau += max(0.0,float(c["extinction_m1"]))*seg_km*1000.0
     if hit==0:
         # Native volume exists along this transect and no cell intersects the ray:
         # zero is a resolved geometric result only when every relevant field is present.
@@ -177,10 +200,16 @@ def _integrate_sun_path(canvas, cells: list[dict], solar_altitude_deg: float, ea
 def prepare_native_hydrometeor_context(route_snapshot: pd.DataFrame | None = None) -> tuple[dict[float,list[dict]], dict]:
     """Prepare immutable native-hydrometeor geometry/optics context for exact reuse.
 
-    Scheduling/runtime helper only.  The returned content is identical to the
-    internal preparation previously rebuilt on every precipitation-path call.
+    Scheduling/runtime helper only.  R5.7.41.3.4.9.2 also attaches a private
+    horizontal-support ray plan; science-facing metadata and cells are unchanged.
     """
-    return _prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
+    cells_by_dir, meta = _prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
+    meta = dict(meta)
+    meta["_ray_support_groups_by_dir"] = {
+        float(direction): _group_cells_by_horizontal_support(cells)
+        for direction,cells in cells_by_dir.items()
+    }
+    return cells_by_dir, meta
 
 
 def build_precipitation_path_evidence(canvases, route_snapshot: pd.DataFrame | None = None, *, valid_time=None,
@@ -198,8 +227,12 @@ def build_precipitation_path_evidence(canvases, route_snapshot: pd.DataFrame | N
     explicit = path_optics if path_optics is not None else pd.DataFrame()
     if prepared_native_hydrometeor_context is None:
         cells_by_dir,volume_meta=_prepare_native_hydrometeor_cells(route_snapshot if route_snapshot is not None else pd.DataFrame())
+        support_groups_by_dir={float(direction): _group_cells_by_horizontal_support(cells) for direction,cells in cells_by_dir.items()}
     else:
         cells_by_dir,volume_meta=prepared_native_hydrometeor_context
+        support_groups_by_dir=volume_meta.get("_ray_support_groups_by_dir", {}) if isinstance(volume_meta, dict) else {}
+        if not support_groups_by_dir:
+            support_groups_by_dir={float(direction): _group_cells_by_horizontal_support(cells) for direction,cells in cells_by_dir.items()}
     for c in canvases:
         rec={
             "time":valid_time,"canvas_id":c.canvas_id,
@@ -235,7 +268,8 @@ def build_precipitation_path_evidence(canvases, route_snapshot: pd.DataFrame | N
             s=str(c.cloud_layer_id); direction=float(s.split("_d",1)[0][3:]) if s.startswith("dir") else None
         except Exception: direction=None
         cells=cells_by_dir.get(float(direction),[]) if direction is not None else []
-        tau,hits,unresolved,path_km=_integrate_sun_path(c,cells,float(solar_altitude_deg),float(earth_radius_km))
+        support_groups=support_groups_by_dir.get(float(direction),[]) if direction is not None else []
+        tau,hits,unresolved,path_km=_integrate_sun_path(c,cells,float(solar_altitude_deg),float(earth_radius_km),support_groups=support_groups)
         rec["hydrometeor_intersection_count"]=int(hits); rec["hydrometeor_unresolved_intersection_count"]=int(unresolved); rec["hydrometeor_slant_path_km"]=float(path_km)
         if tau is not None:
             rec["geometry_resolved_3d"]=True; rec["optical_evidence"]="FULL"; rec["role"]="ILLUMINATION_BLOCKER"
