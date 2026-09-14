@@ -48,7 +48,7 @@ def _assert_route_exact(a,b):
 
 
 def test_version_contract():
-    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.9.9'
+    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.10'
 
 
 def test_shared_viewing_gas_context_rebuilds_exact_glow_molecular_routes():

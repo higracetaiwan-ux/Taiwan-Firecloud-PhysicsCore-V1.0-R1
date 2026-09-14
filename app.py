@@ -1852,6 +1852,36 @@ if run or st.session_state.analysis_result is not None:
             if not _view_spec.empty:
                 st.markdown("**Cloud→Observer 六波段光譜傳輸摘要**")
                 st.dataframe(localized_df(_view_spec), use_container_width=True, hide_index=True)
+    _ice_runtime = result.get("v1_ice_cloud_spectral_optics_runtime", pd.DataFrame())
+    _ice_summary = result.get("v1_ice_cloud_spectral_optics_summary", pd.DataFrame())
+    _windy_ice = result.get("v1_windy_ice_optics_summary", pd.DataFrame())
+    _windy_ice_json = result.get("windy_firecloud_ice_optics_summary_v1", {}) or {}
+    _ice_lut_state = (result.get("ice_cloud_spectral_optics_lut_status", {}) or {}).get("state", "UNKNOWN")
+    with st.expander("Ice Cloud Spectral Optics｜六波段冰雲光學＋WINDY Shared Export", expanded=False):
+        st.caption(
+            "R5.7.41.3.4.10.10 Phase 1 僅建立 550/575/600/650/700/750 nm 的 calibrated-LUT contract、"
+            "IWP×k_ext 診斷與 WINDY 共用輸出；不取代 Frozen production cloud optics，也不回寫 Formation/Viewing/Glow。"
+        )
+        if _ice_lut_state == "ICE_OPTICS_LUT_READY":
+            st.success("Ice Cloud Spectral Optics LUT：READY")
+        else:
+            st.warning(f"Ice Cloud Spectral Optics LUT：{_ice_lut_state}｜正 IWP 不會以固定 r_eff/habit 或 RH/雲量補造 tau。")
+        if not _ice_summary.empty:
+            st.dataframe(localized_df(_ice_summary), use_container_width=True, hide_index=True)
+        if not _windy_ice.empty:
+            st.download_button(
+                "下載 WINDY Ice Optics Summary CSV",
+                data=_windy_ice.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"windy_firecloud_ice_optics_summary_{__version__}.csv",
+                mime="text/csv", use_container_width=True, key="download_windy_ice_optics_csv",
+            )
+        st.download_button(
+            "下載 WINDY Ice Optics Summary JSON",
+            data=json.dumps(_windy_ice_json, ensure_ascii=False, indent=2, default=str).encode("utf-8"),
+            file_name=f"windy_firecloud_ice_optics_summary_{__version__}.json",
+            mime="application/json", use_container_width=True, key="download_windy_ice_optics_json",
+        )
+
     with st.expander("Legacy V8 診斷欄位（僅相容／除錯，不是 V1.0 PhysicsCore 輸出）", expanded=False):
         st.dataframe(localized_df(summary), use_container_width=True, hide_index=True)
 
@@ -2404,6 +2434,9 @@ if run or st.session_state.analysis_result is not None:
             ("v1_red_light_availability_summary.csv", result.get("v1_red_light_availability_summary", pd.DataFrame())),
             ("v1_gfs_native_nearfield_source_levels.csv", result.get("v1_gfs_native_nearfield_source_levels", pd.DataFrame())),
             ("v1_gfs_native_nearfield_source_summary.csv", result.get("v1_gfs_native_nearfield_source_summary", pd.DataFrame())),
+            ("v1_ice_cloud_spectral_optics_runtime.csv", result.get("v1_ice_cloud_spectral_optics_runtime", pd.DataFrame())),
+            ("v1_ice_cloud_spectral_optics_summary.csv", result.get("v1_ice_cloud_spectral_optics_summary", pd.DataFrame())),
+            ("v1_windy_ice_optics_summary.csv", result.get("v1_windy_ice_optics_summary", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2483,6 +2516,8 @@ if run or st.session_state.analysis_result is not None:
             ("cams_native_ozone_provider_status.json", result.get("cams_native_ozone_provider_status", {})),
             ("hitran_backend_status.json", result.get("hitran_backend_status", {})),
             ("event_timezone_resolution.json", result.get("event_timezone_resolution", {})),
+            ("ice_cloud_spectral_optics_contract.json", result.get("ice_cloud_spectral_optics_contract", {})),
+            ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),
             ("cams_worker_checkpoints.json", _load_all_cams_worker_checkpoints()),

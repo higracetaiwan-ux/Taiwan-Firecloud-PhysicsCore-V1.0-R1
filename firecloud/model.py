@@ -120,6 +120,13 @@ from .gfs_native_nearfield_source_diagnostic import (
     build_gfs_native_nearfield_source_levels,
     summarize_gfs_native_nearfield_source_levels,
 )
+from .ice_cloud_spectral_optics import (
+    load_ice_optics_lut, build_ice_cloud_spectral_optics_runtime,
+    summarize_ice_cloud_spectral_optics, build_windy_ice_optics_summary,
+    ice_optics_contract_payload,
+)
+from .shadow_validation_collection import SCIENCE_BASELINE_ID
+from . import __version__ as PHYSICSCORE_VERSION
 from .viewing_spectral import (
     build_viewing_spectral_extinction, summarize_viewing_spectral_extinction,
     attach_viewing_spectral_status, prepare_viewing_spectral_runtime_context,
@@ -2654,6 +2661,39 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     pressure_profile_cloud_columns = _drain_detail_matrix("profile_columns", ensure_angle=True)
     native_cloud_voxel_matrix = _drain_detail_matrix("native_voxels", ensure_angle=True)
     native_cloud_columns = _drain_detail_matrix("native_columns", ensure_angle=True)
+
+    # R5.7.41.3.4.10.10 Ice Cloud Spectral Optics Shared Module Phase 1.
+    # This is a diagnostic/export-only branch.  It never replaces the frozen
+    # production cloud optics and never promotes Formation/Viewing/Glow.
+    _ice_optics_t0 = perf_counter()
+    _ice_optics_lut, _ice_optics_lut_status = load_ice_optics_lut()
+    v1_ice_cloud_spectral_optics_runtime = build_ice_cloud_spectral_optics_runtime(
+        native_cloud_columns, lut=_ice_optics_lut, lut_status=_ice_optics_lut_status
+    )
+    v1_ice_cloud_spectral_optics_summary = summarize_ice_cloud_spectral_optics(
+        v1_ice_cloud_spectral_optics_runtime
+    )
+    v1_windy_ice_optics_summary, windy_firecloud_ice_optics_summary_v1 = build_windy_ice_optics_summary(
+        v1_ice_cloud_spectral_optics_summary,
+        physicscore_version=PHYSICSCORE_VERSION,
+        science_baseline=SCIENCE_BASELINE_ID,
+        lut_status=_ice_optics_lut_status,
+    )
+    ice_cloud_spectral_optics_contract = ice_optics_contract_payload(
+        physicscore_version=PHYSICSCORE_VERSION, science_baseline=SCIENCE_BASELINE_ID
+    )
+    performance_rows.append({
+        "stage": "ICE_CLOUD_SPECTRAL_OPTICS_SHARED_PHASE1",
+        "elapsed_seconds": max(0.0, perf_counter() - _ice_optics_t0),
+        "cache_status": "DIAGNOSTIC_ONLY_NO_PHYSICS_PROMOTION",
+        "detail": (
+            f"runtime_rows={len(v1_ice_cloud_spectral_optics_runtime)};"
+            f"summary_rows={len(v1_ice_cloud_spectral_optics_summary)};"
+            f"lut_state={_ice_optics_lut_status.state};"
+            "SIX_BAND_550_575_600_650_700_750;NO_RH_CF_PROXY;NO_FORMATION_PROMOTION"
+        ),
+    })
+
     _aggregation_checkpoint("氣壓層與原生雲體矩陣完成", pressure_profile_voxel_matrix=pressure_profile_voxel_matrix, native_cloud_voxel_matrix=native_cloud_voxel_matrix)
     collect_and_trim()
 
@@ -3391,6 +3431,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "route_points": pd.DataFrame(route_points),
         "route_reference_contract": route_reference_contract,
         "hourly_raw": hourly,
+        "v1_ice_cloud_spectral_optics_runtime": v1_ice_cloud_spectral_optics_runtime,
+        "v1_ice_cloud_spectral_optics_summary": v1_ice_cloud_spectral_optics_summary,
+        "v1_windy_ice_optics_summary": v1_windy_ice_optics_summary,
+        "windy_firecloud_ice_optics_summary_v1": windy_firecloud_ice_optics_summary_v1,
+        "ice_cloud_spectral_optics_contract": ice_cloud_spectral_optics_contract,
+        "ice_cloud_spectral_optics_phase1_required": True,
         "v1_gfs_native_nearfield_source_levels": v1_gfs_native_nearfield_source_levels,
         "v1_gfs_native_nearfield_source_summary": v1_gfs_native_nearfield_source_summary,
         "v1_observer_nearfield_cloud_environment": v1_observer_nearfield_cloud_environment,
@@ -3485,6 +3531,16 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "route_points": pd.DataFrame(route_points),
         "horizontal_sampling_profile": horizontal_sampling_profile,
         "hourly_raw": hourly,
+        "v1_ice_cloud_spectral_optics_runtime": v1_ice_cloud_spectral_optics_runtime,
+        "v1_ice_cloud_spectral_optics_summary": v1_ice_cloud_spectral_optics_summary,
+        "v1_windy_ice_optics_summary": v1_windy_ice_optics_summary,
+        "windy_firecloud_ice_optics_summary_v1": windy_firecloud_ice_optics_summary_v1,
+        "ice_cloud_spectral_optics_contract": ice_cloud_spectral_optics_contract,
+        "ice_cloud_spectral_optics_lut_status": {
+            "loaded": _ice_optics_lut_status.loaded, "path": _ice_optics_lut_status.path,
+            "row_count": _ice_optics_lut_status.row_count, "spectral_complete": _ice_optics_lut_status.spectral_complete,
+            "state": _ice_optics_lut_status.state, "detail": _ice_optics_lut_status.detail,
+        },
         "v1_gfs_native_nearfield_source_levels": v1_gfs_native_nearfield_source_levels,
         "v1_gfs_native_nearfield_source_summary": v1_gfs_native_nearfield_source_summary,
         "v1_observer_nearfield_cloud_environment": v1_observer_nearfield_cloud_environment,

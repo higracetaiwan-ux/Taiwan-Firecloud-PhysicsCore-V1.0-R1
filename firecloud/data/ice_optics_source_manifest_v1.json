@@ -1,0 +1,23 @@
+{
+  "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+  "status": "SOURCE_SELECTED_LUT_NOT_BUNDLED",
+  "reason": "Do not ship fabricated or unverified coefficients. Build the six-band LUT from an authoritative scattering database.",
+  "preferred_source": {
+    "name": "Yang/Bi ice particle single-scattering database Version 2",
+    "spectral_range_um": [0.2, 100.0],
+    "shortwave_wavelength_count": 396,
+    "particle_size_range_um": [2.0, 10000.0],
+    "particle_size_count": 189,
+    "roughness_states": ["Rough000", "Rough003", "Rough050"],
+    "raw_columns": ["wavelength_um", "maximum_dimension_um", "volume_um3", "projected_area_um2", "extinction_efficiency", "single_scattering_albedo", "asymmetry_parameter"],
+    "references": [
+      "Yang et al. 2013, Journal of the Atmospheric Sciences 70, 330-347, DOI 10.1175/JAS-D-12-039.1",
+      "Bi & Yang 2017, Journal of Quantitative Spectroscopy and Radiative Transfer 189, 228-237"
+    ],
+    "archive": "Zenodo record 5348402"
+  },
+  "firecloud_target_wavelengths_nm": [550, 575, 600, 650, 700, 750],
+  "mass_extinction_formula": "k_ext = Qext * A_proj / (rho_ice * V)",
+  "ice_density_kg_m3": 917.0,
+  "frozen_rule": "Missing != Clear != Zero; no RH/CF proxy or unlabelled fixed r_eff/habit may synthesize spectral ice tau."
+}

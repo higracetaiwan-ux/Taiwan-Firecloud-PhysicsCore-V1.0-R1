@@ -10,6 +10,7 @@ from hashlib import sha256
 from typing import Any, Iterable, Mapping
 
 import math
+import numpy as np
 import pandas as pd
 
 from .contracts import SIX_BAND_WAVELENGTHS_NM
@@ -122,6 +123,12 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     gfs_comp = _df(result.get("gfs_native_field_completeness"))
     gfs_near_source = _df(result.get("v1_gfs_native_nearfield_source_levels"))
     gfs_near_source_summary = _df(result.get("v1_gfs_native_nearfield_source_summary"))
+    ice_optics = _df(result.get("v1_ice_cloud_spectral_optics_runtime"))
+    ice_optics_summary = _df(result.get("v1_ice_cloud_spectral_optics_summary"))
+    windy_ice_optics = _df(result.get("v1_windy_ice_optics_summary"))
+    windy_ice_json = result.get("windy_firecloud_ice_optics_summary_v1", {}) or {}
+    ice_optics_contract = result.get("ice_cloud_spectral_optics_contract", {}) or {}
+    ice_optics_phase1_required = bool(result.get("ice_cloud_spectral_optics_phase1_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -345,6 +352,120 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "NOAA_GFS_NATIVE_SOURCE", int(len(gfs_near_source_summary)),
             ">0 source-attribution summary rows",
             "No science decision dependency.",
+        )
+
+    # R5.7.41.3.4.10.10 Ice Cloud Spectral Optics Shared Module Phase 1.
+    # Contract/readiness only: no values may alter frozen PhysicsCore science.
+    if ice_optics_phase1_required:
+        _wl = tuple(int(x) for x in SIX_BAND_WAVELENGTHS_NM)
+        _tau_cols = [f"tau_ice_{w}" for w in _wl]
+        _k_cols = [f"k_ext_ice_{w}_m2_kg" for w in _wl]
+        _t_cols = [f"ice_transmission_{w}" for w in _wl]
+        _ssa_cols = [f"ssa_ice_{w}" for w in _wl]
+        _g_cols = [f"g_ice_{w}" for w in _wl]
+        _required_cols = {
+            "native_iwp_kg_m2", "ice_effective_radius_um", "ice_habit",
+            "surface_roughness", "ice_optics_contract_version",
+            "ice_optics_phase", "ice_optics_state", "ice_optics_missing_reason",
+            "physics_role", "tau_synthesis_allowed", "formation_promotion_allowed",
+            *_tau_cols, *_k_cols, *_t_cols, *_ssa_cols, *_g_cols,
+        }
+        _schema_ok = _required_cols.issubset(ice_optics.columns) if not ice_optics.empty else True
+        _contract_wl = tuple(int(x) for x in ice_optics_contract.get("wavelengths_nm", []))
+        _contract_ok = (
+            ice_optics_contract.get("contract_version") == "FIRECLOUD_ICE_OPTICS_V1"
+            and _contract_wl == _wl
+            and "IWP_kg_m2" in str(ice_optics_contract.get("tau_definition", ""))
+        )
+        add(
+            "ICE_CLOUD_SPECTRAL_OPTICS_SIX_BAND_CONTRACT",
+            PASS if (_schema_ok and _contract_ok) else FAIL,
+            "ICE_CLOUD_SPECTRAL_OPTICS",
+            f"rows={len(ice_optics)};wavelengths={_contract_wl};schema_ok={_schema_ok}",
+            f"FIRECLOUD_ICE_OPTICS_V1;wavelengths={_wl};six-band runtime schema",
+            "Diagnostic/shared-export contract only; production cloud optics remain frozen.",
+        )
+
+        if ice_optics.empty:
+            add(
+                "ICE_CLOUD_SPECTRAL_OPTICS_ROLE_SEPARATION", ALLOWED_EMPTY,
+                "ICE_CLOUD_SPECTRAL_OPTICS", 0,
+                "diagnostic-only runtime rows when native cloud columns exist",
+            )
+            add(
+                "ICE_CLOUD_SPECTRAL_OPTICS_MISSING_SEMANTICS", NOT_APPLICABLE,
+                "ICE_CLOUD_SPECTRAL_OPTICS", "NO_ROWS",
+                "Missing != Clear != Zero; no unproven tau synthesis",
+            )
+        else:
+            _role_ok = bool(
+                ice_optics["ice_optics_contract_version"].astype(str).eq("FIRECLOUD_ICE_OPTICS_V1").all()
+                and ice_optics["ice_optics_phase"].astype(str).eq("PHASE1_DIAGNOSTIC_ONLY_NO_PHYSICS_PROMOTION").all()
+                and ice_optics["physics_role"].astype(str).eq("DIAGNOSTIC_ONLY_UNASSIGNED").all()
+                and not ice_optics["tau_synthesis_allowed"].fillna(True).astype(bool).any()
+                and not ice_optics["formation_promotion_allowed"].fillna(True).astype(bool).any()
+            )
+            add(
+                "ICE_CLOUD_SPECTRAL_OPTICS_ROLE_SEPARATION", PASS if _role_ok else FAIL,
+                "ICE_CLOUD_SPECTRAL_OPTICS", f"rows={len(ice_optics)};role_ok={_role_ok}",
+                "all rows diagnostic-only; tau_synthesis_allowed=false; formation_promotion_allowed=false",
+            )
+
+            _sem_ok = True
+            _sem_detail = []
+            _iwp = pd.to_numeric(ice_optics["native_iwp_kg_m2"], errors="coerce")
+            _state = ice_optics["ice_optics_state"].astype(str)
+            _missing_iwp = _iwp.isna()
+            if _missing_iwp.any():
+                if ice_optics.loc[_missing_iwp, _tau_cols].notna().any(axis=None):
+                    _sem_ok = False; _sem_detail.append("missing_iwp_has_tau")
+            _positive_not_ready = (_iwp > 0) & ~_state.eq("ICE_SIX_BAND_OPTICS_READY")
+            if _positive_not_ready.any():
+                if ice_optics.loc[_positive_not_ready, _tau_cols].notna().any(axis=None):
+                    _sem_ok = False; _sem_detail.append("positive_not_ready_has_tau")
+            _zero = _iwp.notna() & (_iwp.abs() <= 1e-15)
+            if _zero.any():
+                _z_tau = ice_optics.loc[_zero, _tau_cols].apply(pd.to_numeric, errors="coerce")
+                _z_t = ice_optics.loc[_zero, _t_cols].apply(pd.to_numeric, errors="coerce")
+                if ((_z_tau.notna()) & (_z_tau.abs() > 1e-12)).any(axis=None):
+                    _sem_ok = False; _sem_detail.append("zero_iwp_nonzero_tau")
+                if ((_z_t.notna()) & ((_z_t-1.0).abs() > 1e-12)).any(axis=None):
+                    _sem_ok = False; _sem_detail.append("zero_iwp_transmission_not_one")
+            _ready = _state.eq("ICE_SIX_BAND_OPTICS_READY")
+            if _ready.any():
+                for w, kc, tc in zip(_wl, _k_cols, _tau_cols):
+                    kval = pd.to_numeric(ice_optics.loc[_ready, kc], errors="coerce")
+                    tau = pd.to_numeric(ice_optics.loc[_ready, tc], errors="coerce")
+                    expect = _iwp.loc[_ready] * kval
+                    if tau.isna().any() or kval.isna().any() or not np.allclose(tau, expect, rtol=1e-10, atol=1e-12, equal_nan=False):
+                        _sem_ok=False; _sem_detail.append(f"tau_formula_mismatch_{w}")
+            add(
+                "ICE_CLOUD_SPECTRAL_OPTICS_MISSING_SEMANTICS", PASS if _sem_ok else FAIL,
+                "ICE_CLOUD_SPECTRAL_OPTICS",
+                f"ready={int(_ready.sum())};positive_not_ready={int(_positive_not_ready.sum())};zero_iwp={int(_zero.sum())};missing_iwp={int(_missing_iwp.sum())}",
+                "Missing stays Missing; exact zero may yield tau=0/T=1; ready tau=IWP*k_ext",
+                ";".join(_sem_detail) if _sem_detail else "No RH/CF/seasonal proxy or hidden fixed habit/r_eff synthesis.",
+            )
+
+        _windy_ok = bool(
+            isinstance(windy_ice_json, Mapping)
+            and windy_ice_json.get("ice_optics_contract_version") == "FIRECLOUD_ICE_OPTICS_V1"
+            and tuple(int(x) for x in windy_ice_json.get("wavelengths_nm", [])) == _wl
+            and windy_ice_json.get("physics_promotion_allowed") is False
+        )
+        if not windy_ice_optics.empty:
+            _windy_ok = bool(_windy_ok and windy_ice_optics.get("ice_optics_contract_version", pd.Series(dtype=str)).astype(str).eq("FIRECLOUD_ICE_OPTICS_V1").all())
+        add(
+            "WINDY_ICE_OPTICS_EXPORT_CONTRACT", PASS if _windy_ok else FAIL,
+            "WINDY_SHARED_EXPORT",
+            f"csv_rows={len(windy_ice_optics)};json_records={len(windy_ice_json.get('records', [])) if isinstance(windy_ice_json, Mapping) else 0}",
+            "shared FIRECLOUD_ICE_OPTICS_V1 export with six wavelengths and no physics promotion",
+        )
+        add(
+            "ICE_CLOUD_SPECTRAL_OPTICS_SUMMARY",
+            PASS if (ice_optics.empty or not ice_optics_summary.empty) else FAIL,
+            "ICE_CLOUD_SPECTRAL_OPTICS", len(ice_optics_summary),
+            "summary rows when runtime rows exist",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2160,6 +2281,11 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "gfs_native_field_completeness.csv",
         "v1_gfs_native_nearfield_source_levels.csv",
         "v1_gfs_native_nearfield_source_summary.csv",
+        "v1_ice_cloud_spectral_optics_runtime.csv",
+        "v1_ice_cloud_spectral_optics_summary.csv",
+        "v1_windy_ice_optics_summary.csv",
+        "windy_firecloud_ice_optics_summary_v1.json",
+        "ice_cloud_spectral_optics_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
