@@ -117,8 +117,8 @@ def test_collection_guard_fails_if_production_switch_or_promotion_occurs():
 def test_collection_guard_allows_physically_valid_zero_target_cohort():
     result = _result()
     result["v1_canvas_cot_semantic_migration"] = result["v1_canvas_cot_semantic_migration"].iloc[0:0].copy()
-    cm = build_case_manifest(_request(), result, program_version="1.0.0-R5.7.41.3.4.10.9.7")
-    cohort = build_cohort_summary(_request(), result, program_version="1.0.0-R5.7.41.3.4.10.9.7")
+    cm = build_case_manifest(_request(), result, program_version="1.0.0-R5.7.41.3.4.10.9.8")
+    cohort = build_cohort_summary(_request(), result, program_version="1.0.0-R5.7.41.3.4.10.9.8")
     archive_manifest = pd.DataFrame([{"artifact":n} for n in [
         "shadow_validation_case_manifest.csv","shadow_validation_cohort_summary.csv",
         "shadow_validation_ground_truth_template.csv","shadow_validation_runtime_summary.csv",
@@ -136,9 +136,9 @@ def test_collection_guard_allows_physically_valid_zero_target_cohort():
 def test_zero_target_cohort_still_fails_if_manifest_frozen_source_contract_is_tampered():
     result = _result()
     result["v1_canvas_cot_semantic_migration"] = result["v1_canvas_cot_semantic_migration"].iloc[0:0].copy()
-    cm = build_case_manifest(_request(), result, program_version="1.0.0-R5.7.41.3.4.10.9.7")
+    cm = build_case_manifest(_request(), result, program_version="1.0.0-R5.7.41.3.4.10.9.8")
     cm.loc[:, "production_cot_source_expected"] = "TAMPERED_SOURCE"
-    cohort = build_cohort_summary(_request(), result, program_version="1.0.0-R5.7.41.3.4.10.9.7")
+    cohort = build_cohort_summary(_request(), result, program_version="1.0.0-R5.7.41.3.4.10.9.8")
     archive_manifest = pd.DataFrame([{"artifact":n} for n in [
         "shadow_validation_case_manifest.csv","shadow_validation_cohort_summary.csv",
         "shadow_validation_ground_truth_template.csv","shadow_validation_runtime_summary.csv",

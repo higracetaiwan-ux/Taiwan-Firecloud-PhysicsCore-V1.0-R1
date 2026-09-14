@@ -1,5 +1,8 @@
 """PhysicsCore DWD ICON Global native cloud-microphysics provider.
 
+R5.7.41.3.4.10.9.8 adds cross-release exact DWD cache scope and thread-local HTTPS connection reuse.
+These are transport/cache optimizations only and preserve exact run/lead/file identities.
+
 R5.7.41.3.4.3 adds runtime-only decoded-field reuse and an all-404
 run/lead negative availability cache. These are I/O optimizations only; they do
 not alter native values, vertical geometry, optical evidence, or fail-closed
@@ -34,11 +37,13 @@ import os
 import tarfile
 import tempfile
 import pickle
+import threading
 from typing import Iterable
 
 import numpy as np
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
 
 from ..cloud_optics import condensate_extinction_m1, DEFAULT_LIQUID_REFF_UM, DEFAULT_ICE_REFF_UM
 from ..runtime_hardening import (
@@ -73,7 +78,59 @@ _FIELD_VALUE_CACHE: dict[tuple, tuple[pd.DataFrame, dict]] = {}
 _NEGATIVE_RUN_LEAD_CACHE: dict[tuple, dict] = {}
 _ROUTE_SOURCE_MAP_CACHE: dict[tuple, tuple[dict[str, dict], dict]] = {}
 _WEIGHT_MAP_CACHE: dict[tuple, np.ndarray] = {}
+# R5.7.41.3.4.10.9.8: transport-only exact reuse. Each worker thread keeps
+# its own requests.Session so repeated DWD object downloads reuse HTTPS
+# connections without sharing mutable Session state across threads. This does
+# not alter URLs, bytes, decoded values, Missing semantics, or provider order.
+_HTTP_THREAD_LOCAL = threading.local()
+_REQUESTS_GET_ORIGINAL = requests.get
 
+
+def _shared_cache_root() -> Path:
+    """Stable exact-provider cache root shared across full-replacement releases.
+
+    ``FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR`` is the explicit DWD override. If a
+    deployment explicitly pins ``FIRECLOUD_STATE_DIR`` we preserve that
+    contract and keep provider caches beneath it. Otherwise the default mirrors
+    the existing CAMS durable-cache policy and uses the user's cache directory,
+    which survives replacement of the application folder.
+    """
+    explicit = (os.getenv("FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR") or "").strip()
+    if explicit:
+        root = Path(explicit).expanduser()
+    else:
+        state_override = (os.getenv("FIRECLOUD_STATE_DIR") or "").strip()
+        if state_override:
+            root = Path(state_override).expanduser() / "provider_cache_shared" / "dwd_icon"
+        else:
+            root = Path.home() / ".cache" / "taiwan_firecloud" / "dwd_icon"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _thread_http_session() -> requests.Session:
+    session = getattr(_HTTP_THREAD_LOCAL, "session", None)
+    if session is None:
+        session = requests.Session()
+        # One Session belongs to one worker thread. Keep a small local pool so
+        # consecutive level requests can reuse established HTTPS connections.
+        adapter = HTTPAdapter(pool_connections=2, pool_maxsize=2, max_retries=0, pool_block=False)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        _HTTP_THREAD_LOCAL.session = session
+    return session
+
+
+def _http_get(url: str, **kwargs):
+    """HTTP GET through a thread-local keep-alive session.
+
+    Existing embedders/tests historically monkeypatch ``requests.get``. Honor
+    that hook when it is replaced; production uses the pooled thread-local
+    Session path.
+    """
+    if requests.get is not _REQUESTS_GET_ORIGINAL:
+        return requests.get(url, **kwargs)
+    return _thread_http_session().get(url, **kwargs)
 
 
 def _finite_float(v):
@@ -130,19 +187,24 @@ def _cache_dir() -> Path:
 DWD_RAW_CACHE_SCHEMA_VERSION = "R5.7.41.3.4.6_DWD_RAW_GRIB_V1"
 
 def _persistent_raw_cache_dir() -> Path:
-    """Durable DWD raw-GRIB cache shared across warm production runs.
+    """Durable exact DWD raw-GRIB cache shared across releases and runs.
 
-    The raw transport cache is deliberately separated from the legacy provider
-    scratch/cache directory. Identity includes the exact model/product/grid/run/
-    lead/variable/model-level/source URL. A hit is accepted only after identity,
-    byte-size, SHA256 and cache QC stamp all validate.
+    Identity includes the exact model/product/grid/run/lead/variable/model-level/
+    source URL. A hit is accepted only after identity, byte-size, SHA256 and
+    cache QC stamp all validate. ``FIRECLOUD_DWD_ICON_RAW_CACHE_DIR`` remains
+    the most specific override; otherwise the stable user-level shared cache is
+    used so a full-replacement release does not discard exact provider bytes.
     """
     raw = os.getenv("FIRECLOUD_DWD_ICON_RAW_CACHE_DIR", "").strip()
     if raw:
         root = Path(raw).expanduser()
     else:
-        state_root = Path(os.getenv("FIRECLOUD_STATE_DIR", ".firecloud_state")).expanduser()
-        root = state_root / "provider_cache_shared" / "dwd_icon_raw"
+        state_override = (os.getenv("FIRECLOUD_STATE_DIR") or "").strip()
+        shared_override = (os.getenv("FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR") or "").strip()
+        if state_override and not shared_override:
+            root = Path(state_override).expanduser() / "provider_cache_shared" / "dwd_icon_raw"
+        else:
+            root = _shared_cache_root() / "raw_grib"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -254,6 +316,9 @@ def provider_status() -> dict:
         "cache_dir": str(_cache_dir()),
         "persistent_raw_cache_dir": str(_persistent_raw_cache_dir()),
         "persistent_raw_cache_schema": DWD_RAW_CACHE_SCHEMA_VERSION,
+        "shared_cache_root": str(_shared_cache_root()),
+        "shared_cache_scope": "USER_LEVEL_CROSS_RELEASE_EXACT_IDENTITY",
+        "http_connection_reuse": "THREAD_LOCAL_REQUESTS_SESSION_POOL",
         "remap_weights_path": str(wp),
         "remap_weights_present": bool(wp.exists() and wp.stat().st_size > 0),
     }
@@ -340,7 +405,7 @@ def _download_decompress(url: str, timeout_s: float = 20.0, *, cache_identity: d
                          **{k:v for k,v in prov.items() if k.startswith("cache_") or k in {"current_job_id","current_run_mode"}}}
 
     try:
-        r = requests.get(url, timeout=timeout_s)
+        r = _http_get(url, timeout=timeout_s)
         network_bytes = len(r.content or b"")
         if r.status_code != 200:
             return None, {
@@ -409,7 +474,7 @@ def _ensure_remap_assets(timeout_s: float = 60.0) -> tuple[Path | None, dict]:
         else:
             fd, name = tempfile.mkstemp(prefix="icon_remap_", suffix=".tar.bz2", dir=str(_remap_dir()))
             os.close(fd); tmp_bundle = Path(name); remove_tmp = True
-            with requests.get(REMAP_BUNDLE_URL, stream=True, timeout=timeout_s) as r:
+            with _http_get(REMAP_BUNDLE_URL, stream=True, timeout=timeout_s) as r:
                 if r.status_code != 200:
                     return None, {"stage":"GRID_MAPPING","status":f"HTTP_{r.status_code}","weights_path":str(dest),"url":REMAP_BUNDLE_URL}
                 with open(tmp_bundle, "wb") as f:
@@ -639,6 +704,8 @@ def _fetch_field(run: datetime, lead: int, level: int, var: str, points: list[di
         "raw_cache_hit":bool(meta.get("raw_cache_hit", "CACHE_HIT" in _status_upper)),
         "decoded_field_cache_hit":False,"negative_availability_cache_hit":False,
         "raw_cache_identity_schema":DWD_RAW_CACHE_SCHEMA_VERSION,
+        "shared_cache_scope":"USER_LEVEL_CROSS_RELEASE_EXACT_IDENTITY",
+        "http_connection_reuse":"THREAD_LOCAL_REQUESTS_SESSION_POOL",
     })
     if p is None:
         return pd.DataFrame(),meta
@@ -877,8 +944,12 @@ def _persistent_optics_cache_path(run: datetime, lead: int, points: list[dict]) 
     if explicit:
         d = Path(explicit).expanduser() / "decoded_secondary_optics"
     else:
-        state_root = Path(os.getenv("FIRECLOUD_STATE_DIR", ".firecloud_state")).expanduser()
-        d = state_root / "provider_cache_shared" / "dwd_icon_decoded_optics"
+        state_override = (os.getenv("FIRECLOUD_STATE_DIR") or "").strip()
+        shared_override = (os.getenv("FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR") or "").strip()
+        if state_override and not shared_override:
+            d = Path(state_override).expanduser() / "provider_cache_shared" / "dwd_icon_decoded_optics"
+        else:
+            d = _shared_cache_root() / "decoded_secondary_optics"
     d.mkdir(parents=True, exist_ok=True)
     src = "|".join([DWD_OPTICS_CACHE_SCHEMA_VERSION, run.isoformat(), str(int(lead)), _secondary_route_state_signature(points), ",".join(map(str,_model_levels()))])
     sig = hashlib.sha256(src.encode("utf-8")).hexdigest()[:20]

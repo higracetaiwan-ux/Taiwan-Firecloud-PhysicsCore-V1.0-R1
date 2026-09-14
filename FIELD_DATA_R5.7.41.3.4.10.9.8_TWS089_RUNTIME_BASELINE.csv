@@ -1,0 +1,18 @@
+metric,value,unit,note
+source_release,1.0.0-R5.7.41.3.4.10.9.7,,TWS089 2026-09-14 sunrise formal CASE
+worker_elapsed,639.154781,s,
+TOTAL_ANALYSIS_CORE,602.000185,s,
+TOTAL_TO_CASE_ARCHIVE,632.434976,s,
+CAMS_PREFETCH_TOTAL,173.194205,s,
+CAMS_SPECTRAL_COLUMN_AOD,0.0,s,EXACT_SOURCE_REUSE from AEROSOL_SCATTERING_COLUMN_PROPERTIES
+CAMS_actual_provider_requests,4,count,SPECTRAL_COLUMN_AOD audit row is zero-request handoff
+SECONDARY_FORECAST_NATIVE_OPTICS_PREFETCH,158.752259,s,DWD ICON operational hotspot
+DWD_network_attempts,356,count,
+DWD_network_successes,347,count,
+DWD_network_bytes,436702848,bytes,
+DWD_decoded_field_cache_hits,1899,count,
+DWD_raw_cache_hits,0,count,cold baseline
+AnalysisIntegrity_PASS,84,count,
+AnalysisIntegrity_NOT_APPLICABLE,1,count,
+AnalysisIntegrity_FAIL,0,count,
+CASEIntegrity_PASS,38,count,

@@ -1,6 +1,14 @@
-> Current release: **V1.0-R5.7.41.3.4.10.9.7** — Runtime Exact-Source Reuse + GFS Merge Defragmentation; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.9.8** — DWD Cross-Release Exact Cache + HTTPS Connection Reuse; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.7
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.8
+
+## R5.7.41.3.4.10.9.8 DWD Cross-Release Exact Cache + HTTPS Connection Reuse
+
+- DWD ICON durable raw-GRIB / decoded-optics cache 預設改為穩定的 user-level shared cache；完整替換到新資料夾後，exact run/lead/file identity 仍可重用。
+- 若部署明確設定 `FIRECLOUD_STATE_DIR`，仍尊重原 state-dir cache contract；亦可用 `FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR` / `FIRECLOUD_DWD_ICON_RAW_CACHE_DIR` 覆寫。
+- DWD level-object transport 改用 thread-local `requests.Session` keep-alive pool；每個 worker thread 只重用自己的 Session，不共享 mutable Session state。
+- 不改 DWD URL、run/lead、QC/QI/T/P bytes、vertical geometry、COT、provider precedence 或 Missing semantics。
+- `.10.9.7` TWS089 Field 顯示 CAMS exact-source reuse 已成功，新的主要 operational bottleneck 轉為 DWD ICON 356 network requests / 約 436.7 MB / 158.75 s；`.10.9.8` 對此先做 exact-cache/transport optimization，不降低 model-level sampling。
 
 ## R5.7.41.3.4.10.9.7 Runtime Exact-Source Reuse + GFS Merge Defragmentation
 
