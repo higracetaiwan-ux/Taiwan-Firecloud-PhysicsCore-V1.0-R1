@@ -1,0 +1,21 @@
+# Implementation Status — V1.0-R5.7.41.3.4.10.9.1
+
+- Science baseline：`R5.7.41.2_SHADOW_COT_AB_FROZEN`
+- `.10.9` shared gas sigma cache handoff：IMPLEMENTED
+- Glow cache entry before/after telemetry：IMPLEMENTED
+- Glow lookup/hit/miss telemetry：IMPLEMENTED
+- Viewing-inherited handoff hit telemetry：IMPLEMENTED
+- Intra-Glow cache hit telemetry：IMPLEMENTED
+- Uncached fallback telemetry：IMPLEMENTED
+- LUT signature count telemetry：IMPLEMENTED
+- `performance_diagnostics.csv` dedicated cache-handoff stage：IMPLEMENTED
+- `runtime_cache_provenance.csv` structured internal-runtime row：IMPLEMENTED
+- cache key：UNCHANGED
+- `_sigma_fast()`：UNCHANGED
+- gas RT accumulation order：UNCHANGED
+- six-band wavelengths：UNCHANGED
+- Formation / Viewing / Glow science：UNCHANGED
+- targeted exactness：15/15 PASS
+- adjacent chain：48/48 PASS
+- full regression：695/695 PASS
+- Field retest：OPEN

@@ -772,12 +772,20 @@ def _observer_gas_species_path(
     *,
     sigma_cache: dict | None = None,
     lut_signature: str | None = None,
+    sigma_cache_telemetry: dict | None = None,
+    sigma_cache_initial_keys: frozenset | None = None,
 ) -> tuple[dict[int, dict[str, float]] | None, str, int, int, float]:
     """Integrate O3 and non-O3 molecular absorption on Scatter->Observer.
 
     The total gas optical depth is intentionally decomposed as O3 + (O2+H2O)
     so the Chappuis contribution remains explicit without double counting.
     """
+    if sigma_cache_telemetry is not None:
+        for _telemetry_key in (
+            "lookup_count", "hit_count", "miss_count", "handoff_hit_count",
+            "intra_glow_hit_count", "uncached_fallback_count",
+        ):
+            sigma_cache_telemetry.setdefault(_telemetry_key, 0)
     distance = _finite(target.get("target_distance_km"))
     base = _finite(target.get("target_base_km"))
     top = _finite(target.get("target_top_km"))
@@ -841,12 +849,24 @@ def _observer_gas_species_path(
                         str(lut_signature), str(gas_name), int(wavelength),
                         float(temperature_k), float(pressure_hpa),
                     )
+                    if sigma_cache_telemetry is not None:
+                        sigma_cache_telemetry["lookup_count"] = int(sigma_cache_telemetry.get("lookup_count", 0)) + 1
                     if sigma_key in sigma_cache:
+                        if sigma_cache_telemetry is not None:
+                            sigma_cache_telemetry["hit_count"] = int(sigma_cache_telemetry.get("hit_count", 0)) + 1
+                            if sigma_cache_initial_keys is not None and sigma_key in sigma_cache_initial_keys:
+                                sigma_cache_telemetry["handoff_hit_count"] = int(sigma_cache_telemetry.get("handoff_hit_count", 0)) + 1
+                            else:
+                                sigma_cache_telemetry["intra_glow_hit_count"] = int(sigma_cache_telemetry.get("intra_glow_hit_count", 0)) + 1
                         sigma = sigma_cache[sigma_key]
                     else:
+                        if sigma_cache_telemetry is not None:
+                            sigma_cache_telemetry["miss_count"] = int(sigma_cache_telemetry.get("miss_count", 0)) + 1
                         sigma = _sigma_fast(ctx.lut, gas_name, int(wavelength), temperature_k, pressure_hpa)
                         sigma_cache[sigma_key] = sigma
                 else:
+                    if sigma_cache_telemetry is not None:
+                        sigma_cache_telemetry["uncached_fallback_count"] = int(sigma_cache_telemetry.get("uncached_fallback_count", 0)) + 1
                     sigma = _sigma_fast(ctx.lut, gas_name, int(wavelength), temperature_k, pressure_hpa)
                 if not math.isfinite(float(sigma)):
                     ok = False
@@ -1300,6 +1320,16 @@ def build_twilight_glow_branch(
     if not isinstance(_shared_lut_signatures, dict):
         _shared_lut_signatures = {}
     _shared_sigma_cache_before_volume = len(_shared_sigma_cache) if _shared_sigma_cache is not None else 0
+    _shared_sigma_cache_initial_keys = frozenset(_shared_sigma_cache.keys()) if _shared_sigma_cache is not None else frozenset()
+    _shared_sigma_cache_telemetry = {
+        "lookup_count": 0,
+        "hit_count": 0,
+        "miss_count": 0,
+        "handoff_hit_count": 0,
+        "intra_glow_hit_count": 0,
+        "uncached_fallback_count": 0,
+    }
+    _shared_lut_signature_count = len({str(v) for v in _shared_lut_signatures.values() if v is not None and str(v)})
     _component_seconds["LOOKUP_CONTEXT_PREP"] = max(0.0, perf_counter() - _component_t0)
 
     # R5.7.41.3.4.5 Viewing hands unresolved cloud-blocker provenance forward
@@ -1370,7 +1400,9 @@ def build_twilight_glow_branch(
             "viewing_hydrometeor_context_contract": "R574134107_VIEWING_GLOW_NATIVE_HYDROMETEOR_CONTEXT_REUSE",
             "shared_gas_sigma_cache_available": bool(_shared_sigma_cache is not None),
             "shared_gas_sigma_cache_entry_count_before_volume": int(_shared_sigma_cache_before_volume),
+            "shared_gas_lut_signature_count": int(_shared_lut_signature_count),
             "shared_gas_sigma_cache_contract": "R574134109_VIEWING_GLOW_GAS_SPECTROSCOPY_CACHE_HANDOFF",
+            "shared_gas_sigma_cache_telemetry_contract": "R5741341091_GLOW_GAS_CACHE_TELEMETRY_DIAGNOSTIC_ONLY",
         })
     rows: list[dict[str, Any]] = []
     _component_t0 = perf_counter()
@@ -1402,6 +1434,8 @@ def build_twilight_glow_branch(
             target, gas_context, float(earth_radius_km),
             sigma_cache=_shared_sigma_cache,
             lut_signature=_shared_lut_signatures.get(gas_key),
+            sigma_cache_telemetry=_shared_sigma_cache_telemetry,
+            sigma_cache_initial_keys=_shared_sigma_cache_initial_keys,
         )
         local = _local_molecular_state_prepared(target, molecular_route)
         molecular_boundary_diag = _molecular_boundary_diagnostics_prepared(
@@ -1661,8 +1695,16 @@ def build_twilight_glow_branch(
         runtime_cache_stats["support_cache_entry_count"] = int(
             sum(len(cache) for cache in glow_cloud_support_caches.values())
         )
-        runtime_cache_stats["shared_gas_sigma_cache_entry_count_after_volume"] = int(len(_shared_sigma_cache) if _shared_sigma_cache is not None else 0)
-        runtime_cache_stats["shared_gas_sigma_cache_reused"] = bool(_shared_sigma_cache is not None and _shared_sigma_cache_before_volume > 0)
+        _shared_sigma_cache_after_volume = int(len(_shared_sigma_cache) if _shared_sigma_cache is not None else 0)
+        runtime_cache_stats["shared_gas_sigma_cache_entry_count_after_volume"] = _shared_sigma_cache_after_volume
+        runtime_cache_stats["shared_gas_sigma_cache_entry_count_added_volume"] = int(max(0, _shared_sigma_cache_after_volume - _shared_sigma_cache_before_volume))
+        runtime_cache_stats["shared_gas_sigma_cache_reused"] = bool(_shared_sigma_cache is not None and _shared_sigma_cache_telemetry.get("hit_count", 0) > 0)
+        runtime_cache_stats["shared_gas_sigma_lookup_count"] = int(_shared_sigma_cache_telemetry.get("lookup_count", 0))
+        runtime_cache_stats["shared_gas_sigma_cache_hit_count"] = int(_shared_sigma_cache_telemetry.get("hit_count", 0))
+        runtime_cache_stats["shared_gas_sigma_cache_miss_count"] = int(_shared_sigma_cache_telemetry.get("miss_count", 0))
+        runtime_cache_stats["shared_gas_sigma_cache_handoff_hit_count"] = int(_shared_sigma_cache_telemetry.get("handoff_hit_count", 0))
+        runtime_cache_stats["shared_gas_sigma_cache_intra_glow_hit_count"] = int(_shared_sigma_cache_telemetry.get("intra_glow_hit_count", 0))
+        runtime_cache_stats["shared_gas_sigma_uncached_fallback_count"] = int(_shared_sigma_cache_telemetry.get("uncached_fallback_count", 0))
         runtime_cache_stats["component_seconds"] = dict(_component_seconds)
     return detail, summary
 

@@ -2863,6 +2863,26 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     ])
     _glow_elapsed = perf_counter() - _glow_t0
     performance_rows.append({
+        "stage": "TWILIGHT_GLOW_GAS_SPECTROSCOPY_CACHE_HANDOFF",
+        "elapsed_seconds": 0.0,
+        "cache_status": "R5741341091_DIAGNOSTIC_ONLY",
+        "detail": (
+            f"available={_glow_cache_stats.get('shared_gas_sigma_cache_available', False)};"
+            f"reused={_glow_cache_stats.get('shared_gas_sigma_cache_reused', False)};"
+            f"entries_before={_glow_cache_stats.get('shared_gas_sigma_cache_entry_count_before_volume', 0)};"
+            f"entries_after={_glow_cache_stats.get('shared_gas_sigma_cache_entry_count_after_volume', 0)};"
+            f"entries_added={_glow_cache_stats.get('shared_gas_sigma_cache_entry_count_added_volume', 0)};"
+            f"lookups={_glow_cache_stats.get('shared_gas_sigma_lookup_count', 0)};"
+            f"hits={_glow_cache_stats.get('shared_gas_sigma_cache_hit_count', 0)};"
+            f"handoff_hits={_glow_cache_stats.get('shared_gas_sigma_cache_handoff_hit_count', 0)};"
+            f"intra_glow_hits={_glow_cache_stats.get('shared_gas_sigma_cache_intra_glow_hit_count', 0)};"
+            f"misses={_glow_cache_stats.get('shared_gas_sigma_cache_miss_count', 0)};"
+            f"uncached_fallbacks={_glow_cache_stats.get('shared_gas_sigma_uncached_fallback_count', 0)};"
+            f"lut_signature_count={_glow_cache_stats.get('shared_gas_lut_signature_count', 0)};"
+            f"contract={_glow_cache_stats.get('shared_gas_sigma_cache_contract', '')}"
+        ),
+    })
+    performance_rows.append({
         "stage": "TWILIGHT_GLOW_INDEPENDENT_BRANCH",
         "elapsed_seconds": _glow_elapsed,
         "cache_status": "R5741345_VIEWING_GLOW_PROVENANCE_HANDOFF_SHARED_RUNTIME",
@@ -2873,6 +2893,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             f"aerosol_scattering_rows={len(v1_twilight_glow_aerosol_scattering)};"
             f"view_runtime_reused={_glow_cache_stats.get('viewing_runtime_context_reused', False)};"
             f"shared_gas_context={_glow_cache_stats.get('shared_gas_context_source', '')};"
+            f"gas_sigma_cache_reused={_glow_cache_stats.get('shared_gas_sigma_cache_reused', False)};"
+            f"gas_sigma_handoff_hits={_glow_cache_stats.get('shared_gas_sigma_cache_handoff_hit_count', 0)};"
+            f"gas_sigma_cache_entries_before={_glow_cache_stats.get('shared_gas_sigma_cache_entry_count_before_volume', 0)};"
+            f"gas_sigma_cache_entries_after={_glow_cache_stats.get('shared_gas_sigma_cache_entry_count_after_volume', 0)};"
             f"hydrometeor_context_reused={_glow_cache_stats.get('viewing_hydrometeor_context_reused', False)};"
             f"hydrometeor_context_count={_glow_cache_stats.get('viewing_hydrometeor_context_count', 0)};"
             f"cloud_handoff_hits={_glow_cache_stats.get('cloud_handoff_hit_count', 0)};"
@@ -3220,6 +3244,24 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         _p = _m.get("decoded_route_cache_provenance")
         if isinstance(_p, dict) and _p:
             _runtime_cache_rows.append({"provider":"NOAA_GFS_NATIVE","role":"DECODED_ROUTE","logical_status":_m.get("decoded_route_cache_status", ""), **_p})
+    _runtime_cache_rows.append({
+        "provider": "INTERNAL_RUNTIME",
+        "role": "TWILIGHT_GLOW_GAS_SPECTROSCOPY_CACHE_HANDOFF",
+        "logical_status": "REUSED" if _glow_cache_stats.get("shared_gas_sigma_cache_reused", False) else "NOT_REUSED",
+        "cache_contract": _glow_cache_stats.get("shared_gas_sigma_cache_contract", ""),
+        "cache_telemetry_contract": _glow_cache_stats.get("shared_gas_sigma_cache_telemetry_contract", ""),
+        "cache_available": _glow_cache_stats.get("shared_gas_sigma_cache_available", False),
+        "cache_entry_count_before": _glow_cache_stats.get("shared_gas_sigma_cache_entry_count_before_volume", 0),
+        "cache_entry_count_after": _glow_cache_stats.get("shared_gas_sigma_cache_entry_count_after_volume", 0),
+        "cache_entry_count_added": _glow_cache_stats.get("shared_gas_sigma_cache_entry_count_added_volume", 0),
+        "cache_lookup_count": _glow_cache_stats.get("shared_gas_sigma_lookup_count", 0),
+        "cache_hit_count": _glow_cache_stats.get("shared_gas_sigma_cache_hit_count", 0),
+        "cache_handoff_hit_count": _glow_cache_stats.get("shared_gas_sigma_cache_handoff_hit_count", 0),
+        "cache_intra_glow_hit_count": _glow_cache_stats.get("shared_gas_sigma_cache_intra_glow_hit_count", 0),
+        "cache_miss_count": _glow_cache_stats.get("shared_gas_sigma_cache_miss_count", 0),
+        "cache_uncached_fallback_count": _glow_cache_stats.get("shared_gas_sigma_uncached_fallback_count", 0),
+        "cache_lut_signature_count": _glow_cache_stats.get("shared_gas_lut_signature_count", 0),
+    })
     runtime_cache_provenance = pd.DataFrame(_runtime_cache_rows)
 
     # R5.7.14 Data Integrity Core: provider/decode/evidence handoff audit.
