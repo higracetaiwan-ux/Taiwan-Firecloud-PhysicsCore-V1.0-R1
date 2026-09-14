@@ -1,6 +1,14 @@
-> Current release: **V1.0-R5.7.41.3.4.10.9.6** — GFS Native Near-field Source Attribution + Timeline Valid-Time Provenance; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.9.7** — Runtime Exact-Source Reuse + GFS Merge Defragmentation; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.6
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.7
+
+## R5.7.41.3.4.10.9.7 Runtime Exact-Source Reuse + GFS Merge Defragmentation
+
+- CAMS scattering-column 550/645/670/800 nm AOD 完整時，直接 exact-source handoff 給 spectral AOD consumer，略過重複 ADS request。
+- scattering response 不完整時，自動回到 dedicated `SPECTRAL_COLUMN_AOD` request。
+- 新增 `CAMS_SPECTRAL_AOD_EXACT_REUSE_PROVENANCE` Integrity。
+- GFS native merge 改 batch concat，移除 pandas highly-fragmented PerformanceWarning；數值 precedence 與 Missing semantics 不變。
+- Frozen science baseline 不變。
 
 ## R5.7.41.3.4.10.9.6 GFS Native Near-field Source Attribution + Timeline Valid-Time Provenance
 

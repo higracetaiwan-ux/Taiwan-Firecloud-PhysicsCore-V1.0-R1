@@ -1500,13 +1500,13 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         openmeteo_request_audit=pd.DataFrame(hourly.attrs.get("api_request_audit", []))
         performance_rows.append({"stage":"OPENMETEO_PRESSURE_PROFILE_FALLBACK","elapsed_seconds":perf_counter()-_pf_t0,"cache_status":pressure_hourly.attrs.get("openmeteo_status","UNKNOWN")})
 
-    _progress(0.34, f"預先取得 CAMS 壓力層 O₃／近地 O₃ L137／3D 氣膠／光譜 AOD／氣膠 SSA-g 五條獨立資料鏈（{len(cams_requests)} 個唯一時次；持久快取優先，未命中時每時次 90 秒 grace window）…")
+    _progress(0.34, f"預先取得 CAMS 壓力層 O₃／近地 O₃ L137／3D 氣膠／氣膠 SSA-g，光譜 AOD 優先同源精確重用（{len(cams_requests)} 個唯一時次；持久快取優先，未命中時每時次 90 秒 grace window）…")
     _prefetch_t0 = perf_counter()
     _cams_items = list(cams_requests.items())
     # The request planner already deduplicates identical (run, lead) keys.  The
     # remaining expensive work is normally two different forecast times.  Run
     # at most two *time bundles* concurrently; each bundle continues to fetch
-    # pressure-level O3, near-surface O3 L137, spectral AOD, native aerosol, and aerosol SSA/g serially.  This preserves the ADS
+    # pressure-level O3, near-surface O3 L137, native aerosol, aerosol SSA/g, and only when needed a dedicated spectral AOD request serially.  R5.7.41.3.4.10.9.7 allows the exact provider-native AOD550/645/670/800 already returned by the scattering role to satisfy the spectral role without a second ADS request. This preserves the ADS
     # queue protection added in V8.4.11 while avoiding a full 2-time serial wait.
     # R5.7.23 Runtime Hardening: CAMS ADS single-flight.  R5.7.23 allowed two
     # time bundles to run concurrently.  Although each bundle serialized its

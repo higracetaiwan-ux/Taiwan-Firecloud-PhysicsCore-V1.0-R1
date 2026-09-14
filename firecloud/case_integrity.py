@@ -802,6 +802,32 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     if cams_payload_expected:
         add("CAMS_REQUEST_AUDIT_PRESENT", PASS if not cams_req.empty else FAIL, "CAMS", _rows(cams_req), ">0 request-audit rows when CAMS-dependent payload is expected", "A blank request audit must not coexist silently with missing O3/aerosol payload")
 
+    # R5.7.41.3.4.10.9.7: if the dedicated spectral-AOD ADS request is
+    # skipped because the same CAMS scattering-column request already returned
+    # provider-native AOD550/645/670/800, the handoff must remain explicit in
+    # the request audit. This is an exact-source reuse guard only; it never
+    # changes aerosol values or permits synthetic spectral filling.
+    if not cams_req.empty and "request_role" in cams_req.columns:
+        _role = cams_req["request_role"].fillna("").astype(str)
+        _final = cams_req.get("final_status", pd.Series("", index=cams_req.index)).fillna("").astype(str)
+        _reuse_rows = cams_req.loc[_role.eq("SPECTRAL_COLUMN_AOD") & _final.eq("EXACT_SOURCE_REUSE")].copy()
+        if not _reuse_rows.empty:
+            _reuse_flag = _reuse_rows.get("exact_source_reuse", pd.Series(False,index=_reuse_rows.index)).fillna(False).astype(bool)
+            _source_role = _reuse_rows.get("exact_source_role", pd.Series("",index=_reuse_rows.index)).fillna("").astype(str)
+            _elapsed = pd.to_numeric(_reuse_rows.get("elapsed_seconds", pd.Series(float("nan"),index=_reuse_rows.index)), errors="coerce")
+            _reuse_ok = bool(
+                _reuse_flag.all()
+                and _source_role.eq("AEROSOL_SCATTERING_COLUMN_PROPERTIES").all()
+                and _elapsed.fillna(0.0).abs().le(1e-9).all()
+            )
+            add(
+                "CAMS_SPECTRAL_AOD_EXACT_REUSE_PROVENANCE", PASS if _reuse_ok else FAIL,
+                "CAMS",
+                f"rows={len(_reuse_rows)};source_role={','.join(sorted(set(_source_role)))}",
+                "SPECTRAL_COLUMN_AOD exact reuse must cite AEROSOL_SCATTERING_COLUMN_PROPERTIES and add zero provider elapsed time",
+                "Exact provider-native AOD550/645/670/800 handoff only; no time interpolation or Angstrom synthesis.",
+            )
+
     # R5.7.38: a terminal-successful ADS job has entered a distinct download
     # phase.  Fresh successful stateful requests must export bounded download
     # recovery telemetry; cache hits and jobs that never reached remote success

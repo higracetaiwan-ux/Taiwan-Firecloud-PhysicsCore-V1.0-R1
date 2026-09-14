@@ -450,37 +450,38 @@ def merge_native_into_snapshot(snapshot: pd.DataFrame, native: pd.DataFrame) -> 
     deferred pressure-profile fallback only when GFS is unavailable.  Canonical
     column names are backfilled from native GRIB without overwriting a real
     provider value that is already present.
+
+    R5.7.41.3.4.10.9.7 keeps the exact same value precedence while batching
+    previously-missing canonical columns into one concat.  This removes the
+    pandas highly-fragmented-frame warning seen during every angle merge without
+    changing any meteorological value or Missing semantic.
     """
     if snapshot.empty or native.empty:
         return snapshot.copy()
     n=native.drop(columns=[c for c in ['distance_km','direction_offset_deg','lat','lon'] if c in native.columns],errors='ignore')
     out=snapshot.merge(n,on='point_id',how='left')
-    out['pressure_profile_primary_source'] = NATIVE_PROVIDER_NAME
+
+    additions={}
+    if 'pressure_profile_primary_source' not in out.columns:
+        additions['pressure_profile_primary_source']=pd.Series(NATIVE_PROVIDER_NAME,index=out.index,dtype=object)
+
+    # Pre-create every canonical column that would otherwise be inserted one by
+    # one inside the pressure-level loop. Existing canonical values are updated
+    # in place later and therefore preserve the historical provider precedence.
     for p in DEFAULT_PRESSURE_LEVELS_HPA:
-        mapping = {
-            f'temperature_{p}hPa': f'temperature_k_{p}hPa',
-            f'relative_humidity_{p}hPa': f'relative_humidity_pct_{p}hPa',
-            f'geopotential_height_{p}hPa': f'geopotential_height_m_{p}hPa',
-        }
-        for canonical, native_col in mapping.items():
-            if native_col not in out.columns:
-                continue
-            if canonical not in out.columns:
-                out[canonical] = np.nan
-            can = pd.to_numeric(out[canonical], errors='coerce')
-            nat = pd.to_numeric(out[native_col], errors='coerce')
-            out[canonical] = can.where(can.notna(), nat)
-        # R4.5.1: canonical native-condensate contract is explicitly kg/kg.
-        # Native ecCodes decode already emits these names; the legacy aliases are
-        # accepted only as an input-compatibility fallback for older CASE/replay data.
-        for phase_name in ('liquid', 'ice'):
+        for canonical,native_col in (
+            (f'temperature_{p}hPa', f'temperature_k_{p}hPa'),
+            (f'relative_humidity_{p}hPa', f'relative_humidity_pct_{p}hPa'),
+            (f'geopotential_height_{p}hPa', f'geopotential_height_m_{p}hPa'),
+        ):
+            if native_col in out.columns and canonical not in out.columns:
+                additions[canonical]=pd.Series(np.nan,index=out.index,dtype=float)
+        for phase_name in ('liquid','ice'):
             canonical_q=f'cloud_{phase_name}_water_kgkg_{p}hPa'
             legacy_q=f'cloud_{phase_name}_water_{p}hPa'
             if canonical_q not in out.columns and legacy_q in out.columns:
-                out[canonical_q]=pd.to_numeric(out[legacy_q],errors='coerce')
-        # R5.7 native precipitation-volume contract. These remain true model
-        # hydrometeor mixing ratios; surface rain rate is never converted to them.
-        for native_base, canonical_base in (
+                additions[canonical_q]=pd.to_numeric(out[legacy_q],errors='coerce')
+        for native_base,canonical_base in (
             ('rain_water_kgkg','rain_water_kgkg'),
             ('snow_water_kgkg','snow_water_kgkg'),
             ('graupel_kgkg','graupel_kgkg'),
@@ -488,17 +489,40 @@ def merge_native_into_snapshot(snapshot: pd.DataFrame, native: pd.DataFrame) -> 
             native_q=f'{native_base}_{p}hPa'
             canonical_q=f'{canonical_base}_{p}hPa'
             if native_q in out.columns and canonical_q not in out.columns:
-                out[canonical_q]=pd.to_numeric(out[native_q],errors='coerce')
+                additions[canonical_q]=pd.to_numeric(out[native_q],errors='coerce')
+        native_cc=f'cloud_fraction_{p}hPa'
+        canonical_cc=f'cloud_cover_{p}hPa'
+        if native_cc in out.columns and canonical_cc not in out.columns:
+            additions[canonical_cc]=pd.Series(np.nan,index=out.index,dtype=float)
+
+    if additions:
+        out=pd.concat([out,pd.DataFrame(additions,index=out.index)],axis=1)
+    # One compact copy ensures the merged frame is contiguous before the
+    # repeated in-place canonical backfills below.
+    out=out.copy()
+    out['pressure_profile_primary_source']=NATIVE_PROVIDER_NAME
+
+    for p in DEFAULT_PRESSURE_LEVELS_HPA:
+        mapping={
+            f'temperature_{p}hPa': f'temperature_k_{p}hPa',
+            f'relative_humidity_{p}hPa': f'relative_humidity_pct_{p}hPa',
+            f'geopotential_height_{p}hPa': f'geopotential_height_m_{p}hPa',
+        }
+        for canonical,native_col in mapping.items():
+            if native_col not in out.columns:
+                continue
+            can=pd.to_numeric(out[canonical],errors='coerce')
+            nat=pd.to_numeric(out[native_col],errors='coerce')
+            out[canonical]=can.where(can.notna(),nat)
+
+        # Condensate and precipitation compatibility aliases were already
+        # materialized in the batch above when needed; no new columns are
+        # inserted here.
         native_cc=f'cloud_fraction_{p}hPa'
         canonical_cc=f'cloud_cover_{p}hPa'
         if native_cc in out.columns:
-            if canonical_cc not in out.columns:
-                out[canonical_cc]=np.nan
             can=pd.to_numeric(out[canonical_cc],errors='coerce')
             nat=pd.to_numeric(out[native_cc],errors='coerce')
-            # Native decoder stores cloud fraction in 0..1. Canonical Open-Meteo
-            # pressure cloud cover uses percent. Preserve values that are already
-            # present and convert only the native fallback.
-            nat_pct=np.where(nat.notna(), np.where(nat<=1.0+1e-9, nat*100.0, nat), np.nan)
-            out[canonical_cc]=can.where(can.notna(), pd.Series(nat_pct,index=out.index))
+            nat_pct=np.where(nat.notna(),np.where(nat<=1.0+1e-9,nat*100.0,nat),np.nan)
+            out[canonical_cc]=can.where(can.notna(),pd.Series(nat_pct,index=out.index))
     return out
