@@ -128,6 +128,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     windy_ice_optics = _df(result.get("v1_windy_ice_optics_summary"))
     windy_ice_json = result.get("windy_firecloud_ice_optics_summary_v1", {}) or {}
     ice_optics_contract = result.get("ice_cloud_spectral_optics_contract", {}) or {}
+    ice_optics_portable_contract = result.get("ice_optics_portable_consumer_contract", {}) or {}
     ice_optics_phase1_required = bool(result.get("ice_cloud_spectral_optics_phase1_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
@@ -460,6 +461,25 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "WINDY_SHARED_EXPORT",
             f"csv_rows={len(windy_ice_optics)};json_records={len(windy_ice_json.get('records', [])) if isinstance(windy_ice_json, Mapping) else 0}",
             "shared FIRECLOUD_ICE_OPTICS_V1 export with six wavelengths and no physics promotion",
+        )
+        _portable_wl = tuple(int(x) for x in ice_optics_portable_contract.get("wavelengths_nm", [])) if isinstance(ice_optics_portable_contract, Mapping) else ()
+        _portable_ok = bool(
+            isinstance(ice_optics_portable_contract, Mapping)
+            and ice_optics_portable_contract.get("portable_package_contract_version") == "FIRECLOUD_ICE_OPTICS_PORTABLE_V1"
+            and ice_optics_portable_contract.get("ice_optics_contract_version") == "FIRECLOUD_ICE_OPTICS_V1"
+            and ice_optics_portable_contract.get("consumer") == "WINDY_FIRECLOUD_OBSERVER"
+            and ice_optics_portable_contract.get("runtime_dependency_on_physicscore") == "NONE"
+            and ice_optics_portable_contract.get("runtime_dependency_on_python") == "NONE"
+            and ice_optics_portable_contract.get("runtime_dependency_on_streamlit") == "NONE"
+            and _portable_wl == _wl
+            and ice_optics_portable_contract.get("physics_promotion_allowed") is False
+        )
+        add(
+            "ICE_OPTICS_PORTABLE_WINDY_RUNTIME_DECOUPLING", PASS if _portable_ok else FAIL,
+            "WINDY_PORTABLE_ICE_OPTICS",
+            f"portable_contract={ice_optics_portable_contract.get('portable_package_contract_version') if isinstance(ice_optics_portable_contract, Mapping) else None};runtime_dependency={ice_optics_portable_contract.get('runtime_dependency_on_physicscore') if isinstance(ice_optics_portable_contract, Mapping) else None};wavelengths={_portable_wl}",
+            "FIRECLOUD_ICE_OPTICS_PORTABLE_V1; WINDY runtime has no PhysicsCore/Python/Streamlit dependency; six-band contract preserved",
+            "PhysicsCore is the LUT authoring/calibration/release authority only; WINDY evaluates the released package locally.",
         )
         add(
             "ICE_CLOUD_SPECTRAL_OPTICS_SUMMARY",
@@ -2286,6 +2306,7 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "v1_windy_ice_optics_summary.csv",
         "windy_firecloud_ice_optics_summary_v1.json",
         "ice_cloud_spectral_optics_contract.json",
+        "ice_optics_portable_consumer_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",

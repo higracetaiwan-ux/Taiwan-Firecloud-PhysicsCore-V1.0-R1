@@ -96,6 +96,8 @@ from firecloud.shadow_validation_collection import (
 CASE_FILENAME_PREFIX = "Taiwan-Firecloud-PhysicsCore-V1.0-R5."
 from firecloud.timezone_contract import AUTO_COORDINATE, USER_OVERRIDE, resolve_event_timezone
 from firecloud.hitran_readiness import hitran_backend_status, resolve_hitran_db_path, resolve_hitran_lut_path
+from firecloud.ice_cloud_spectral_optics import load_ice_optics_lut
+from firecloud.ice_optics_portable import build_portable_package_zip_bytes
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -1857,15 +1859,37 @@ if run or st.session_state.analysis_result is not None:
     _windy_ice = result.get("v1_windy_ice_optics_summary", pd.DataFrame())
     _windy_ice_json = result.get("windy_firecloud_ice_optics_summary_v1", {}) or {}
     _ice_lut_state = (result.get("ice_cloud_spectral_optics_lut_status", {}) or {}).get("state", "UNKNOWN")
-    with st.expander("Ice Cloud Spectral Optics｜六波段冰雲光學＋WINDY Shared Export", expanded=False):
+    with st.expander("Ice Cloud Spectral Optics｜PhysicsCore Authoring + WINDY Standalone Portable Package", expanded=False):
         st.caption(
-            "R5.7.41.3.4.10.10 Phase 1 僅建立 550/575/600/650/700/750 nm 的 calibrated-LUT contract、"
-            "IWP×k_ext 診斷與 WINDY 共用輸出；不取代 Frozen production cloud optics，也不回寫 Formation/Viewing/Glow。"
+            "R5.7.41.3.4.10.10.1 正式拆開部署邊界：PhysicsCore 只負責 Ice Engine/LUT 建立、校準、驗證與發布；"
+            "WINDY 匯入 FIRECLOUD_ICE_OPTICS_PORTABLE_V1 後在瀏覽器本地 lookup/interpolation，不需要 PhysicsCore、Python 或 Streamlit 執行。"
+            "目前 CASE 的 WINDY Summary 仍保留作 A/B/Field 驗證，不是 WINDY 未來 runtime 必要依賴。"
         )
         if _ice_lut_state == "ICE_OPTICS_LUT_READY":
-            st.success("Ice Cloud Spectral Optics LUT：READY")
+            st.success("Ice Cloud Spectral Optics LUT：READY｜可建立 WINDY Standalone Portable Package")
+            try:
+                _portable_lut, _portable_lut_status = load_ice_optics_lut()
+                _portable_source_manifest = None
+                _portable_source_path = Path(__file__).resolve().parent / "firecloud" / "data" / "ice_optics_source_manifest_v1.json"
+                if _portable_source_path.exists():
+                    _portable_source_manifest = json.loads(_portable_source_path.read_text(encoding="utf-8"))
+                _portable_zip = build_portable_package_zip_bytes(
+                    _portable_lut,
+                    physicscore_version=__version__,
+                    science_baseline=__baseline__,
+                    lut_status=_portable_lut_status,
+                    source_manifest=_portable_source_manifest,
+                )
+                st.download_button(
+                    "下載 WINDY Standalone Ice Optics Portable Package ZIP",
+                    data=_portable_zip,
+                    file_name=f"Firecloud-Ice-Optics-Portable-{__version__}.zip",
+                    mime="application/zip", use_container_width=True, key="download_windy_ice_portable_package",
+                )
+            except Exception as _portable_exc:
+                st.error(f"Portable Package 建立失敗：{type(_portable_exc).__name__}: {_portable_exc}")
         else:
-            st.warning(f"Ice Cloud Spectral Optics LUT：{_ice_lut_state}｜正 IWP 不會以固定 r_eff/habit 或 RH/雲量補造 tau。")
+            st.warning(f"Ice Cloud Spectral Optics LUT：{_ice_lut_state}｜尚未有校準 LUT，所以不會產生可執行 WINDY package；正 IWP 也不會以固定 r_eff/habit 或 RH/雲量補造 tau。")
         if not _ice_summary.empty:
             st.dataframe(localized_df(_ice_summary), use_container_width=True, hide_index=True)
         if not _windy_ice.empty:
@@ -2517,6 +2541,7 @@ if run or st.session_state.analysis_result is not None:
             ("hitran_backend_status.json", result.get("hitran_backend_status", {})),
             ("event_timezone_resolution.json", result.get("event_timezone_resolution", {})),
             ("ice_cloud_spectral_optics_contract.json", result.get("ice_cloud_spectral_optics_contract", {})),
+            ("ice_optics_portable_consumer_contract.json", result.get("ice_optics_portable_consumer_contract", {})),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

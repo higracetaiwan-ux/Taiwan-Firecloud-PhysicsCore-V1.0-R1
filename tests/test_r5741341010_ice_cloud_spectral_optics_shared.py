@@ -14,6 +14,7 @@ from firecloud.ice_cloud_spectral_optics import (
     summarize_ice_cloud_spectral_optics,
     validate_ice_optics_lut,
 )
+from firecloud.ice_optics_portable import portable_contract_payload
 
 
 def _fake_lut():
@@ -38,7 +39,7 @@ def _fake_lut():
 
 
 def test_version_and_six_band_contract():
-    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.10'
+    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.10.1'
     assert ICE_OPTICS_WAVELENGTHS_NM == (550,575,600,650,700,750)
 
 
@@ -152,6 +153,7 @@ def test_analysis_integrity_guards_ice_optics_and_windy_contract():
         'v1_windy_ice_optics_summary':wf,
         'windy_firecloud_ice_optics_summary_v1':wj,
         'ice_cloud_spectral_optics_contract':contract,
+        'ice_optics_portable_consumer_contract':portable_contract_payload(physicscore_version=firecloud.__version__,science_baseline='R5.7.41.2_SHADOW_COT_AB_FROZEN'),
         'ice_cloud_spectral_optics_phase1_required':True,
     })
     checks=audit.set_index('check_id')['status'].to_dict()

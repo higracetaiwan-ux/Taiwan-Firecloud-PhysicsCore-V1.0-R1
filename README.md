@@ -1,19 +1,6 @@
-> Current release: **V1.0-R5.7.41.3.4.10.10** — Ice Cloud Spectral Optics Shared Module Phase 1; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.9.9** — CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.10
-
-## R5.7.41.3.4.10.10 Ice Cloud Spectral Optics Shared Module Phase 1
-
-- 開發主線由 runtime 微優化切回科學能力：新增冰雲六波段 `550/575/600/650/700/750 nm` 光學共用模組。
-- 新增 calibrated Ice Optics LUT contract：`ice habit × surface roughness × effective size × wavelength`，保留 `k_ext [m²/kg]`、SSA、asymmetry factor 與 source provenance。
-- 支援由 Yang/Bi ice single-scattering database `isca.dat` 的 `Qext / projected area / volume` 建立 `k_ext = Qext × A / (rho_ice × V)`；不在 release 內塞入未驗證係數。
-- Phase 1 診斷公式：`tau_ice(lambda)=IWP×k_ext(lambda)`、`T_ice(lambda)=exp(-tau_ice)`；只有 IWP vertical support、effective size、habit、roughness、六波段 LUT 全部完整才計算。
-- `Missing != Clear != Zero`：禁止用 RH、Cloud Fraction、季節經驗或未標示 fixed r_eff/habit 補造 spectral ice tau。
-- 新增 WINDY shared contract `FIRECLOUD_ICE_OPTICS_V1`，輸出 compact CSV/JSON；WINDY 外掛可直接讀取，不需另寫一套冰雲公式。
-- 新 CASE artifacts：`v1_ice_cloud_spectral_optics_runtime.csv`、`v1_ice_cloud_spectral_optics_summary.csv`、`v1_windy_ice_optics_summary.csv`、`windy_firecloud_ice_optics_summary_v1.json`、`ice_cloud_spectral_optics_contract.json`。
-- Streamlit UI 新增 Ice Cloud Spectral Optics expander 與 WINDY CSV/JSON 下載。
-- Phase 1 固定 `DIAGNOSTIC_ONLY_UNASSIGNED` / `formation_promotion_allowed=False`；不回灌 Frozen Formation、Viewing、Twilight Glow、Red-Light、Production COT 或 Photography Decision。
-- `.10.9.9` TWS089 2026-09-15 sunrise 已 FIELD PASS：85 PASS / 1 NOT_APPLICABLE / 0 FAIL；CASE Integrity 38/38；CAMS pressure bundle / Spectral AOD exact reuse 與 DWD user-level cache-scope contract皆正式成立。
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.9
 
 ## R5.7.41.3.4.10.9.9 CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix
 

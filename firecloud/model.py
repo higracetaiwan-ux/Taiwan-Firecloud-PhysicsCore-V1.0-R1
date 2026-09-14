@@ -125,6 +125,7 @@ from .ice_cloud_spectral_optics import (
     summarize_ice_cloud_spectral_optics, build_windy_ice_optics_summary,
     ice_optics_contract_payload,
 )
+from .ice_optics_portable import portable_contract_payload
 from .shadow_validation_collection import SCIENCE_BASELINE_ID
 from . import __version__ as PHYSICSCORE_VERSION
 from .viewing_spectral import (
@@ -2682,6 +2683,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     ice_cloud_spectral_optics_contract = ice_optics_contract_payload(
         physicscore_version=PHYSICSCORE_VERSION, science_baseline=SCIENCE_BASELINE_ID
     )
+    ice_optics_portable_consumer_contract = portable_contract_payload(
+        physicscore_version=PHYSICSCORE_VERSION, science_baseline=SCIENCE_BASELINE_ID
+    )
     performance_rows.append({
         "stage": "ICE_CLOUD_SPECTRAL_OPTICS_SHARED_PHASE1",
         "elapsed_seconds": max(0.0, perf_counter() - _ice_optics_t0),
@@ -3436,6 +3440,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_windy_ice_optics_summary": v1_windy_ice_optics_summary,
         "windy_firecloud_ice_optics_summary_v1": windy_firecloud_ice_optics_summary_v1,
         "ice_cloud_spectral_optics_contract": ice_cloud_spectral_optics_contract,
+        "ice_optics_portable_consumer_contract": ice_optics_portable_consumer_contract,
         "ice_cloud_spectral_optics_phase1_required": True,
         "v1_gfs_native_nearfield_source_levels": v1_gfs_native_nearfield_source_levels,
         "v1_gfs_native_nearfield_source_summary": v1_gfs_native_nearfield_source_summary,
@@ -3536,6 +3541,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_windy_ice_optics_summary": v1_windy_ice_optics_summary,
         "windy_firecloud_ice_optics_summary_v1": windy_firecloud_ice_optics_summary_v1,
         "ice_cloud_spectral_optics_contract": ice_cloud_spectral_optics_contract,
+        "ice_optics_portable_consumer_contract": ice_optics_portable_consumer_contract,
         "ice_cloud_spectral_optics_lut_status": {
             "loaded": _ice_optics_lut_status.loaded, "path": _ice_optics_lut_status.path,
             "row_count": _ice_optics_lut_status.row_count, "spectral_complete": _ice_optics_lut_status.spectral_complete,

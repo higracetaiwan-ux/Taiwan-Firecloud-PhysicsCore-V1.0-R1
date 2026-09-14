@@ -1,0 +1,22 @@
+# Implementation Status — V1.0-R5.7.41.3.4.10.10.1
+
+- Portable consumer contract：DONE
+- PhysicsCore↔WINDY runtime decoupling：DONE
+- Python package builder：DONE
+- standalone ES module evaluator：DONE
+- standalone TypeScript evaluator：DONE
+- TypeScript strict compile gate：PASS
+- cross-language validation vectors：DONE
+- Node validator：PASS
+- manifest SHA256 inventory：DONE
+- LUT/manifest JSON schemas：DONE
+- WINDY SDK without coefficients：DONE
+- CASE portable consumer contract artifact：DONE
+- Analysis Integrity decoupling gate：DONE
+- Streamlit portable ZIP download when calibrated LUT READY：DONE
+- Frozen science audit：16/16 byte-identical vs `.10.10`
+- Full regression：748/748 PASS
+- Final FULL-CLEAN fresh-extract：748/748 PASS
+- Authoritative calibrated Ice LUT：PENDING
+- Formal `.10.10/.10.10.1` Field CASE：PENDING
+- WINDY actual plugin import/integration：PENDING

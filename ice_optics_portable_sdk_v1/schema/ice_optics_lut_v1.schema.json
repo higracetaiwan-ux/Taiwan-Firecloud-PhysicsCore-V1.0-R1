@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "ice_optics_contract_version": {
+      "const": "FIRECLOUD_ICE_OPTICS_V1"
+    },
+    "records": {
+      "items": {
+        "properties": {
+          "asymmetry_parameter": {
+            "maximum": 1,
+            "minimum": -1,
+            "type": "number"
+          },
+          "effective_radius_um": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "ice_habit": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mass_extinction_coefficient_m2_kg": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "single_scattering_albedo": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "source_dataset": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_record_provenance": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_version": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "surface_roughness": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "wavelength_nm": {
+            "enum": [
+              550,
+              575,
+              600,
+              650,
+              700,
+              750
+            ]
+          }
+        },
+        "required": [
+          "wavelength_nm",
+          "effective_radius_um",
+          "ice_habit",
+          "surface_roughness",
+          "mass_extinction_coefficient_m2_kg",
+          "single_scattering_albedo",
+          "asymmetry_parameter",
+          "source_dataset",
+          "source_version",
+          "source_record_provenance"
+        ],
+        "type": "object"
+      },
+      "minItems": 6,
+      "type": "array"
+    },
+    "row_count": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "wavelengths_nm": {
+      "const": [
+        550,
+        575,
+        600,
+        650,
+        700,
+        750
+      ]
+    }
+  },
+  "required": [
+    "ice_optics_contract_version",
+    "wavelengths_nm",
+    "row_count",
+    "records"
+  ],
+  "title": "Firecloud Ice Optics LUT V1",
+  "type": "object"
+}
