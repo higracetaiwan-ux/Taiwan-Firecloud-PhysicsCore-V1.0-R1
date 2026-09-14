@@ -769,6 +769,9 @@ def _observer_gas_species_path(
     target: pd.Series,
     prepared_context: Any,
     earth_radius_km: float,
+    *,
+    sigma_cache: dict | None = None,
+    lut_signature: str | None = None,
 ) -> tuple[dict[int, dict[str, float]] | None, str, int, int, float]:
     """Integrate O3 and non-O3 molecular absorption on Scatter->Observer.
 
@@ -833,7 +836,18 @@ def _observer_gas_species_path(
         for wavelength in SIX_BAND_WAVELENGTHS_NM:
             species_tau: dict[str, float] = {}
             for gas_name, density in densities.items():
-                sigma = _sigma_fast(ctx.lut, gas_name, int(wavelength), temperature_k, pressure_hpa)
+                if sigma_cache is not None and lut_signature is not None:
+                    sigma_key = (
+                        str(lut_signature), str(gas_name), int(wavelength),
+                        float(temperature_k), float(pressure_hpa),
+                    )
+                    if sigma_key in sigma_cache:
+                        sigma = sigma_cache[sigma_key]
+                    else:
+                        sigma = _sigma_fast(ctx.lut, gas_name, int(wavelength), temperature_k, pressure_hpa)
+                        sigma_cache[sigma_key] = sigma
+                else:
+                    sigma = _sigma_fast(ctx.lut, gas_name, int(wavelength), temperature_k, pressure_hpa)
                 if not math.isfinite(float(sigma)):
                     ok = False
                     break
@@ -1279,6 +1293,13 @@ def build_twilight_glow_branch(
     molecular_routes, _molecular_context_source = _select_glow_molecular_numeric_routes(
         gas_profiles, viewing_runtime_context
     )
+    _shared_sigma_cache = (viewing_runtime_context or {}).get("gas_sigma_cache") if isinstance(viewing_runtime_context, dict) else None
+    _shared_lut_signatures = (viewing_runtime_context or {}).get("gas_lut_signatures") if isinstance(viewing_runtime_context, dict) else None
+    if not isinstance(_shared_sigma_cache, dict):
+        _shared_sigma_cache = None
+    if not isinstance(_shared_lut_signatures, dict):
+        _shared_lut_signatures = {}
+    _shared_sigma_cache_before_volume = len(_shared_sigma_cache) if _shared_sigma_cache is not None else 0
     _component_seconds["LOOKUP_CONTEXT_PREP"] = max(0.0, perf_counter() - _component_t0)
 
     # R5.7.41.3.4.5 Viewing hands unresolved cloud-blocker provenance forward
@@ -1347,6 +1368,9 @@ def build_twilight_glow_branch(
             "viewing_hydrometeor_context_count": int(_shared_hydrometeor_context_count),
             "viewing_hydrometeor_context_reused": bool(_shared_hydrometeor_context_count > 0),
             "viewing_hydrometeor_context_contract": "R574134107_VIEWING_GLOW_NATIVE_HYDROMETEOR_CONTEXT_REUSE",
+            "shared_gas_sigma_cache_available": bool(_shared_sigma_cache is not None),
+            "shared_gas_sigma_cache_entry_count_before_volume": int(_shared_sigma_cache_before_volume),
+            "shared_gas_sigma_cache_contract": "R574134109_VIEWING_GLOW_GAS_SPECTROSCOPY_CACHE_HANDOFF",
         })
     rows: list[dict[str, Any]] = []
     _component_t0 = perf_counter()
@@ -1375,7 +1399,9 @@ def build_twilight_glow_branch(
             target, molecular_route, float(earth_radius_km)
         )
         observer_gas_species, observer_gas_species_status, gas_required_segments, gas_resolved_segments, gas_path_km = _observer_gas_species_path(
-            target, gas_context, float(earth_radius_km)
+            target, gas_context, float(earth_radius_km),
+            sigma_cache=_shared_sigma_cache,
+            lut_signature=_shared_lut_signatures.get(gas_key),
         )
         local = _local_molecular_state_prepared(target, molecular_route)
         molecular_boundary_diag = _molecular_boundary_diagnostics_prepared(
@@ -1635,6 +1661,8 @@ def build_twilight_glow_branch(
         runtime_cache_stats["support_cache_entry_count"] = int(
             sum(len(cache) for cache in glow_cloud_support_caches.values())
         )
+        runtime_cache_stats["shared_gas_sigma_cache_entry_count_after_volume"] = int(len(_shared_sigma_cache) if _shared_sigma_cache is not None else 0)
+        runtime_cache_stats["shared_gas_sigma_cache_reused"] = bool(_shared_sigma_cache is not None and _shared_sigma_cache_before_volume > 0)
         runtime_cache_stats["component_seconds"] = dict(_component_seconds)
     return detail, summary
 

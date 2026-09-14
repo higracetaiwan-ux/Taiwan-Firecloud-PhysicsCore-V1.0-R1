@@ -1,6 +1,11 @@
-> Current release: **V1.0-R5.7.41.3.4.10.8** — Viewing→Glow Molecular Context Handoff; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.9** — Viewing→Glow Gas Spectroscopy Cache Handoff; science baseline remains frozen.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.8
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9
+
+
+## R5.7.41.3.4.10.9 Viewing→Glow Gas Spectroscopy Cache Handoff
+
+Runtime-only exact-reuse release。Twilight Glow Volume Assembly 直接共用 Main Viewing `.10.4` 已建立的 content-scoped `gas_sigma_cache` 與 per-route LUT signature；cache key 保持 `LUT signature + gas + wavelength + exact T + exact P`。只重用 sigma，不重用 path τ；每段 `sigma × density × path` 與六波段/氣體累加順序不變。若 cache/signature 不存在即完整 fallback 到 `_sigma_fast()`。TWS091 2026-09-14 sunrise same-input benchmark：1092 gas paths 0 differences，約 2.844 → 1.073 s（2.65×）。
 
 
 ## R5.7.41.3.4.10.8 Viewing→Glow Molecular Context Handoff
