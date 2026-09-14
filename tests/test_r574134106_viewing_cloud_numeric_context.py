@@ -77,7 +77,7 @@ def _compare(cloud, target=None, optics=None):
 
 
 def test_version_is_r574134106():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.9.3"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.9.4"
 
 
 def test_cloud_numeric_context_resolved_occupancy_is_exact():

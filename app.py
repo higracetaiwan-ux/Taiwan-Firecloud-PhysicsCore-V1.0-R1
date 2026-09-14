@@ -2395,6 +2395,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_red_light_availability_summary.csv", result.get("v1_red_light_availability_summary", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
+            ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
+            ("v1_observer_environment_timeline_summary.csv", result.get("v1_observer_environment_timeline_summary", pd.DataFrame())),
             ("v1_viewing_path_geometry.csv", result.get("v1_viewing_path_geometry", pd.DataFrame())),
             ("v1_viewing_summary.csv", result.get("v1_viewing_summary", pd.DataFrame())),
             ("v1_viewing_precipitation_evidence.csv", result.get("v1_viewing_precipitation_evidence", pd.DataFrame())),

@@ -112,6 +112,10 @@ from .observer_nearfield_cloud_environment import (
     build_observer_nearfield_cloud_environment,
     summarize_observer_nearfield_cloud_environment,
 )
+from .observer_environment_timeline import (
+    build_observer_environment_timeline,
+    summarize_observer_environment_timeline,
+)
 from .viewing_spectral import (
     build_viewing_spectral_extinction, summarize_viewing_spectral_extinction,
     attach_viewing_spectral_status, prepare_viewing_spectral_runtime_context,
@@ -2652,6 +2656,28 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "NO_TAU_SYNTHESIS;NO_FORMATION_PROMOTION"
         ),
     })
+    # R5.7.41.3.4.10.9.4 diagnostic-only timeline:
+    # use the already-fetched hourly route data to build a regular T-60..T+30
+    # observer-environment series. Native cloud columns are never interpolated;
+    # only existing nearby native snapshots may be attached with explicit delta.
+    _observer_timeline_t0 = perf_counter()
+    v1_observer_environment_timeline = build_observer_environment_timeline(
+        hourly, event_time_contract, native_cloud_columns
+    )
+    v1_observer_environment_timeline_summary = summarize_observer_environment_timeline(
+        v1_observer_environment_timeline
+    )
+    performance_rows.append({
+        "stage": "OBSERVER_ENVIRONMENT_TIMELINE_DIAGNOSTIC",
+        "elapsed_seconds": max(0.0, perf_counter() - _observer_timeline_t0),
+        "cache_status": "DIAGNOSTIC_ONLY_NO_PHYSICS_PROMOTION",
+        "detail": (
+            f"point_rows={len(v1_observer_environment_timeline)};"
+            f"summary_rows={len(v1_observer_environment_timeline_summary)};"
+            "T-60..T+30min/5min;existing route interpolation contract;"
+            "NATIVE_NO_TEMPORAL_INTERPOLATION;NO_TAU_SYNTHESIS;NO_FORMATION_PROMOTION"
+        ),
+    })
     _aggregation_checkpoint("光譜與大氣矩陣完成", spectral_rt_voxel_matrix=spectral_rt_voxel_matrix, gas_profile_route_snapshots=gas_profile_route_snapshots)
     # All local-temp heavyweight frame families have now been rehydrated into
     # their final matrices.  Remove the spool directory immediately.
@@ -3299,6 +3325,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "hourly_raw": hourly,
         "v1_observer_nearfield_cloud_environment": v1_observer_nearfield_cloud_environment,
         "v1_observer_nearfield_cloud_environment_summary": v1_observer_nearfield_cloud_environment_summary,
+        "v1_observer_environment_timeline": v1_observer_environment_timeline,
+        "v1_observer_environment_timeline_summary": v1_observer_environment_timeline_summary,
         "gfs_native_request_audit": gfs_native_request_audit,
         "gfs_grib_message_inventory": gfs_grib_message_inventory,
         "gfs_native_field_completeness": gfs_native_field_completeness,
@@ -3388,6 +3416,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "hourly_raw": hourly,
         "v1_observer_nearfield_cloud_environment": v1_observer_nearfield_cloud_environment,
         "v1_observer_nearfield_cloud_environment_summary": v1_observer_nearfield_cloud_environment_summary,
+        "v1_observer_environment_timeline": v1_observer_environment_timeline,
+        "v1_observer_environment_timeline_summary": v1_observer_environment_timeline_summary,
         "aerosol_hourly_raw": aerosol_hourly,
         "aerosol_spectral_route_snapshots": aerosol_spectral_route_snapshots,
         "cams_native_aerosol_route_snapshots": cams_native_aerosol_route_snapshots,

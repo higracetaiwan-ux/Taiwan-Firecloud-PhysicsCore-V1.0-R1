@@ -1,6 +1,15 @@
-> Current release: **V1.0-R5.7.41.3.4.10.9.3** — Observer Near-field Cloud Environment Diagnostic; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.9.4** — Observer Environment Timeline Diagnostic; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.3
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.4
+
+## R5.7.41.3.4.10.9.4 Observer Environment Timeline Diagnostic
+
+- `.10.9.3` TWS106 Field CASE 已 FIELD PASS；本版在不改 Frozen Physics 的前提下新增 T−60→T+30、每 5 分鐘的 observer-environment timeline。
+- Coarse cloud/visibility/RH/precipitation 沿用既有 route interpolation；不新增 provider request。
+- Native 3D cloud columns 禁止時間插值，只允許 ±180 s 內既有 snapshot handoff，並輸出 reference time / delta。
+- −6°後資料一律標 `POST_MINUS6_DIAGNOSTIC_ONLY`，不得重新進 Formation / Viewing / Glow。
+- 新 CASE artifacts：`v1_observer_environment_timeline.csv`、`v1_observer_environment_timeline_summary.csv`。
+- TWS106 actual-case offline：855 point rows / 171 summary rows；可對齊使用者 17:07→18:29 Ground Truth。
 
 
 ## R5.7.41.3.4.10.9 Viewing→Glow Gas Spectroscopy Cache Handoff

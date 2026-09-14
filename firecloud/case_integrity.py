@@ -1789,6 +1789,116 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "Coarse/native mismatch is evidence, not a physics failure or synthesized blocker.",
         )
 
+    # R5.7.41.3.4.10.9.4 observer-environment timeline diagnostic.
+    # The timeline may extend before event time and after the -6 degree core
+    # endpoint, but remains evidence-only and cannot extend PhysicsCore itself.
+    _obs_timeline = _df(result.get("v1_observer_environment_timeline"))
+    _obs_timeline_summary = _df(result.get("v1_observer_environment_timeline_summary"))
+    _timeline_required = {
+        "timeline_time", "event_time", "event_offset_minutes", "direction_offset_deg",
+        "distance_km", "cloud_cover_low_pct", "native_time_match_state",
+        "native_low_cloud_geometry_state", "coarse_native_low_cloud_relation",
+        "diagnostic_role", "tau_synthesis_allowed", "formation_promotion_allowed",
+        "viewing_target_required", "native_temporal_interpolation_allowed",
+        "core_physics_window_state",
+    }
+    if _obs_timeline.empty:
+        add(
+            "OBSERVER_ENVIRONMENT_TIMELINE_PRESENT", ALLOWED_EMPTY,
+            "OBSERVER_ENVIRONMENT_TIMELINE", 0,
+            "T-60..T+30 observer-environment rows when hourly route evidence is available",
+            "Empty is allowed on provider/mode paths; timeline is diagnostic only.",
+        )
+        add(
+            "OBSERVER_ENVIRONMENT_TIMELINE_ROLE_SEPARATION", NOT_APPLICABLE,
+            "OBSERVER_ENVIRONMENT_TIMELINE", "NO_ROWS", "diagnostic-only timeline rows",
+            "No rows to validate; no physics promotion is performed.",
+        )
+        add(
+            "OBSERVER_ENVIRONMENT_TIMELINE_WINDOW_CONTRACT", NOT_APPLICABLE,
+            "OBSERVER_ENVIRONMENT_TIMELINE", "NO_ROWS", "event-relative timeline window",
+            "No rows to validate.",
+        )
+    else:
+        _timeline_schema_ok = _timeline_required.issubset(_obs_timeline.columns)
+        add(
+            "OBSERVER_ENVIRONMENT_TIMELINE_PRESENT", PASS if _timeline_schema_ok else FAIL,
+            "OBSERVER_ENVIRONMENT_TIMELINE", int(len(_obs_timeline)),
+            "diagnostic timeline rows with frozen role-separation schema",
+            f"schema_ok={_timeline_schema_ok}; no provider request; no physics extension",
+        )
+        if _timeline_schema_ok:
+            _tl_role_ok = _obs_timeline["diagnostic_role"].astype(str).eq(
+                "OBSERVER_ENVIRONMENT_TIMELINE_ONLY_NO_PHYSICS_PROMOTION"
+            ).all()
+            _tl_tau_ok = ~_obs_timeline["tau_synthesis_allowed"].fillna(True).astype(bool).any()
+            _tl_promo_ok = ~_obs_timeline["formation_promotion_allowed"].fillna(True).astype(bool).any()
+            _tl_target_ok = ~_obs_timeline["viewing_target_required"].fillna(True).astype(bool).any()
+            _tl_native_interp_ok = ~_obs_timeline["native_temporal_interpolation_allowed"].fillna(True).astype(bool).any()
+            _tl_dist = pd.to_numeric(_obs_timeline["distance_km"], errors="coerce")
+            _tl_domain_ok = _tl_dist.dropna().between(0.0, 100.0, inclusive="both").all()
+            _tl_sep_ok = bool(_tl_role_ok and _tl_tau_ok and _tl_promo_ok and _tl_target_ok and _tl_native_interp_ok and _tl_domain_ok)
+            add(
+                "OBSERVER_ENVIRONMENT_TIMELINE_ROLE_SEPARATION", PASS if _tl_sep_ok else FAIL,
+                "OBSERVER_ENVIRONMENT_TIMELINE",
+                f"role={_tl_role_ok};tau={_tl_tau_ok};promotion={_tl_promo_ok};"
+                f"target_independent={_tl_target_ok};native_interp={_tl_native_interp_ok};domain={_tl_domain_ok}",
+                "diagnostic-only; no tau synthesis; no Formation promotion; no native temporal interpolation; 0-100 km",
+                "Timeline cannot rewrite Formation/Viewing/Glow or extend the core solar-angle calculation.",
+            )
+            _offs = pd.to_numeric(_obs_timeline["event_offset_minutes"], errors="coerce").dropna()
+            _window_ok = (
+                not _offs.empty
+                and float(_offs.min()) <= -60.0
+                and float(_offs.max()) >= 30.0
+                and _obs_timeline["core_physics_window_state"].astype(str).isin([
+                    "PRE_CORE_EVENT_DIAGNOSTIC", "CORE_0_TO_MINUS6_TIME_RANGE", "POST_MINUS6_DIAGNOSTIC_ONLY"
+                ]).all()
+            )
+            add(
+                "OBSERVER_ENVIRONMENT_TIMELINE_WINDOW_CONTRACT", PASS if _window_ok else FAIL,
+                "OBSERVER_ENVIRONMENT_TIMELINE",
+                f"min_offset={float(_offs.min()) if not _offs.empty else 'NA'};max_offset={float(_offs.max()) if not _offs.empty else 'NA'}",
+                "timeline covers at least T-60 through T+30 and labels pre/core/post--6 states",
+                "Post--6 rows are observer diagnostics only; PhysicsCore remains 0 to -6 degrees.",
+            )
+        else:
+            add(
+                "OBSERVER_ENVIRONMENT_TIMELINE_ROLE_SEPARATION", FAIL,
+                "OBSERVER_ENVIRONMENT_TIMELINE", "SCHEMA_INCOMPLETE", "complete timeline diagnostic schema",
+                "Cannot validate role separation without required columns.",
+            )
+            add(
+                "OBSERVER_ENVIRONMENT_TIMELINE_WINDOW_CONTRACT", FAIL,
+                "OBSERVER_ENVIRONMENT_TIMELINE", "SCHEMA_INCOMPLETE", "complete timeline diagnostic schema",
+                "Cannot validate timeline window contract without required columns.",
+            )
+    if _obs_timeline_summary.empty:
+        add(
+            "OBSERVER_ENVIRONMENT_TIMELINE_SUMMARY", ALLOWED_EMPTY if _obs_timeline.empty else WARN,
+            "OBSERVER_ENVIRONMENT_TIMELINE", 0, "timeline band summary when point rows exist",
+            "Summary is diagnostic convenience only.",
+        )
+    else:
+        _tlsum_role_ok = (
+            "diagnostic_role" in _obs_timeline_summary.columns
+            and _obs_timeline_summary["diagnostic_role"].astype(str).eq(
+                "OBSERVER_ENVIRONMENT_TIMELINE_ONLY_NO_PHYSICS_PROMOTION"
+            ).all()
+            and "tau_synthesis_allowed" in _obs_timeline_summary.columns
+            and not _obs_timeline_summary["tau_synthesis_allowed"].fillna(True).astype(bool).any()
+            and "formation_promotion_allowed" in _obs_timeline_summary.columns
+            and not _obs_timeline_summary["formation_promotion_allowed"].fillna(True).astype(bool).any()
+            and "native_temporal_interpolation_allowed" in _obs_timeline_summary.columns
+            and not _obs_timeline_summary["native_temporal_interpolation_allowed"].fillna(True).astype(bool).any()
+        )
+        add(
+            "OBSERVER_ENVIRONMENT_TIMELINE_SUMMARY", PASS if _tlsum_role_ok else FAIL,
+            "OBSERVER_ENVIRONMENT_TIMELINE", int(len(_obs_timeline_summary)),
+            "event-relative diagnostic summary with no physics promotion",
+            "Timeline mismatch is evidence only; Missing/native-unmatched is not Clear.",
+        )
+
     hard_fail = any(r["status"] == FAIL for r in rows)
     rows.append({
         "check_id": "ANALYSIS_INTEGRITY_OVERALL",
@@ -1832,6 +1942,8 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
+        "v1_observer_environment_timeline.csv",
+        "v1_observer_environment_timeline_summary.csv",
         "v1_viewing_summary.csv",
         "v1_viewing_precipitation_evidence.csv",
         "v1_viewing_spectral_extinction_550_750nm.csv",
