@@ -2,11 +2,10 @@ from __future__ import annotations
 
 """Observer-environment timeline diagnostics.
 
-R5.7.41.3.4.10.9.4
+R5.7.41.3.4.10.9.6
 --------------------
 Diagnostic-only time alignment for observer-environment evidence.  This module
-extends the R5.7.41.3.4.10.9.3 near-field snapshot into a regular event-relative
-time series so field imagery can be compared against the same already-fetched
+extends the near-field snapshot into a regular event-relative time series so field imagery can be compared against the same already-fetched
 forecast route data.
 
 Hard contract:
@@ -48,6 +47,8 @@ POINT_COLUMNS = [
     "relative_humidity_2m_pct",
     "precipitation",
     "native_reference_time",
+    "native_provider_valid_time",
+    "native_time_basis",
     "native_time_delta_seconds",
     "native_time_match_state",
     "native_reference_solar_altitude_deg",
@@ -96,8 +97,8 @@ SUMMARY_COLUMNS = [
 
 @dataclass(frozen=True)
 class TimelineContract:
-    start_offset_minutes: int = -60
-    end_offset_minutes: int = 30
+    start_offset_minutes: int = -180
+    end_offset_minutes: int = 60
     step_minutes: int = 5
     native_match_tolerance_seconds: float = 180.0
 
@@ -164,13 +165,19 @@ def _native_groups(native_cloud_columns: pd.DataFrame) -> dict[tuple[float, floa
         if c not in n.columns:
             n[c] = np.nan
         n[c] = pd.to_numeric(n[c], errors="coerce")
-    if "time" not in n.columns:
+    if "gfs_valid_time_utc" in n.columns and pd.to_datetime(n["gfs_valid_time_utc"], errors="coerce", utc=True).notna().any():
+        n["_native_time"] = pd.to_datetime(n["gfs_valid_time_utc"], errors="coerce", utc=True)
+        n["_native_time_basis"] = "PROVIDER_GFS_VALID_TIME_UTC"
+        n["_native_time_naive"] = n["_native_time"].dt.tz_localize(None)
+    elif "time" in n.columns:
+        n["_native_time"] = pd.to_datetime(n["time"], errors="coerce")
+        n["_native_time_basis"] = "ANGLE_ANALYSIS_TIME_LEGACY_FALLBACK"
+        n["_native_time_naive"] = n["_native_time"].map(_local_naive)
+    else:
         return {}
-    n["_native_time"] = pd.to_datetime(n["time"], errors="coerce")
     n = n[n["_native_time"].notna()].copy()
     if n.empty:
         return {}
-    n["_native_time_naive"] = n["_native_time"].map(_local_naive)
     groups: dict[tuple[float, float], pd.DataFrame] = {}
     for (off, dist), g in n.groupby(["direction_offset_deg", "distance_km"], dropna=False):
         if not np.isfinite(off) or not np.isfinite(dist):
@@ -187,7 +194,16 @@ def _attach_native_nearest(
 ) -> None:
     key = (round(float(row["direction_offset_deg"]), 6), round(float(row["distance_km"]), 6))
     g = native_groups.get(key)
-    target_naive = _local_naive(target_time)
+    _basis = str(g.iloc[0].get("_native_time_basis", "")) if g is not None and not g.empty else ""
+    if _basis == "PROVIDER_GFS_VALID_TIME_UTC":
+        _tt = pd.Timestamp(target_time)
+        if _tt.tzinfo is None:
+            _tt = _tt.tz_localize("UTC")
+        else:
+            _tt = _tt.tz_convert("UTC")
+        target_naive = _tt.tz_localize(None)
+    else:
+        target_naive = _local_naive(target_time)
     native_fields = [
         "native_cloud_base_km", "native_cloud_top_km", "native_cloud_thickness_km",
         "native_vertical_completeness", "liquid_water_path_proxy_gm3_km",
@@ -196,6 +212,8 @@ def _attach_native_nearest(
     if g is None or g.empty:
         row.update({
             "native_reference_time": pd.NaT,
+            "native_provider_valid_time": pd.NaT,
+            "native_time_basis": "NATIVE_TIME_SAMPLE_UNAVAILABLE",
             "native_time_delta_seconds": np.nan,
             "native_time_match_state": "NATIVE_TIME_SAMPLE_UNAVAILABLE",
             "native_reference_solar_altitude_deg": np.nan,
@@ -214,6 +232,8 @@ def _attach_native_nearest(
     if not np.isfinite(delta) or delta > float(tolerance_seconds):
         row.update({
             "native_reference_time": pd.NaT,
+            "native_provider_valid_time": pd.NaT,
+            "native_time_basis": str(g.iloc[0].get("_native_time_basis", "UNKNOWN")),
             "native_time_delta_seconds": delta if np.isfinite(delta) else np.nan,
             "native_time_match_state": "NO_NATIVE_SAMPLE_WITHIN_TIME_TOLERANCE",
             "native_reference_solar_altitude_deg": np.nan,
@@ -227,7 +247,9 @@ def _attach_native_nearest(
         return
 
     q = g.loc[idx]
-    row["native_reference_time"] = q.get("time", pd.NaT)
+    row["native_reference_time"] = q.get("_native_time", pd.NaT)
+    row["native_provider_valid_time"] = q.get("gfs_valid_time_utc", pd.NaT)
+    row["native_time_basis"] = str(q.get("_native_time_basis", "UNKNOWN"))
     row["native_time_delta_seconds"] = delta
     row["native_time_match_state"] = "NEAREST_EXISTING_NATIVE_SNAPSHOT_WITHIN_TOLERANCE"
     row["native_reference_solar_altitude_deg"] = pd.to_numeric(pd.Series([q.get("solar_altitude_deg")]), errors="coerce").iloc[0]

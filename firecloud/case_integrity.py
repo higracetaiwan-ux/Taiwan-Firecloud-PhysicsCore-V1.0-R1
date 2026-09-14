@@ -120,6 +120,8 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     gfs_native_valid_time_alignment_required = bool(result.get("gfs_native_valid_time_alignment_required", False))
     gfs_inv = _df(result.get("gfs_grib_message_inventory"))
     gfs_comp = _df(result.get("gfs_native_field_completeness"))
+    gfs_near_source = _df(result.get("v1_gfs_native_nearfield_source_levels"))
+    gfs_near_source_summary = _df(result.get("v1_gfs_native_nearfield_source_summary"))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -282,6 +284,68 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             icmr = txt.str.contains("ICMR", regex=False, na=False).any()
             add("GFS_CLWMR_COMPLETENESS_ROW", PASS if clwmr else WARN, "NOAA_GFS_NATIVE", bool(clwmr), "CLWMR row when requested/available")
             add("GFS_ICMR_COMPLETENESS_ROW", PASS if icmr else WARN, "NOAA_GFS_NATIVE", bool(icmr), "ICMR row when requested/available")
+
+    # R5.7.41.3.4.10.9.6: decoded near-field GFS pressure-level source
+    # attribution. This proves whether zeros exist before voxel interpolation
+    # and thresholding. It is diagnostic only and may never synthesize cloud.
+    if gfs_near_source.empty:
+        add(
+            "GFS_NATIVE_NEARFIELD_SOURCE_ATTRIBUTION", ALLOWED_EMPTY,
+            "NOAA_GFS_NATIVE_SOURCE", 0,
+            "decoded 0-100 km pressure-level source rows when native GFS is available",
+            "Diagnostic absence never means Clear; no physics promotion is allowed.",
+        )
+    else:
+        _src_required = {
+            "distance_km", "pressure_hpa", "cloud_liquid_water_kgkg",
+            "cloud_ice_water_kgkg", "total_cloud_condensate_kgkg",
+            "source_condensate_state", "gfs_valid_time_utc",
+            "diagnostic_role", "tau_synthesis_allowed", "formation_promotion_allowed",
+        }
+        _src_schema_ok = _src_required.issubset(gfs_near_source.columns)
+        _src_dist = pd.to_numeric(gfs_near_source.get("distance_km"), errors="coerce")
+        _src_role_ok = bool(
+            _src_schema_ok
+            and _src_dist.dropna().between(0.0,100.0,inclusive="both").all()
+            and gfs_near_source["diagnostic_role"].astype(str).eq(
+                "GFS_NATIVE_NEARFIELD_SOURCE_ATTRIBUTION_ONLY_NO_PHYSICS_PROMOTION"
+            ).all()
+            and not gfs_near_source["tau_synthesis_allowed"].fillna(True).astype(bool).any()
+            and not gfs_near_source["formation_promotion_allowed"].fillna(True).astype(bool).any()
+        )
+        add(
+            "GFS_NATIVE_NEARFIELD_SOURCE_ATTRIBUTION", PASS if _src_role_ok else FAIL,
+            "NOAA_GFS_NATIVE_SOURCE", int(len(gfs_near_source)),
+            "0-100 km decoded source pressure levels; diagnostic-only; no tau/Formation promotion",
+            f"schema_ok={_src_schema_ok};role_separation={_src_role_ok}",
+        )
+        _src_states = gfs_near_source.get("source_condensate_state", pd.Series(dtype=str)).astype(str)
+        _src_nonmissing = ~_src_states.eq("SOURCE_CONDENSATE_MISSING")
+        add(
+            "GFS_NATIVE_NEARFIELD_SOURCE_ZERO_VS_THRESHOLD_VISIBLE",
+            PASS if _src_nonmissing.any() else WARN,
+            "NOAA_GFS_NATIVE_SOURCE",
+            f"exact_zero={int(_src_states.eq('SOURCE_CONDENSATE_EXACT_ZERO').sum())};"
+            f"below_threshold={int(_src_states.eq('SOURCE_CONDENSATE_POSITIVE_BELOW_ENVELOPE_THRESHOLD').sum())};"
+            f"at_or_above={int(_src_states.eq('SOURCE_CONDENSATE_AT_OR_ABOVE_ENVELOPE_THRESHOLD').sum())};"
+            f"missing={int(_src_states.eq('SOURCE_CONDENSATE_MISSING').sum())}",
+            "source-level exact-zero / below-threshold / at-or-above-threshold states remain distinguishable",
+            "Evidence classification only; source zero is not observational clear-sky truth.",
+        )
+    if gfs_near_source_summary.empty:
+        add(
+            "GFS_NATIVE_NEARFIELD_SOURCE_SUMMARY",
+            ALLOWED_EMPTY if gfs_near_source.empty else WARN,
+            "NOAA_GFS_NATIVE_SOURCE", 0,
+            "diagnostic source summary when source rows exist",
+        )
+    else:
+        add(
+            "GFS_NATIVE_NEARFIELD_SOURCE_SUMMARY", PASS,
+            "NOAA_GFS_NATIVE_SOURCE", int(len(gfs_near_source_summary)),
+            ">0 source-attribution summary rows",
+            "No science decision dependency.",
+        )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
     # it may expose intermediate-level native condensate, but it must never
@@ -1866,6 +1930,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     _timeline_required = {
         "timeline_time", "event_time", "event_offset_minutes", "direction_offset_deg",
         "distance_km", "cloud_cover_low_pct", "native_time_match_state",
+        "native_provider_valid_time", "native_time_basis",
         "native_low_cloud_geometry_state", "coarse_native_low_cloud_relation",
         "diagnostic_role", "tau_synthesis_allowed", "formation_promotion_allowed",
         "viewing_target_required", "native_temporal_interpolation_allowed",
@@ -1875,7 +1940,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         add(
             "OBSERVER_ENVIRONMENT_TIMELINE_PRESENT", ALLOWED_EMPTY,
             "OBSERVER_ENVIRONMENT_TIMELINE", 0,
-            "T-60..T+30 observer-environment rows when hourly route evidence is available",
+            "T-180..T+60 observer-environment rows when hourly route evidence is available",
             "Empty is allowed on provider/mode paths; timeline is diagnostic only.",
         )
         add(
@@ -1915,11 +1980,37 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "diagnostic-only; no tau synthesis; no Formation promotion; no native temporal interpolation; 0-100 km",
                 "Timeline cannot rewrite Formation/Viewing/Glow or extend the core solar-angle calculation.",
             )
+            _matched = _obs_timeline["native_time_match_state"].astype(str).eq(
+                "NEAREST_EXISTING_NATIVE_SNAPSHOT_WITHIN_TOLERANCE"
+            )
+            if _matched.any():
+                _basis_ok = _obs_timeline.loc[_matched, "native_time_basis"].astype(str).eq(
+                    "PROVIDER_GFS_VALID_TIME_UTC"
+                ).all()
+                _valid_present = pd.to_datetime(
+                    _obs_timeline.loc[_matched, "native_provider_valid_time"], errors="coerce"
+                ).notna().all()
+                _prov_ok = bool(_basis_ok and _valid_present)
+                add(
+                    "OBSERVER_ENVIRONMENT_TIMELINE_NATIVE_VALID_TIME_PROVENANCE",
+                    PASS if _prov_ok else FAIL,
+                    "OBSERVER_ENVIRONMENT_TIMELINE",
+                    f"matched_rows={int(_matched.sum())};basis_ok={_basis_ok};valid_time_present={_valid_present}",
+                    "matched native evidence uses provider GFS valid time, not per-angle analysis timestamp",
+                    "Prevents duplicated angle timestamps from masquerading as separate native snapshots.",
+                )
+            else:
+                add(
+                    "OBSERVER_ENVIRONMENT_TIMELINE_NATIVE_VALID_TIME_PROVENANCE",
+                    NOT_APPLICABLE, "OBSERVER_ENVIRONMENT_TIMELINE",
+                    "NO_MATCHED_NATIVE_ROWS", "provider-valid-time provenance on matched native rows",
+                )
+
             _offs = pd.to_numeric(_obs_timeline["event_offset_minutes"], errors="coerce").dropna()
             _window_ok = (
                 not _offs.empty
-                and float(_offs.min()) <= -60.0
-                and float(_offs.max()) >= 30.0
+                and float(_offs.min()) <= -180.0
+                and float(_offs.max()) >= 60.0
                 and _obs_timeline["core_physics_window_state"].astype(str).isin([
                     "PRE_CORE_EVENT_DIAGNOSTIC", "CORE_0_TO_MINUS6_TIME_RANGE", "POST_MINUS6_DIAGNOSTIC_ONLY"
                 ]).all()
@@ -1928,7 +2019,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "OBSERVER_ENVIRONMENT_TIMELINE_WINDOW_CONTRACT", PASS if _window_ok else FAIL,
                 "OBSERVER_ENVIRONMENT_TIMELINE",
                 f"min_offset={float(_offs.min()) if not _offs.empty else 'NA'};max_offset={float(_offs.max()) if not _offs.empty else 'NA'}",
-                "timeline covers at least T-60 through T+30 and labels pre/core/post--6 states",
+                "timeline covers at least T-180 through T+60 and labels pre/core/post--6 states",
                 "Post--6 rows are observer diagnostics only; PhysicsCore remains 0 to -6 degrees.",
             )
         else:
@@ -2008,6 +2099,8 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "gfs_native_request_audit.csv",
         "gfs_grib_message_inventory.csv",
         "gfs_native_field_completeness.csv",
+        "v1_gfs_native_nearfield_source_levels.csv",
+        "v1_gfs_native_nearfield_source_summary.csv",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",

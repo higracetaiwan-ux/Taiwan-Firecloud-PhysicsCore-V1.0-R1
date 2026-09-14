@@ -18,6 +18,8 @@ def _event_contract():
 def _hourly():
     rows = []
     for t, low0, low50 in [
+        ("2026-09-14 15:00:00", 1.0, 10.0),
+        ("2026-09-14 16:00:00", 1.5, 15.0),
         ("2026-09-14 17:00:00", 2.0, 20.0),
         ("2026-09-14 18:00:00", 4.0, 40.0),
         ("2026-09-14 19:00:00", 6.0, 60.0),
@@ -44,21 +46,21 @@ def _hourly():
 def _native():
     return pd.DataFrame([
         {
-            "time": "2026-09-14 18:00:00+08:00", "solar_altitude_deg": 0.0,
+            "time": "2026-09-14 18:00:00+08:00", "gfs_valid_time_utc": "2026-09-14 10:00:00+00:00", "solar_altitude_deg": 0.0,
             "direction_offset_deg": 0.0, "distance_km": 0.0,
             "native_cloud_base_km": float("nan"), "native_cloud_top_km": float("nan"),
             "native_cloud_thickness_km": float("nan"), "native_vertical_completeness": 1.0,
             "liquid_water_path_proxy_gm3_km": 0.0, "ice_water_path_proxy_gm3_km": 0.0,
         },
         {
-            "time": "2026-09-14 18:00:00+08:00", "solar_altitude_deg": 0.0,
+            "time": "2026-09-14 18:00:00+08:00", "gfs_valid_time_utc": "2026-09-14 10:00:00+00:00", "solar_altitude_deg": 0.0,
             "direction_offset_deg": 0.0, "distance_km": 50.0,
             "native_cloud_base_km": float("nan"), "native_cloud_top_km": float("nan"),
             "native_cloud_thickness_km": float("nan"), "native_vertical_completeness": 1.0,
             "liquid_water_path_proxy_gm3_km": 0.0, "ice_water_path_proxy_gm3_km": 0.0,
         },
         {
-            "time": "2026-09-14 18:15:00+08:00", "solar_altitude_deg": -3.5,
+            "time": "2026-09-14 18:15:00+08:00", "gfs_valid_time_utc": "2026-09-14 10:15:00+00:00", "solar_altitude_deg": -3.5,
             "direction_offset_deg": 0.0, "distance_km": 50.0,
             "native_cloud_base_km": 0.5, "native_cloud_top_km": 1.5,
             "native_cloud_thickness_km": 1.0, "native_vertical_completeness": 1.0,
@@ -68,16 +70,16 @@ def _native():
 
 
 def test_version_bumped_to_observer_environment_timeline_release():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.9.5"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.9.6"
 
 
-def test_timeline_covers_t_minus_60_to_t_plus_30_at_five_minute_steps():
+def test_timeline_covers_t_minus_180_to_t_plus_60_at_five_minute_steps():
     tl = build_observer_environment_timeline(_hourly(), _event_contract(), _native())
     offsets = sorted(tl.event_offset_minutes.unique().tolist())
-    assert offsets[0] == -60
-    assert offsets[-1] == 30
-    assert len(offsets) == 19
-    assert len(tl) == 38  # 19 time steps x 2 route points
+    assert offsets[0] == -180
+    assert offsets[-1] == 60
+    assert len(offsets) == 49
+    assert len(tl) == 98  # 49 time steps x 2 route points
 
 
 def test_coarse_timeline_uses_existing_linear_route_interpolation_contract():
@@ -93,6 +95,8 @@ def test_native_snapshot_is_attached_near_time_without_native_temporal_interpola
     tl = build_observer_environment_timeline(_hourly(), _event_contract(), _native())
     event = tl[(tl.event_offset_minutes.eq(0)) & (tl.distance_km.eq(50.0))].iloc[0]
     assert event.native_time_match_state == "NEAREST_EXISTING_NATIVE_SNAPSHOT_WITHIN_TOLERANCE"
+    assert event.native_time_basis == "PROVIDER_GFS_VALID_TIME_UTC"
+    assert str(event.native_provider_valid_time).startswith("2026-09-14 10:00:00")
     assert event.native_low_cloud_geometry_state == "NATIVE_NO_CLOUD_COLUMN_AT_THRESHOLD"
     assert event.coarse_native_low_cloud_relation == "COARSE_LOW_CLOUD_NATIVE_NO_COLUMN_AT_THRESHOLD"
     q15 = tl[(tl.event_offset_minutes.eq(15)) & (tl.distance_km.eq(50.0))].iloc[0]
@@ -102,7 +106,7 @@ def test_native_snapshot_is_attached_near_time_without_native_temporal_interpola
 
 def test_post_minus6_timeline_remains_diagnostic_only():
     tl = build_observer_environment_timeline(_hourly(), _event_contract(), _native())
-    q = tl[tl.event_offset_minutes.eq(30)]
+    q = tl[tl.event_offset_minutes.eq(60)]
     assert not q.empty
     assert q.core_physics_window_state.eq("POST_MINUS6_DIAGNOSTIC_ONLY").all()
     assert not q.tau_synthesis_allowed.astype(bool).any()

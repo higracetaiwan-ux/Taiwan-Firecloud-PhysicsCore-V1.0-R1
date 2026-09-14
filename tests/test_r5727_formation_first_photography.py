@@ -125,6 +125,8 @@ def test_case_integrity_requires_photography_decision_member():
         "gfs_native_request_audit.csv",
         "gfs_grib_message_inventory.csv",
         "gfs_native_field_completeness.csv",
+        "v1_gfs_native_nearfield_source_levels.csv",
+        "v1_gfs_native_nearfield_source_summary.csv",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",

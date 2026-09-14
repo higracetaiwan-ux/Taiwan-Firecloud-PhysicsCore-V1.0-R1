@@ -116,6 +116,10 @@ from .observer_environment_timeline import (
     build_observer_environment_timeline,
     summarize_observer_environment_timeline,
 )
+from .gfs_native_nearfield_source_diagnostic import (
+    build_gfs_native_nearfield_source_levels,
+    summarize_gfs_native_nearfield_source_levels,
+)
 from .viewing_spectral import (
     build_viewing_spectral_extinction, summarize_viewing_spectral_extinction,
     attach_viewing_spectral_status, prepare_viewing_spectral_runtime_context,
@@ -1422,6 +1426,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     gfs_canvas_optical_probe_cache = {}
     gfs_canvas_optical_probe_request_audit_rows = []
     native_volume_cache = {}
+    gfs_native_nearfield_source_level_frames = []
+    gfs_native_source_diagnostic_seen = set()
     precipitation_native_context_cache = {}
     voxel_topology_cache = {}
     native_optical_base_cache = {}
@@ -2012,6 +2018,35 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             if _nv_key is not None:
                 native_volume_cache[_nv_key] = (native_voxels.copy(), native_columns.copy())
             _nv_status = "MISS"
+        # R5.7.41.3.4.10.9.6: attach provider-valid-time provenance to the
+        # native column evidence.  This metadata is diagnostic only and fixes
+        # the observer timeline's former use of per-angle analysis timestamps
+        # as if they were distinct native provider snapshots.
+        for _col, _val in (
+            ("gfs_run_utc", native_meta.get("gfs_run_utc")),
+            ("gfs_forecast_hour", native_meta.get("gfs_forecast_hour")),
+            ("gfs_target_time_utc", native_meta.get("gfs_target_time_utc")),
+            ("gfs_valid_time_utc", native_meta.get("gfs_valid_time_utc")),
+            ("gfs_valid_time_offset_seconds", native_meta.get("gfs_valid_time_offset_seconds")),
+            ("gfs_forecast_cadence_policy", native_meta.get("gfs_forecast_cadence_policy")),
+            ("gfs_file", native_meta.get("gfs_file")),
+        ):
+            if isinstance(native_columns, pd.DataFrame):
+                native_columns[_col] = _val
+
+        # Source-attribution diagnostic: inspect the already-decoded near-field
+        # GFS pressure-level fields *before* voxel interpolation or envelope
+        # thresholding. One table per unique run/lead/file is sufficient.
+        _src_diag_key = (native_meta.get("gfs_run_utc"), native_meta.get("gfs_forecast_hour"), native_meta.get("gfs_file"))
+        if _src_diag_key not in gfs_native_source_diagnostic_seen:
+            _src = build_gfs_native_nearfield_source_levels(
+                snap, analysis_time=t, solar_altitude_deg=float(angle),
+                provider_metadata=native_meta, max_distance_km=100.0,
+            )
+            if isinstance(_src, pd.DataFrame) and not _src.empty:
+                gfs_native_nearfield_source_level_frames.append(_src)
+            gfs_native_source_diagnostic_seen.add(_src_diag_key)
+
         performance_rows.append({"time": t, "solar_altitude_deg": float(angle), "stage": "GFS_NATIVE_CLOUD_VOLUME", "elapsed_seconds": perf_counter()-_ts, "cache_status": _nv_status, "cache_key": str(_nv_key)})
         _record_runtime_resource("GFS_NATIVE_CLOUD_VOLUME", angle, native_voxels=native_voxels, native_columns=native_columns)
         _angle_progress(candidate_index, 0.38, f"{label}：計算雲層 3D 光學阻擋…")
@@ -2645,6 +2680,22 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # Formation has no Canvas target.  This table is not used by Formation,
     # Viewing target selection, tau/COT synthesis, Glow, or Photography Decision.
     _nearfield_env_t0 = perf_counter()
+    v1_gfs_native_nearfield_source_levels = _concat_release(gfs_native_nearfield_source_level_frames)
+    v1_gfs_native_nearfield_source_summary = summarize_gfs_native_nearfield_source_levels(
+        v1_gfs_native_nearfield_source_levels
+    )
+    performance_rows.append({
+        "stage": "GFS_NATIVE_NEARFIELD_SOURCE_ATTRIBUTION_DIAGNOSTIC",
+        "elapsed_seconds": 0.0,
+        "cache_status": "DIAGNOSTIC_ONLY_NO_PHYSICS_PROMOTION",
+        "detail": (
+            f"source_rows={len(v1_gfs_native_nearfield_source_levels)};"
+            f"summary_rows={len(v1_gfs_native_nearfield_source_summary)};"
+            "DECODED_PRESSURE_LEVEL_SOURCE_BEFORE_VOXEL_INTERPOLATION;"
+            "NO_RH_CF_SYNTHESIS;NO_TAU_SYNTHESIS;NO_FORMATION_PROMOTION"
+        ),
+    })
+
     v1_observer_nearfield_cloud_environment = build_observer_nearfield_cloud_environment(
         _view_route_snapshots, native_cloud_columns, max_distance_km=100.0
     )
@@ -2663,9 +2714,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         ),
     })
     # R5.7.41.3.4.10.9.4 diagnostic-only timeline:
-    # use the already-fetched hourly route data to build a regular T-60..T+30
+    # use the already-fetched hourly route data to build a regular T-180..T+60
     # observer-environment series. Native cloud columns are never interpolated;
-    # only existing nearby native snapshots may be attached with explicit delta.
+    # only provider-valid-time native evidence may be attached with explicit delta.
     _observer_timeline_t0 = perf_counter()
     v1_observer_environment_timeline = build_observer_environment_timeline(
         hourly, event_time_contract, native_cloud_columns
@@ -2680,7 +2731,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "detail": (
             f"point_rows={len(v1_observer_environment_timeline)};"
             f"summary_rows={len(v1_observer_environment_timeline_summary)};"
-            "T-60..T+30min/5min;existing route interpolation contract;"
+            "T-180..T+60min/5min;existing route interpolation contract;"
             "NATIVE_NO_TEMPORAL_INTERPOLATION;NO_TAU_SYNTHESIS;NO_FORMATION_PROMOTION"
         ),
     })
@@ -3338,6 +3389,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "route_points": pd.DataFrame(route_points),
         "route_reference_contract": route_reference_contract,
         "hourly_raw": hourly,
+        "v1_gfs_native_nearfield_source_levels": v1_gfs_native_nearfield_source_levels,
+        "v1_gfs_native_nearfield_source_summary": v1_gfs_native_nearfield_source_summary,
         "v1_observer_nearfield_cloud_environment": v1_observer_nearfield_cloud_environment,
         "v1_observer_nearfield_cloud_environment_summary": v1_observer_nearfield_cloud_environment_summary,
         "v1_observer_environment_timeline": v1_observer_environment_timeline,
@@ -3430,6 +3483,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "route_points": pd.DataFrame(route_points),
         "horizontal_sampling_profile": horizontal_sampling_profile,
         "hourly_raw": hourly,
+        "v1_gfs_native_nearfield_source_levels": v1_gfs_native_nearfield_source_levels,
+        "v1_gfs_native_nearfield_source_summary": v1_gfs_native_nearfield_source_summary,
         "v1_observer_nearfield_cloud_environment": v1_observer_nearfield_cloud_environment,
         "v1_observer_nearfield_cloud_environment_summary": v1_observer_nearfield_cloud_environment_summary,
         "v1_observer_environment_timeline": v1_observer_environment_timeline,

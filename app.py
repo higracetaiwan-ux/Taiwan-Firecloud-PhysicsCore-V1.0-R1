@@ -2393,6 +2393,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_formation.csv", result.get("v1_formation", pd.DataFrame())),
             ("v1_red_light_reference_550_750nm.csv", result.get("v1_red_light_reference", pd.DataFrame())),
             ("v1_red_light_availability_summary.csv", result.get("v1_red_light_availability_summary", pd.DataFrame())),
+            ("v1_gfs_native_nearfield_source_levels.csv", result.get("v1_gfs_native_nearfield_source_levels", pd.DataFrame())),
+            ("v1_gfs_native_nearfield_source_summary.csv", result.get("v1_gfs_native_nearfield_source_summary", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
