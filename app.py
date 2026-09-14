@@ -1171,10 +1171,38 @@ _app_runtime_identity = _record_app_runtime_identity()
 _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
+
+SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+CURRENT_MILESTONE = "Ice Optics Portable WINDY Runtime Decoupling + UI Information Architecture Cleanup"
+SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
+
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
-st.caption(
-    f"{PROGRAM_NAME}｜版本 {__version__}｜R5.7.41.3.4.10.9.1 Glow Gas Cache Telemetry Diagnostic Hotfix + R5.7.41.3.4.10.9 Viewing→Glow Gas Spectroscopy Cache Handoff + R5.7.41.3.4.10.8 Viewing→Glow Molecular Context Handoff + R5.7.41.3.4.10.7 Viewing↔Glow Shared Hydrometeor Context + R5.7.41.3.4.10.6 Viewing / Glow Cloud Numeric Route Context + R5.7.41.3.4.10.5 Viewing / Glow Route Group Direct Reuse + R5.7.41.3.4.10.4 Viewing / Glow Gas Spectroscopy State Memo + R5.7.41.3.4.10.3 Twilight Glow Observer Precipitation Horizontal-Support Ray Reuse + R5.7.41.3.4.10.2 Twilight Glow Molecular Numeric Route Context + R5.7.41.3.4.10.1 Twilight Glow Observer Aerosol Numeric Route Context + R5.7.41.3.4.10 Twilight Glow Runtime Hotspot Decomposition + R5.7.41.3.4.9.2 Red-Light Precipitation Horizontal-Support Ray Reuse + R5.7.41.3.4.9.1 Red-Light Precipitation Native Context Reuse + R5.7.41.3.4.8 Viewing Path Geometry Runtime Optimization Phase 1 + R5.7.41.3.4.7.1 Deployment Import Compatibility Hotfix + R5.7.41.3.4.7 Viewing / Photography Runtime Hotspot Decomposition + R5.7.41.3.4.6 Runtime / I-O Hardening + R5.7.41.3.4.5 Viewing→Glow Observer-Cloud Provenance Handoff + Shared Runtime Context + R5.7.41.3.4.4 Twilight Glow Observer-Cloud Provenance Cache Hardening + R5.7.41.3.4.3 DWD Secondary Runtime Cache Hardening + R5.7.41.3.4.2 GFS Cloud-Liquid Alias Compatibility Hotfix + R5.7.41.3.4.1 Twilight Glow Explicit-Missing Integrity Hotfix + R5.7.41.3.4 Historical GFS AWS Indexed-Range Provider Routing + R5.7.41.3.3 Historical Replay Empty Cloud-Volume Guard Hotfix + R5.7.41.3.2 Direct Conflict Eligibility Handoff Hotfix + R5.7.41.3.1 Direct Conflict Qualification Coverage Hotfix + R5.7.41.3 Shadow Validation Collection Readiness + Shared Scenic Spot Selector + R5.7.41.2 Production COT Semantic Migration Shadow Mode + R5.7.41.1 COT Diagnostic Reconciliation + R5.7.41 Canvas Optical Truth Phase 2A / Target Vertical Microphysics Overlap + R5.7.40.1 Vertical Conflict Integrity Handoff Hotfix + R5.7.40 Cloud-Fraction ↔ Native Hydrometeor Vertical Conflict Qualification + R5.7.39.1 pgrb2b Secondary Filter Endpoint Hotfix + R5.7.39 Canvas Optical Truth Phase 1 / GFS pgrb2b Native Condensate Probe + R5.7.38 CAMS Post-success Download Recovery + R5.7.37 Near-Surface Molecular Boundary Closure + R5.7.36 Formation Canvas Eligibility / Low-Cloud Role Separation + R5.7.35.2 Zero-Eligible Viewing Precipitation Integrity Semantics + R5.7.35.1 Aerosol Missing-Reason Handoff Hotfix + R5.7.35 Aerosol Scattering Physics Phase 1 + R5.7.34 CAMS ADS Stateful Deadline / Request-ID Recovery + R5.7.33.1 Native 3D Aerosol Readiness Integrity Hotfix + R5.7.33 Glow Deep-Range Gas/Rayleigh/Cloud Closure + R5.7.32 Glow Observer-Path Aerosol Coverage Robustness + R5.7.31 Twilight Glow Full Six-Band Extinction Phase 1 + R5.7.30.1 Integrity Regression Restore + R5.7.30 Independent Twilight Glow Third Branch + R5.7.29.1 Viewing Precipitation Handoff Hotfix + R5.7.29 Viewing Full Six-Band RT Closure + R5.7.28 Red-Light Evidence Robustness + R5.7.27.1 Photography Integrity Handoff Hotfix + R5.7.27 Formation-First Photography Decision Aggregation + R5.7.26 Red-Light Availability + Clear-Path-No-Canvas State + R5.7.25 Formation Sun→CloudBase Cloud-Path Completeness + R5.7.24.3 Provider Cycle Freeze + R5.7.24.2 Spectral Aerosol Formation-Path Contract + R5.7.24.1 CAMS Availability Guard + R5.7.24 Runtime Reliability / Memory Containment + R5.7.23 Runtime Hardening + R5.7.22.1 Route Invariance Baseline｜基線 {__baseline__}"
+st.markdown(
+    f"**版本：** `{__version__}`  ｜  **Science Baseline：** `{SCIENCE_BASELINE_FROZEN}`  "
+    f"｜  **現行里程碑：** {CURRENT_MILESTONE}"
 )
+st.caption(
+    f"Formation｜Viewing｜Twilight Glow 三軌分離 ｜ 六波段：{SIX_BAND_LABEL} ｜ "
+    "PhysicsCore 保持核心物理與 Ice LUT authoring/validation；WINDY 僅消費版本化 Portable Package，不依賴 PhysicsCore runtime。"
+)
+
+with st.expander("本版更新與版本歷史", expanded=False):
+    st.markdown(
+        """
+**目前版本**
+- **R5.7.41.3.4.10.10.2**：UI Information Architecture Cleanup。只整理主畫面的資訊層級、版本歷史、資料來源與 Runtime 顯示；不改 Frozen Science。
+- **R5.7.41.3.4.10.10.1**：Ice Optics Portable WINDY Runtime Decoupling。PhysicsCore 為 Ice Engine/LUT 發布權威；WINDY 使用 standalone portable package。
+- **R5.7.41.3.4.10.10**：Ice Cloud Spectral Optics Shared Module Phase 1。建立六波段 Ice Optics contract 與 fail-close diagnostic。
+- **R5.7.41.3.4.10.9.9**：CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix。
+- **R5.7.41.3.4.10.9.8**：DWD Cross-Release Exact Cache + HTTPS Connection Reuse。
+- **R5.7.41.3.4.10.9.7**：CAMS Spectral AOD Exact-Source Reuse。
+
+**完整歷史**
+完整科學演進、Runtime/Provider hotfix、Field validation 與 release provenance 均保留在套件內的 `RELEASE_NOTES_*`、`IMPLEMENTATION_STATUS_*`、`CURRENT_PROJECT_STATE_*` 與各版 `*_SPEC_*` 文件；主畫面不再預設展開全部歷史文字。
+"""
+    )
+    st.caption(f"Legacy migration baseline：{__baseline__}｜Frozen science baseline：{SCIENCE_BASELINE_FROZEN}")
+
 
 # 僅翻譯 UI 顯示；CASE CSV 與內部欄位名稱維持英文，避免破壞既有資料相容性。
 COLUMN_ZH = {
@@ -1267,10 +1295,26 @@ def _render_live_analysis_fragment(job_id: str) -> None:
     frac = float(snap.get("fraction", 0.0) or 0.0)
     display = str(snap.get("display_message", "背景分析進行中"))
     st.progress(int(round(max(0.0, min(1.0, frac)) * 100)), text=display)
-    st.caption(
-        f"背景分析 Job {job_id}｜attempt {state.get('attempt_no', '')}｜"
-        f"PID {state.get('worker_pid', '')}｜前端採非阻塞監看；可安全切換頁面或重新整理。"
-    )
+    _resource = _read_json_file(Path(str(state.get("worker_resource_path", "")))) if state.get("worker_resource_path") else {}
+    _rss_mb = _resource.get("rss_mb") or state.get("rss_mb")
+    _elapsed = snap.get("elapsed_seconds") or state.get("elapsed_seconds")
+    _status_bits = [f"階段：{display}"]
+    if _elapsed not in (None, ""):
+        try:
+            _status_bits.append(f"已執行：約 {float(_elapsed):.0f} 秒")
+        except Exception:
+            pass
+    if _rss_mb not in (None, ""):
+        try:
+            _status_bits.append(f"記憶體：約 {float(_rss_mb):.0f} MB")
+        except Exception:
+            pass
+    st.caption(" ｜ ".join(_status_bits))
+    with st.expander("Runtime 詳細資訊", expanded=False):
+        st.caption(
+            f"Job {job_id}｜attempt {state.get('attempt_no', '')}｜PID {state.get('worker_pid', '')}｜"
+            "前端採非阻塞監看；可安全切換頁面或重新整理。"
+        )
     status = str(snap.get("status", "RUNNING")).upper()
     if status == "COMPLETED" and isinstance(snap.get("result"), dict):
         result = snap["result"]
@@ -1408,9 +1452,13 @@ with st.sidebar:
             _tz_resolution_ui = resolve_event_timezone(float(lat), float(lon), mode=AUTO_COORDINATE)
             tz_mode = AUTO_COORDINATE
     st.info(
-        "預報資料來源：Open-Meteo 路徑／氣壓層剖面，並在可用時加入 NOAA GFS 原生雲微物理。"
-        "V8.3.3 另支援具 ADS API 憑證時的 CAMS 原生 3D 氣膠消光（532 nm）＋多波長 AOD；"
-        "若未設定憑證則明確標示 Missing／Unavailable，不會以固定氣膠值冒充實際資料。"
+        "**預報與物理資料來源**\n\n"
+        "- 氣象路徑／氣壓層：Open-Meteo\n"
+        "- 原生雲微物理：NOAA GFS\n"
+        "- 次要原生雲微物理：DWD ICON（依可用性）\n"
+        "- 臭氧／氣膠：CAMS（含原生 3D 氣膠消光與多波長 AOD，依憑證/資料可用性）\n"
+        f"- 六波段：{SIX_BAND_LABEL}\n\n"
+        "**資料原則：Missing ≠ Clear ≠ Zero。** 缺少原生資料時，不以固定氣膠、RH 或 Cloud Fraction 補造完整物理量。"
     )
 
     with st.expander("HITRAN 550–750 nm 六波段本地光譜", expanded=False):
@@ -1720,14 +1768,95 @@ if _active_detached_job:
     st.subheader("背景分析執行中")
     _render_live_analysis_fragment(str(_persisted_job.get("job_id", "")))
 
-st.markdown(
-    """
-### 模型輸出層
-本版本將結果分成三條輸出，不再全部壓縮成單一分數：
-**物理火燒雲潛力**、**視覺規模代理**、**攝影出勤判定**。
-氣壓層 cloud-cover 阻光仍保留為工程代理；當 GFS CLWMR/ICMR 可用時，另計算基於原生凝結物與假設粒徑的 COD／Beer–Lambert 微物理阻光診斷。
+st.markdown("### 模型輸出層")
+st.caption("PhysicsCore 保持三條獨立物理輸出；Formation、Viewing、Twilight Glow 不再壓成單一總分，也不互相改寫物理真值。")
+
+_form_col, _view_col, _glow_col = st.columns(3)
+with _form_col:
+    st.markdown("#### Formation｜火燒雲形成")
+    st.markdown(
+        "`Sun → CloudBase`\n\n"
+        "判斷紅橙光是否真正抵達 Canvas；包含 Earth Shadow、Dynamic Corridor / REZ、氣體、氣膠與雲體阻光。"
+    )
+with _view_col:
+    st.markdown("#### Viewing｜觀測者是否看得到")
+    st.markdown(
+        "`Cloud → Observer`\n\n"
+        "獨立評估低雲、霧、降水、氣膠、分子消光與近場遮擋；可保留『已形成但看不到』。"
+    )
+with _glow_col:
+    st.markdown("#### Twilight Glow｜晨昏霞光")
+    st.markdown(
+        "獨立第三分支。\n\n"
+        "紅橙光存在但沒有有效 Canvas 時，不得用 Glow 取代 Formation；使用六波段散射／消光診斷。"
+    )
+
+with st.expander("Cloud Optical Physics｜原生凝結物、COT 與 Missing 規則", expanded=False):
+    st.markdown(
+        """
+- GFS `CLWMR / ICMR` 可用時，使用原生凝結物建立雲光學診斷；氣壓層 Cloud Cover 僅保留工程代理角色。
+- **Missing ≠ Clear ≠ Zero**：不以 RH 或 Cloud Fraction 偽造 condensate、IWP、LWP 或 τ。
+- Production COT 與 Shadow COT 維持既有語義分離；本 UI 整理不修改任何 Formation / Viewing / Glow science gate。
 """
-)
+    )
+
+with st.expander("Ice Cloud Spectral Optics｜PhysicsCore Authoring / WINDY Consumer", expanded=False):
+    st.markdown(
+        f"""
+- 固定六波段：**{SIX_BAND_LABEL}**。
+- PhysicsCore：Ice Engine/LUT 建立、校準、驗證、版本發布。
+- WINDY：匯入 `FIRECLOUD_ICE_OPTICS_PORTABLE_V1` 後本地 lookup/interpolation；**不依賴 PhysicsCore、Python 或 Streamlit runtime**。
+- Authoritative calibrated LUT 尚未 READY 時，positive IWP 不得以固定 `r_eff` / habit 或未校準係數補造 `tau_ice`。
+- 現階段 Ice Optics 保持 diagnostic/no-promotion；Phase 3 另立 release gate 才能接回 production Formation / Canvas / Viewing。
+"""
+    )
+
+with st.expander("現行 Science Baseline（Frozen）", expanded=False):
+    st.markdown(
+        f"""
+**{SCIENCE_BASELINE_FROZEN}**
+
+- Formation = `Sun → CloudBase`；Viewing = `Cloud → Observer`；Twilight Glow 為獨立第三分支。
+- 六波段固定 `{SIX_BAND_LABEL}`，Brightness 與 Redness 分離。
+- Canvas：0–40 km 主畫布、40–100 km 延伸畫布。
+- Dynamic Corridor / REZ 依實際射線幾何；300–350 km 阻光依 ray-height 與光學厚度判定。
+- Earth Shadow / Penumbra、Production COT / Shadow COT、Missing semantics 均維持 frozen。
+"""
+    )
+
+with st.expander("最近版本更新", expanded=False):
+    st.markdown(
+        """
+- `.10.10.2`：UI Information Architecture Cleanup（本版；UI-only）。
+- `.10.10.1`：Ice Optics Portable WINDY Runtime Decoupling。
+- `.10.10`：Ice Cloud Spectral Optics Shared Module Phase 1。
+- `.10.9.9`：CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix。
+- `.10.9.8`：DWD HTTPS Connection Reuse / Cross-Release Cache。
+- `.10.9.7`：CAMS Spectral AOD Exact-Source Reuse。
+"""
+    )
+
+with st.expander("歷史科學改版", expanded=False):
+    st.caption("完整內容保留在套件內的 RELEASE_NOTES / IMPLEMENTATION_STATUS / SPEC 文件；此處只保留主線索引。")
+    st.markdown(
+        """
+- R5.7.24–R5.7.29：Formation path、Red-Light、Viewing 六波段與 Photography Decision。
+- R5.7.30–R5.7.35：Independent Twilight Glow、六波段 extinction、aerosol scattering。
+- R5.7.36–R5.7.41.2：Low-cloud role separation、Native Condensate、Vertical Conflict、Production/Shadow COT。
+- R5.7.41.3+：Shadow validation、provider/runtime provenance、observer diagnostics、Ice Optics shared architecture。
+"""
+    )
+
+with st.expander("Runtime / Provider / Hotfix 歷史", expanded=False):
+    st.caption("工程修補不等於 science baseline 變更；完整細節仍保留於版本文件。")
+    st.markdown(
+        """
+- CAMS：ADS availability/deadline/recovery、exact-source reuse、pressure-level bundle。
+- GFS：historical AWS range routing、pgrb2b probe、hourly native valid-time alignment、source attribution。
+- DWD：secondary native optics、HTTPS connection reuse、cross-release cache scope。
+- Runtime：detached worker、memory containment、cache provenance、CASE / Integrity hardening。
+"""
+    )
 
 if run or st.session_state.analysis_result is not None:
     if run:
