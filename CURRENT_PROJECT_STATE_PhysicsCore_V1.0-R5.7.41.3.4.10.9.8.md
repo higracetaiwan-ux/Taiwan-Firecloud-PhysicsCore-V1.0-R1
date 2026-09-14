@@ -1,7 +1,7 @@
 # Taiwan Firecloud PhysicsCore — Current Project State
 
 > 版本：**V1.0-R5.7.41.3.4.10.9.8**
-> Internal：`1.0.0-R5.7.41.3.4.10.9.8`
+> Internal：`1.0.0-R5.7.41.3.4.10.9.9`
 > Science baseline：`R5.7.41.2_SHADOW_COT_AB_FROZEN`
 > Release state：**REGRESSION PASS / FIELD RETEST CANDIDATE**
 

@@ -1,6 +1,6 @@
 """PhysicsCore DWD ICON Global native cloud-microphysics provider.
 
-R5.7.41.3.4.10.9.8 adds cross-release exact DWD cache scope and thread-local HTTPS connection reuse.
+R5.7.41.3.4.10.9.9 fixes the app/worker cache-scope contract and preserves thread-local HTTPS reuse.
 These are transport/cache optimizations only and preserve exact run/lead/file identities.
 
 R5.7.41.3.4.3 adds runtime-only decoded-field reuse and an all-404
@@ -86,6 +86,37 @@ _HTTP_THREAD_LOCAL = threading.local()
 _REQUESTS_GET_ORIGINAL = requests.get
 
 
+def _state_dir_is_explicit_user_override() -> bool:
+    """Return whether FIRECLOUD_STATE_DIR was explicitly chosen by the operator.
+
+    The Streamlit app always passes a concrete FIRECLOUD_STATE_DIR to detached
+    workers, even when the operator never configured one.  R5.7.41.3.4.10.9.8
+    therefore treated the app's default ``.firecloud_state`` as an explicit
+    deployment override and accidentally kept DWD raw/decoded caches release-
+    local.  The app now passes an explicit marker.  For backward compatibility
+    with direct provider embedding/tests, absence of the marker preserves the
+    historical rule: a present FIRECLOUD_STATE_DIR is considered explicit.
+    """
+    marker = (os.getenv("FIRECLOUD_STATE_DIR_EXPLICIT_USER_OVERRIDE") or "").strip().lower()
+    if marker:
+        return marker in {"1", "true", "yes", "on"}
+    return bool((os.getenv("FIRECLOUD_STATE_DIR") or "").strip())
+
+
+def _shared_cache_scope_label() -> str:
+    if (os.getenv("FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR") or "").strip():
+        return "EXPLICIT_SHARED_CACHE_DIR_EXACT_IDENTITY"
+    if _state_dir_is_explicit_user_override():
+        return "EXPLICIT_STATE_DIR_SCOPED_EXACT_IDENTITY"
+    return "USER_LEVEL_CROSS_RELEASE_EXACT_IDENTITY"
+
+
+def _raw_cache_scope_label() -> str:
+    if (os.getenv("FIRECLOUD_DWD_ICON_RAW_CACHE_DIR") or "").strip():
+        return "EXPLICIT_RAW_CACHE_DIR_EXACT_IDENTITY"
+    return _shared_cache_scope_label()
+
+
 def _shared_cache_root() -> Path:
     """Stable exact-provider cache root shared across full-replacement releases.
 
@@ -100,7 +131,7 @@ def _shared_cache_root() -> Path:
         root = Path(explicit).expanduser()
     else:
         state_override = (os.getenv("FIRECLOUD_STATE_DIR") or "").strip()
-        if state_override:
+        if state_override and _state_dir_is_explicit_user_override():
             root = Path(state_override).expanduser() / "provider_cache_shared" / "dwd_icon"
         else:
             root = Path.home() / ".cache" / "taiwan_firecloud" / "dwd_icon"
@@ -201,7 +232,7 @@ def _persistent_raw_cache_dir() -> Path:
     else:
         state_override = (os.getenv("FIRECLOUD_STATE_DIR") or "").strip()
         shared_override = (os.getenv("FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR") or "").strip()
-        if state_override and not shared_override:
+        if state_override and _state_dir_is_explicit_user_override() and not shared_override:
             root = Path(state_override).expanduser() / "provider_cache_shared" / "dwd_icon_raw"
         else:
             root = _shared_cache_root() / "raw_grib"
@@ -317,7 +348,8 @@ def provider_status() -> dict:
         "persistent_raw_cache_dir": str(_persistent_raw_cache_dir()),
         "persistent_raw_cache_schema": DWD_RAW_CACHE_SCHEMA_VERSION,
         "shared_cache_root": str(_shared_cache_root()),
-        "shared_cache_scope": "USER_LEVEL_CROSS_RELEASE_EXACT_IDENTITY",
+        "shared_cache_scope": _shared_cache_scope_label(),
+        "raw_cache_scope": _raw_cache_scope_label(),
         "http_connection_reuse": "THREAD_LOCAL_REQUESTS_SESSION_POOL",
         "remap_weights_path": str(wp),
         "remap_weights_present": bool(wp.exists() and wp.stat().st_size > 0),
@@ -704,7 +736,8 @@ def _fetch_field(run: datetime, lead: int, level: int, var: str, points: list[di
         "raw_cache_hit":bool(meta.get("raw_cache_hit", "CACHE_HIT" in _status_upper)),
         "decoded_field_cache_hit":False,"negative_availability_cache_hit":False,
         "raw_cache_identity_schema":DWD_RAW_CACHE_SCHEMA_VERSION,
-        "shared_cache_scope":"USER_LEVEL_CROSS_RELEASE_EXACT_IDENTITY",
+        "shared_cache_scope":_shared_cache_scope_label(),
+        "raw_cache_scope":_raw_cache_scope_label(),
         "http_connection_reuse":"THREAD_LOCAL_REQUESTS_SESSION_POOL",
     })
     if p is None:
@@ -946,7 +979,7 @@ def _persistent_optics_cache_path(run: datetime, lead: int, points: list[dict]) 
     else:
         state_override = (os.getenv("FIRECLOUD_STATE_DIR") or "").strip()
         shared_override = (os.getenv("FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR") or "").strip()
-        if state_override and not shared_override:
+        if state_override and _state_dir_is_explicit_user_override() and not shared_override:
             d = Path(state_override).expanduser() / "provider_cache_shared" / "dwd_icon_decoded_optics"
         else:
             d = _shared_cache_root() / "decoded_secondary_optics"

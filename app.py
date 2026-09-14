@@ -512,6 +512,7 @@ _bridge_streamlit_hitran_secrets()
 
 
 # V8.4.10.5 persistent analysis journal / session recovery -----------------------
+_STATE_DIR_ENV_WAS_EXPLICIT = bool((os.environ.get("FIRECLOUD_STATE_DIR") or "").strip())
 _STATE_DIR = Path(os.environ.get("FIRECLOUD_STATE_DIR", ".firecloud_state")).expanduser()
 _JOB_STATE_PATH = _STATE_DIR / "analysis_job_state.json"
 _RESULT_STATE_PATH = _STATE_DIR / "last_analysis_result.pkl"
@@ -790,6 +791,11 @@ def _launch_analysis_worker(request: dict, job_state: dict):
     env.setdefault("MALLOC_ARENA_MAX", "2")
     env.setdefault("MALLOC_TRIM_THRESHOLD_", "131072")
     env["FIRECLOUD_STATE_DIR"] = str(_STATE_DIR.resolve())
+    # R5.7.41.3.4.10.9.9: distinguish a user-configured state root from the
+    # app's own default .firecloud_state handoff. Providers may use durable
+    # user-level exact caches only when the state root was not explicitly
+    # chosen by the deployment/operator.
+    env["FIRECLOUD_STATE_DIR_EXPLICIT_USER_OVERRIDE"] = "1" if _STATE_DIR_ENV_WAS_EXPLICIT else "0"
     env["FIRECLOUD_JOB_ID"] = str(job_state.get("job_id", ""))
     env["FIRECLOUD_ANALYSIS_RUN_MODE"] = str(job_state.get("analysis_run_mode", "WARM_PRODUCTION"))
     env["FIRECLOUD_ANALYSIS_STARTED_AT_UTC"] = datetime.now(timezone.utc).isoformat()
@@ -803,6 +809,9 @@ def _launch_analysis_worker(request: dict, job_state: dict):
         env["FIRECLOUD_OPENMETEO_CACHE_DIR"] = str(_provider_root / "openmeteo_forecast")
         env["FIRECLOUD_OPENMETEO_AQ_CACHE_DIR"] = str(_provider_root / "openmeteo_air_quality")
         env["FIRECLOUD_DWD_ICON_CACHE_DIR"] = str(_provider_root / "dwd_icon")
+        # Isolated-job mode must isolate raw DWD provider bytes too; otherwise
+        # a cold/isolated validation could silently read the shared raw cache.
+        env["FIRECLOUD_DWD_ICON_RAW_CACHE_DIR"] = str(_provider_root / "dwd_icon_raw")
         # The remap weights are static geometry resources, not event/weather cache.
         # Keep them shared so a cold test does not redownload the ~44 MB bundle.
         env.setdefault("FIRECLOUD_DWD_ICON_REMAP_DIR", str((Path(__file__).resolve().parent / ".firecloud_cache" / "dwd_icon_secondary" / "remap").resolve()))

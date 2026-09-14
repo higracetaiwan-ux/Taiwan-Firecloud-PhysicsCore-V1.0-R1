@@ -312,6 +312,22 @@ def build_ads_ozone_request(points: list[dict], valid_time: datetime, pressure_l
     meta["request_role"] = "O3_PRESSURE_LEVEL"
     return request, meta
 
+def build_ads_pressure_level_chemistry_optics_bundle_request(points: list[dict], valid_time: datetime, pressure_levels_hpa=DEFAULT_PRESSURE_LEVELS_HPA) -> tuple[dict, dict]:
+    """Exact union of the O3 and native-532 pressure-level CAMS requests.
+
+    R5.7.41.3.4.10.9.9 only changes request orchestration.  Ozone, aerosol
+    extinction at 532 nm, geopotential, pressure levels, run/lead and route bbox
+    are exactly the union of the two pre-existing requests.  The resulting GRIB
+    is decoded into the same logical O3 and aerosol frames.
+    """
+    request, meta = _base_request(points, valid_time)
+    request.update({
+        "variable": ["ozone", "aerosol_extinction_coefficient_532nm", "geopotential"],
+        "pressure_level": [str(int(p)) for p in pressure_levels_hpa],
+    })
+    meta["request_role"] = "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE"
+    return request, meta
+
 
 def build_ads_near_surface_ozone_request(points: list[dict], valid_time: datetime) -> tuple[dict, dict]:
     """Independent CAMS ozone request at native model level 137.
@@ -558,6 +574,9 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
 
 def download_ozone_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
     return _retrieve_request(points, valid_time, "O3_PRESSURE_LEVEL", build_ads_ozone_request, cache_dir)
+
+def download_pressure_level_chemistry_optics_bundle(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
+    return _retrieve_request(points, valid_time, "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE", build_ads_pressure_level_chemistry_optics_bundle_request, cache_dir)
 
 def download_near_surface_ozone_subset(points: list[dict], valid_time: datetime, cache_dir: str | Path | None = None) -> tuple[Path, dict]:
     return _retrieve_request(points, valid_time, "O3_NEAR_SURFACE_MODEL_LEVEL_137", build_ads_near_surface_ozone_request, cache_dir)
@@ -1198,6 +1217,23 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
                 "error": "CAMS_PREFLIGHT_ADS_CREDENTIALS_MISSING",
             })
             return
+        if role == "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE":
+            path, meta = download_pressure_level_chemistry_optics_bundle(points, valid_time, cache_dir=cache_dir)
+            df = decode_grib_to_route(path, points)
+            keep = [c for c in df.columns if c in {"point_id","distance_km","direction_offset_deg","lat","lon","cams_native_aerosol_source"} or c.startswith("cams_aerext532_m1_") or c.startswith("cams_ozone_kgkg_") or c.startswith("cams_geopotential_height_m_") or c in {"cams_geopotential_height_normalization_state","cams_geopotential_height_source_units"}]
+            df = df[keep].copy()
+            a_cols = [c for c in df.columns if c.startswith("cams_aerext532_m1_")]
+            o_cols = [c for c in df.columns if c.startswith("cams_ozone_kgkg_")]
+            expected = len(DEFAULT_PRESSURE_LEVELS_HPA)
+            inv = inspect_grib_message_inventory(path)
+            complete = len(a_cols) == expected and len(o_cols) == expected
+            _write_cams_worker_result(result_path, {
+                "role": role, "status": "OK" if complete else "INCOMPLETE", "df": df,
+                "meta": meta, "aerosol_levels": len(a_cols), "ozone_levels": len(o_cols), "rows": len(df),
+                "inventory": inv.to_dict(orient="records") if not inv.empty else [],
+                "error": "" if complete else f"CAMS_PRESSURE_LEVEL_BUNDLE_INCOMPLETE:aerosol={len(a_cols)}/{expected};ozone={len(o_cols)}/{expected}",
+            })
+            return
         if role == "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL":
             path, meta = download_native_subset(points, valid_time, cache_dir=cache_dir)
             df = decode_grib_to_route(path, points)
@@ -1403,7 +1439,7 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
             _worker_start_t0 = time.monotonic()
             with stdout_path.open("wb") as out_fh, stderr_path.open("wb") as err_fh:
                 _write_cams_worker_checkpoint(
-                    role, "O3_WORKER_STARTING" if role == "O3_PRESSURE_LEVEL" else "CAMS_WORKER_STARTING",
+                    role, "O3_WORKER_STARTING" if role in {"O3_PRESSURE_LEVEL","PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE"} else "CAMS_WORKER_STARTING",
                     request_path=request_path, result_path=result_path,
                     stdout_path=stdout_path, stderr_path=stderr_path,
                 )
@@ -1438,12 +1474,12 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
                     elapsed = now - started
                     remaining = deadline_seconds - elapsed
                     if remaining <= 0:
-                        timeout_error = "O3_ADS_TIMEOUT" if role == "O3_PRESSURE_LEVEL" else f"CAMS_ADS_WALLCLOCK_DEADLINE_EXCEEDED_{deadline_seconds:.0f}S"
+                        timeout_error = "O3_ADS_TIMEOUT" if role in {"O3_PRESSURE_LEVEL","PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE"} else f"CAMS_ADS_WALLCLOCK_DEADLINE_EXCEEDED_{deadline_seconds:.0f}S"
                         res={"role":role,"status":"TIMEOUT_DEFERRED","df":pd.DataFrame(),"meta":{},"inventory":[],
                              "error":timeout_error}
                         _stop_worker(force=True)
                         observed_returncode = proc.poll()
-                        _write_cams_worker_checkpoint(role, "O3_ADS_TIMEOUT" if role == "O3_PRESSURE_LEVEL" else "CAMS_ADS_TIMEOUT",
+                        _write_cams_worker_checkpoint(role, "O3_ADS_TIMEOUT" if role in {"O3_PRESSURE_LEVEL","PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE"} else "CAMS_ADS_TIMEOUT",
                                                       elapsed_seconds=elapsed, pid=proc.pid,
                                                       exit_code=observed_returncode, error=res["error"],
                                                       request_path=request_path, result_path=result_path,
@@ -1477,9 +1513,9 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
                     # worker failure.
                     if observed_returncode == 124:
                         elapsed = time.monotonic() - started
-                        timeout_error = "O3_ADS_TIMEOUT" if role == "O3_PRESSURE_LEVEL" else f"CAMS_ADS_WALLCLOCK_DEADLINE_EXCEEDED_{deadline_seconds:.0f}S"
+                        timeout_error = "O3_ADS_TIMEOUT" if role in {"O3_PRESSURE_LEVEL","PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE"} else f"CAMS_ADS_WALLCLOCK_DEADLINE_EXCEEDED_{deadline_seconds:.0f}S"
                         res={"role":role,"status":"TIMEOUT_DEFERRED","df":pd.DataFrame(),"meta":{},"inventory":[],"error":timeout_error}
-                        _write_cams_worker_checkpoint(role, "O3_ADS_TIMEOUT" if role == "O3_PRESSURE_LEVEL" else "CAMS_ADS_TIMEOUT",
+                        _write_cams_worker_checkpoint(role, "O3_ADS_TIMEOUT" if role in {"O3_PRESSURE_LEVEL","PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE"} else "CAMS_ADS_TIMEOUT",
                                                       elapsed_seconds=elapsed, pid=proc.pid,
                                                       exit_code=observed_returncode, error=res["error"],
                                                       request_path=request_path, result_path=result_path,
@@ -1940,6 +1976,51 @@ def _fetch_cams_role_adaptive(points: list[dict], valid_time: datetime, role: st
     return _merge_tile_frames(frames), audits, inventories, stats
 
 
+def _exact_pressure_level_component_reuse_from_bundle(bundle_df: pd.DataFrame, points: list[dict], valid_time: datetime, component_role: str) -> tuple[pd.DataFrame, dict] | None:
+    """Split one exact CAMS pressure-level union request into legacy logical roles.
+
+    The handoff is allowed only when the full requested pressure-level column set
+    for the logical component is present and every requested route point exists.
+    No vertical/time/spatial interpolation or proxy construction is performed.
+    """
+    if not isinstance(bundle_df, pd.DataFrame) or bundle_df.empty or "point_id" not in bundle_df.columns:
+        return None
+    if component_role == "O3_PRESSURE_LEVEL":
+        prefix = "cams_ozone_kgkg_"
+        source_cols = {"point_id","distance_km","direction_offset_deg","lat","lon","cams_geopotential_height_normalization_state","cams_geopotential_height_source_units"}
+    elif component_role == "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL":
+        prefix = "cams_aerext532_m1_"
+        source_cols = {"point_id","distance_km","direction_offset_deg","lat","lon","cams_native_aerosol_source","cams_geopotential_height_normalization_state","cams_geopotential_height_source_units"}
+    else:
+        return None
+    expected = {f"{prefix}{int(level)}hPa" for level in DEFAULT_PRESSURE_LEVELS_HPA}
+    present = {c for c in bundle_df.columns if c.startswith(prefix)}
+    if not expected.issubset(present):
+        return None
+    req_ids = {str(p.get("point_id")) for p in points}
+    q = bundle_df.copy()
+    q["point_id"] = q["point_id"].astype(str)
+    q = q[q["point_id"].isin(req_ids)].drop_duplicates("point_id", keep="last")
+    if len(q) != len(req_ids):
+        return None
+    keep = [c for c in q.columns if c in source_cols or c.startswith(prefix) or c.startswith("cams_geopotential_height_m_")]
+    out = q[keep].copy()
+    vt = _utc(valid_time).isoformat()
+    audit = {
+        "request_role": component_role, "valid_time": vt,
+        "status": "OK_EXACT_SOURCE_REUSE", "final_status": "EXACT_SOURCE_REUSE",
+        "elapsed_seconds": 0.0, "timeout": False, "cache_hit": False,
+        "exact_source_reuse": True, "exact_source_role": "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE",
+        "scheduler_mode": "WHOLE_ROUTE_FIRST_ADAPTIVE_SUBTILING",
+        "adaptive_depth": 0, "adaptive_node": "EXACT_REUSE",
+        "distance_start_km": min((float(p.get("distance_km",0.0)) for p in points), default=0.0),
+        "distance_end_km": max((float(p.get("distance_km",0.0)) for p in points), default=0.0),
+        "distance_span_km": max((float(p.get("distance_km",0.0)) for p in points), default=0.0) - min((float(p.get("distance_km",0.0)) for p in points), default=0.0),
+        "logical_points": len(points), "bbox_nwse": route_bbox(points), "error": "",
+    }
+    return out, audit
+
+
 def _exact_spectral_aod_reuse_from_scattering(scattering_df: pd.DataFrame, points: list[dict], valid_time: datetime) -> tuple[pd.DataFrame, dict] | None:
     """Return an exact spectral-AOD handoff from the scattering request when complete.
 
@@ -2013,9 +2094,10 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
     # provider-native AOD550/645/670/800 fields.  If those four wavelengths are
     # complete for the full logical route, SPECTRAL_COLUMN_AOD becomes an exact
     # zero-request handoff; otherwise the original dedicated request runs.
-    roles=["O3_PRESSURE_LEVEL","O3_NEAR_SURFACE_MODEL_LEVEL_137","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","AEROSOL_SCATTERING_COLUMN_PROPERTIES","SPECTRAL_COLUMN_AOD"]
+    roles=["PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE","O3_PRESSURE_LEVEL","O3_NEAR_SURFACE_MODEL_LEVEL_137","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","AEROSOL_SCATTERING_COLUMN_PROPERTIES","SPECTRAL_COLUMN_AOD"]
     merged=pd.DataFrame(); all_audits=[]; all_inventory=[]; planner_rows=[]
     role_statuses={}; role_stats={}; role_frames={}
+    pressure_bundle_exact_reuse=False
     spectral_exact_reuse=False
     try:
         role_gap=max(0.0,float(os.getenv("FIRECLOUD_CAMS_INTER_ROLE_GAP_SECONDS","1.0")))
@@ -2025,7 +2107,12 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
     for i,role in enumerate(roles):
         if i and role_gap:
             time.sleep(role_gap)
-        if role == "SPECTRAL_COLUMN_AOD":
+        if role in {"O3_PRESSURE_LEVEL","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL"} and pressure_bundle_exact_reuse:
+            reused = _exact_pressure_level_component_reuse_from_bundle(
+                role_frames.get("PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE", pd.DataFrame()),
+                points, valid_time, role,
+            )
+        elif role == "SPECTRAL_COLUMN_AOD":
             reused = _exact_spectral_aod_reuse_from_scattering(
                 role_frames.get("AEROSOL_SCATTERING_COLUMN_PROPERTIES", pd.DataFrame()),
                 points, valid_time,
@@ -2036,9 +2123,12 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
             rdf, reuse_audit = reused
             audits=[reuse_audit]; inventory=[]
             stats={"requests":0,"successful_requests":0,"failed_requests":0,"adaptive_splits":0,"max_depth_reached":0,"exact_source_reuse":1}
-            spectral_exact_reuse=True
+            if role == "SPECTRAL_COLUMN_AOD":
+                spectral_exact_reuse=True
+            if role in {"O3_PRESSURE_LEVEL","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL"}:
+                pressure_bundle_exact_reuse=True
             if progress_callback:
-                try: progress_callback("ADAPTIVE:EXACT_REUSE:SPECTRAL_COLUMN_AOD", "EXACT_SOURCE_REUSE", 0.0)
+                try: progress_callback(f"ADAPTIVE:EXACT_REUSE:{role}", "EXACT_SOURCE_REUSE", 0.0)
                 except Exception: pass
         else:
             rdf,audits,inventory,stats=_fetch_cams_role_adaptive(
@@ -2047,6 +2137,11 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
                 label_prefix="ADAPTIVE:"
             )
         role_frames[role]=rdf.copy() if isinstance(rdf,pd.DataFrame) else pd.DataFrame()
+        if role == "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE":
+            pressure_bundle_exact_reuse = bool(
+                _exact_pressure_level_component_reuse_from_bundle(role_frames[role], points, valid_time, "O3_PRESSURE_LEVEL") is not None
+                and _exact_pressure_level_component_reuse_from_bundle(role_frames[role], points, valid_time, "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL") is not None
+            )
         merged=_merge_on_point(merged,rdf) if isinstance(rdf,pd.DataFrame) and not rdf.empty else merged
         all_audits.extend(audits); all_inventory.extend(inventory); role_stats[role]=stats
         req_ids={str(p.get("point_id")) for p in points}
@@ -2075,6 +2170,9 @@ def fetch_route_native_aerosol_bundle_timed(points: list[dict], valid_time: date
           "cams_planner_audit":planner_rows,
           "native_aerosol_status":role_statuses.get("NATIVE_AEROSOL_532NM_PRESSURE_LEVEL","MISSING"),
           "native_ozone_status":role_statuses.get("O3_PRESSURE_LEVEL","MISSING"),
+          "cams_pressure_level_bundle_status":role_statuses.get("PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE","MISSING"),
+          "cams_pressure_level_bundle_exact_reuse":bool(pressure_bundle_exact_reuse),
+          "cams_pressure_level_bundle_exact_reuse_source":"PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE" if pressure_bundle_exact_reuse else "",
           "near_surface_ozone_status":role_statuses.get("O3_NEAR_SURFACE_MODEL_LEVEL_137","MISSING"),
           "cams_spectral_aod_status":role_statuses.get("SPECTRAL_COLUMN_AOD","MISSING"),
           "cams_spectral_aod_exact_reuse":bool(spectral_exact_reuse),

@@ -802,6 +802,39 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     if cams_payload_expected:
         add("CAMS_REQUEST_AUDIT_PRESENT", PASS if not cams_req.empty else FAIL, "CAMS", _rows(cams_req), ">0 request-audit rows when CAMS-dependent payload is expected", "A blank request audit must not coexist silently with missing O3/aerosol payload")
 
+    # R5.7.41.3.4.10.9.9: the exact union CAMS pressure-level request may
+    # satisfy both legacy logical consumers (O3 profile and native 532-nm
+    # aerosol extinction).  If either logical role claims exact reuse, both
+    # must cite the union bundle, add zero provider elapsed time, and the
+    # physical bundle request itself must be present.
+    if not cams_req.empty and "request_role" in cams_req.columns:
+        _role99 = cams_req["request_role"].fillna("").astype(str)
+        _final99 = cams_req.get("final_status", pd.Series("", index=cams_req.index)).fillna("").astype(str)
+        _reuse99 = cams_req.loc[
+            _role99.isin({"O3_PRESSURE_LEVEL","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL"})
+            & _final99.eq("EXACT_SOURCE_REUSE")
+        ].copy()
+        if not _reuse99.empty:
+            _roles99 = set(_reuse99.get("request_role", pd.Series(dtype=str)).astype(str))
+            _flags99 = _reuse99.get("exact_source_reuse", pd.Series(False,index=_reuse99.index)).map(lambda v: bool(v) if pd.notna(v) else False)
+            _source99 = _reuse99.get("exact_source_role", pd.Series("",index=_reuse99.index)).fillna("").astype(str)
+            _elapsed99 = pd.to_numeric(_reuse99.get("elapsed_seconds", pd.Series(float("nan"),index=_reuse99.index)), errors="coerce")
+            _bundle_present99 = bool(_role99.eq("PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE").any())
+            _ok99 = bool(
+                _roles99 == {"O3_PRESSURE_LEVEL","NATIVE_AEROSOL_532NM_PRESSURE_LEVEL"}
+                and _flags99.all()
+                and _source99.eq("PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE").all()
+                and _elapsed99.fillna(0.0).abs().le(1e-9).all()
+                and _bundle_present99
+            )
+            add(
+                "CAMS_PRESSURE_LEVEL_BUNDLE_EXACT_REUSE_PROVENANCE", PASS if _ok99 else FAIL,
+                "CAMS",
+                f"reuse_rows={len(_reuse99)};roles={','.join(sorted(_roles99))};bundle_present={_bundle_present99}",
+                "O3 and native-532 logical roles must reuse the exact PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE with zero extra provider time",
+                "Same CAMS run/lead/area/pressure levels; no interpolation, proxy, or cross-time substitution.",
+            )
+
     # R5.7.41.3.4.10.9.7: if the dedicated spectral-AOD ADS request is
     # skipped because the same CAMS scattering-column request already returned
     # provider-native AOD550/645/670/800, the handoff must remain explicit in

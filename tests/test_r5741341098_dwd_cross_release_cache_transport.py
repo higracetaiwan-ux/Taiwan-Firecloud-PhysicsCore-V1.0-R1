@@ -11,7 +11,7 @@ from firecloud.providers import dwd_icon_native as icon
 
 
 def test_1098_version():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.9.8"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.9.9"
 
 
 def test_shared_cache_root_is_explicit_and_independent_of_cwd(monkeypatch, tmp_path):
@@ -93,6 +93,6 @@ def test_fetch_field_audit_exports_exact_cache_and_connection_reuse(monkeypatch,
     run=datetime(2026,9,14,0,tzinfo=timezone.utc)
     df, meta = icon._fetch_field(run, 4, 80, "QC", points, 20.0, {"P0":{"source_index":0}})
     assert not df.empty
-    assert meta["shared_cache_scope"] == "USER_LEVEL_CROSS_RELEASE_EXACT_IDENTITY"
+    assert meta["shared_cache_scope"] == "EXPLICIT_SHARED_CACHE_DIR_EXACT_IDENTITY"
     assert meta["http_connection_reuse"] == "THREAD_LOCAL_REQUESTS_SESSION_POOL"
     assert meta["network_requested"] is True

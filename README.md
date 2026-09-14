@@ -1,14 +1,24 @@
-> Current release: **V1.0-R5.7.41.3.4.10.9.8** — DWD Cross-Release Exact Cache + HTTPS Connection Reuse; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.9.9** — CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.8
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.9
 
-## R5.7.41.3.4.10.9.8 DWD Cross-Release Exact Cache + HTTPS Connection Reuse
+## R5.7.41.3.4.10.9.9 CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix
 
-- DWD ICON durable raw-GRIB / decoded-optics cache 預設改為穩定的 user-level shared cache；完整替換到新資料夾後，exact run/lead/file identity 仍可重用。
-- 若部署明確設定 `FIRECLOUD_STATE_DIR`，仍尊重原 state-dir cache contract；亦可用 `FIRECLOUD_DWD_ICON_SHARED_CACHE_DIR` / `FIRECLOUD_DWD_ICON_RAW_CACHE_DIR` 覆寫。
-- DWD level-object transport 改用 thread-local `requests.Session` keep-alive pool；每個 worker thread 只重用自己的 Session，不共享 mutable Session state。
-- 不改 DWD URL、run/lead、QC/QI/T/P bytes、vertical geometry、COT、provider precedence 或 Missing semantics。
-- `.10.9.7` TWS089 Field 顯示 CAMS exact-source reuse 已成功，新的主要 operational bottleneck 轉為 DWD ICON 356 network requests / 約 436.7 MB / 158.75 s；`.10.9.8` 對此先做 exact-cache/transport optimization，不降低 model-level sampling。
+- CAMS `O3_PRESSURE_LEVEL` 與 `NATIVE_AEROSOL_532NM_PRESSURE_LEVEL` 原本為兩個 serial ADS jobs；兩者同 dataset/run/lead/area/pressure levels，只差 variables。
+- 新增 `PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE`：一次 exact-union request 取得 ozone + aerosol extinction 532 nm + geopotential；成功且完整時，兩個 legacy logical roles 以 `EXACT_SOURCE_REUSE` handoff，零額外 ADS request。
+- bundle 不完整/失敗時自動 fallback 回原本兩個獨立 requests；不得做時間替代、垂直插值、RH/CF proxy 或資料補造。
+- `.10.9.8` TWS089 Field 證明 HTTPS connection reuse 有效：DWD secondary prefetch 158.752 → 46.263 s；但也發現 app 會把預設 `.firecloud_state` 傳給 worker，導致 `.10.9.8` 誤把它視為「explicit state override」，實際 raw cache 仍落在 release-local state root。
+- `.10.9.9` 新增 `FIRECLOUD_STATE_DIR_EXPLICIT_USER_OVERRIDE` contract：只有使用者真正設定 state root 才保留 state-scoped cache；app 自己的預設 state handoff 改回 user-level cross-release exact cache。isolated-job mode 同時明確隔離 DWD raw cache。
+- DWD audit 的 `shared_cache_scope/raw_cache_scope` 改為依實際 root 動態標示，不再固定宣稱 user-level。
+- Frozen science files、DWD model levels 55–108、QC/QI/T/P、17-point Viewing LOS、COT、Formation/Viewing/Glow、六波段與 Missing semantics 均不變。
+
+## R5.7.41.3.4.10.9.8 Field 結果
+
+- TWS089 2026-09-14 sunrise：job COMPLETED；Analysis Integrity 84 PASS / 1 NOT_APPLICABLE / 0 FAIL；CASE Integrity 38/38 PASS。
+- Worker 574.204 s；Core 540.009 s；Total to CASE archive 568.372 s。
+- DWD secondary prefetch 46.263 s，較 `.10.9.7` 158.752 s 快 112.489 s（約 −70.9%）；network bytes仍約 436.7 MB、raw persistent hits=0，表示改善主要來自 connection reuse，而非 cache hit。
+- CAMS `SPECTRAL_COLUMN_AOD=EXACT_SOURCE_REUSE` 持續 PASS，但 CAMS prefetch 228.508 s，provider latency 仍是最大單一瓶頸。
+- `.10.9.7 ↔ .10.9.8` 138 個共同 CASE artifacts 中 114 byte-identical；核心 science artifacts（Formation、Photography Decision、Red-Light reference、native cloud voxel/optical blocking、cloud layers）byte-identical。
 
 ## R5.7.41.3.4.10.9.7 Runtime Exact-Source Reuse + GFS Merge Defragmentation
 

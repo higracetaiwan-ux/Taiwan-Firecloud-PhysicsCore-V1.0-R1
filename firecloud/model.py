@@ -1544,6 +1544,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
 
         def _cams_role_progress(_role, _status, _elapsed):
             _short = {
+                "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE": "O₃+3D氣膠壓力層",
+                "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE_RETRY": "O₃+3D氣膠壓力層重試",
                 "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL": "3D氣膠",
                 "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL_RETRY": "3D氣膠重試",
                 "O3_PRESSURE_LEVEL": "O₃壓力層",

@@ -41,15 +41,32 @@ def test_planner_best_case_uses_one_request_per_role(monkeypatch):
     calls=[]
     def fake(role, points, valid_time, cache_dir, deadline_seconds, heartbeat_callback=None):
         calls.append(role)
-        df=pd.DataFrame([{'point_id':p['point_id'],'distance_km':p['distance_km'],'direction_offset_deg':p['direction_offset_deg'], role:1} for p in points])
-        return {'role':role,'status':'OK','df':df,'meta':{'request_audit':{'status':'OK'}},'inventory':[],'error':'','elapsed_seconds':0.01}
+        rows=[]
+        for p in points:
+            row={'point_id':p['point_id'],'distance_km':p['distance_km'],'direction_offset_deg':p['direction_offset_deg']}
+            if role == 'PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE':
+                for level in cams_native.DEFAULT_PRESSURE_LEVELS_HPA:
+                    row[f'cams_ozone_kgkg_{int(level)}hPa']=1e-6
+                    row[f'cams_aerext532_m1_{int(level)}hPa']=1e-5
+                    row[f'cams_geopotential_height_m_{int(level)}hPa']=1000.0
+            elif role == 'O3_NEAR_SURFACE_MODEL_LEVEL_137':
+                row['cams_ozone_ml137_kgkg']=1e-7
+            elif role == 'AEROSOL_SCATTERING_COLUMN_PROPERTIES':
+                row.update({'aod532':0.11,'aod550':0.10,'aod645':0.08,'aod670':0.075,'aod800':0.05,
+                            'ssa550':0.97,'ssa645':0.97,'ssa670':0.97,'ssa800':0.97,
+                            'asymmetry550':0.72,'asymmetry645':0.72,'asymmetry670':0.72,'asymmetry800':0.72})
+            else:
+                row[role]=1
+            rows.append(row)
+        df=pd.DataFrame(rows)
+        return {'role':role,'status':'OK','df':df,'meta':{'request_audit':{'request_role':role,'status':'OK'}},'inventory':[],'error':'','elapsed_seconds':0.01}
     monkeypatch.setattr(cams_native,'_run_cams_role_isolated',fake)
     monkeypatch.setenv('FIRECLOUD_CAMS_INTER_ROLE_GAP_SECONDS','0')
     df,meta=cams_native.fetch_route_native_aerosol_bundle_timed(_pts(),datetime(2026,9,4,10,tzinfo=timezone.utc),deadline_seconds=1)
-    assert len(calls)==5
-    assert set(calls)=={'O3_PRESSURE_LEVEL','O3_NEAR_SURFACE_MODEL_LEVEL_137','SPECTRAL_COLUMN_AOD','NATIVE_AEROSOL_532NM_PRESSURE_LEVEL','AEROSOL_SCATTERING_COLUMN_PROPERTIES'}
+    assert len(calls)==3
+    assert set(calls)=={'PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE','O3_NEAR_SURFACE_MODEL_LEVEL_137','AEROSOL_SCATTERING_COLUMN_PROPERTIES'}
     assert meta['cams_request_planner']=='WHOLE_ROUTE_FIRST_ADAPTIVE_SUBTILING'
-    assert meta['cams_tile_count']==5
+    assert meta['cams_tile_count']==3
     assert len(df)==len(_pts())
 
 

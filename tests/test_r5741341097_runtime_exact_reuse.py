@@ -19,7 +19,12 @@ def _role_result(role, *, complete_scattering=True):
     rows=[]
     for p in _points():
         row={k:p[k] for k in ("point_id","distance_km","direction_offset_deg","lat","lon")}
-        if role == "O3_PRESSURE_LEVEL":
+        if role == "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE":
+            for level in cams_native.DEFAULT_PRESSURE_LEVELS_HPA:
+                row[f"cams_ozone_kgkg_{int(level)}hPa"] = 1e-6
+                row[f"cams_aerext532_m1_{int(level)}hPa"] = 1e-5
+                row[f"cams_geopotential_height_m_{int(level)}hPa"] = float(1000-level) * 10.0
+        elif role == "O3_PRESSURE_LEVEL":
             row["cams_ozone_kgkg_100"] = 1e-6
         elif role == "O3_NEAR_SURFACE_MODEL_LEVEL_137":
             row["cams_ozone_ml137_kgkg"] = 8e-8
@@ -58,9 +63,8 @@ def test_cams_scattering_exactly_handoffs_spectral_aod_without_second_ads_job(mo
         _points(), datetime(2026,9,14,10,0,tzinfo=timezone.utc), deadline_seconds=1.0
     )
     assert calls == [
-        "O3_PRESSURE_LEVEL",
+        "PRESSURE_LEVEL_CHEMISTRY_OPTICS_BUNDLE",
         "O3_NEAR_SURFACE_MODEL_LEVEL_137",
-        "NATIVE_AEROSOL_532NM_PRESSURE_LEVEL",
         "AEROSOL_SCATTERING_COLUMN_PROPERTIES",
     ]
     assert meta["cams_spectral_aod_status"] == "OK"
@@ -71,8 +75,9 @@ def test_cams_scattering_exactly_handoffs_spectral_aod_without_second_ads_job(mo
     assert spectral[0]["final_status"] == "EXACT_SOURCE_REUSE"
     assert spectral[0]["exact_source_reuse"] is True
     assert float(df.loc[df.point_id.eq("p0"), "aod800"].iloc[0]) == 0.05
-    # Four network/worker requests, not five.
-    assert meta["cams_tile_count"] == 4
+    # One pressure-level union + near-surface O3 + scattering; both legacy
+    # pressure-level logical roles and spectral AOD are exact zero-request handoffs.
+    assert meta["cams_tile_count"] == 3
 
 
 def test_cams_spectral_request_falls_back_when_scattering_aod_is_incomplete(monkeypatch):
@@ -87,7 +92,7 @@ def test_cams_spectral_request_falls_back_when_scattering_aod_is_incomplete(monk
     )
     assert "SPECTRAL_COLUMN_AOD" in calls
     assert meta["cams_spectral_aod_exact_reuse"] is False
-    assert meta["cams_tile_count"] == 5
+    assert meta["cams_tile_count"] == 4
 
 
 def test_gfs_native_merge_batches_missing_canonical_columns_without_fragmentation_warning():
