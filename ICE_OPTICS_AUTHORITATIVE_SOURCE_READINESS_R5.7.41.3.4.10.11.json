@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0-R5.7.41.3.4.10.11",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "source_contract": "FIRECLOUD_ICE_OPTICS_TAMU_V2_SOURCE_V1",
+  "build_gate": "FIRECLOUD_ICE_OPTICS_AUTHORITATIVE_BUILD_GATE_V1",
+  "authoritative_source": "Yang/Bi ice particle single-scattering database Version 2",
+  "zenodo_record": "5348402",
+  "required_archive": "Data_0.2_15.25.tar.gz",
+  "required_archive_md5": "2fb9bbab2c2c735a869c863a680e2f70",
+  "source_archive_bundled": false,
+  "calibrated_lut_bundled": false,
+  "portable_calibrated_package_bundled": false,
+  "pipeline_ready": true,
+  "source_acquisition_required": true,
+  "physics_promotion_allowed": false,
+  "status": "AUTHORITATIVE_BUILD_PIPELINE_READY_SOURCE_DATA_PENDING",
+  "note": "No unverified k_ext/SSA/g coefficients are shipped. A calibrated portable package may be emitted only after published archive MD5 and strict source/LUT QA pass."
+}

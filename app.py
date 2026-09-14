@@ -1173,7 +1173,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Portable WINDY Runtime Decoupling + UI Information Architecture Cleanup"
+CURRENT_MILESTONE = "Authoritative Ice LUT Source Intake + QA Build Gate"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1190,6 +1190,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.11**：Authoritative Ice LUT Source Intake + QA Build Gate。建立 Yang/Bi V2 來源驗證、27 組 habit×roughness source inventory、六波段 spectral-grid audit 與 fail-closed LUT release gate；不改 Frozen Science。
 - **R5.7.41.3.4.10.10.2**：UI Information Architecture Cleanup。只整理主畫面的資訊層級、版本歷史、資料來源與 Runtime 顯示；不改 Frozen Science。
 - **R5.7.41.3.4.10.10.1**：Ice Optics Portable WINDY Runtime Decoupling。PhysicsCore 為 Ice Engine/LUT 發布權威；WINDY 使用 standalone portable package。
 - **R5.7.41.3.4.10.10**：Ice Cloud Spectral Optics Shared Module Phase 1。建立六波段 Ice Optics contract 與 fail-close diagnostic。
@@ -1827,7 +1828,8 @@ with st.expander("現行 Science Baseline（Frozen）", expanded=False):
 with st.expander("最近版本更新", expanded=False):
     st.markdown(
         """
-- `.10.10.2`：UI Information Architecture Cleanup（本版；UI-only）。
+- `.10.11`：Authoritative Ice LUT Source Intake + QA Build Gate（本版；Ice LUT authoring pipeline，diagnostic/no-promotion）。
+- `.10.10.2`：UI Information Architecture Cleanup（FIELD PASS baseline）。
 - `.10.10.1`：Ice Optics Portable WINDY Runtime Decoupling。
 - `.10.10`：Ice Cloud Spectral Optics Shared Module Phase 1。
 - `.10.9.9`：CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix。

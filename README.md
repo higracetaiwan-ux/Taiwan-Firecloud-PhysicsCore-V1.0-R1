@@ -1,6 +1,15 @@
-> Current release: **V1.0-R5.7.41.3.4.10.9.9** — CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.11** — Authoritative Ice LUT Source Intake + QA Build Gate; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.9
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.11
+
+## R5.7.41.3.4.10.11 Authoritative Ice LUT Source Intake + QA Build Gate
+
+- PhysicsCore now contains a strict Yang/Bi V2 source-to-six-band-LUT build pipeline.
+- Source contract: Zenodo 5348402, 9 habits × 3 roughness states, 27 `isca.dat` files, 396 wavelengths, 189 sizes.
+- Formal calibrated portable-package emission requires published archive MD5 verification plus source/spectral/LUT QA PASS.
+- No source archive or unverified optical coefficient is bundled in the release.
+- Ice Optics remains diagnostic/no-promotion; Frozen Formation / Viewing / Twilight Glow science is unchanged.
+- WINDY still consumes a standalone portable package and does not depend on PhysicsCore runtime.
 
 ## R5.7.41.3.4.10.9.9 CAMS Pressure-Level Exact Bundle + DWD Cache-Scope Contract Fix
 

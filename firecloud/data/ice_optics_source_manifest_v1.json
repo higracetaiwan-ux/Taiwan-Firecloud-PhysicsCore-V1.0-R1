@@ -1,23 +1,36 @@
 {
   "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
-  "status": "SOURCE_SELECTED_LUT_NOT_BUNDLED",
-  "reason": "Do not ship fabricated or unverified coefficients. Build the six-band LUT from an authoritative scattering database.",
+  "source_contract_version": "FIRECLOUD_ICE_OPTICS_TAMU_V2_SOURCE_V1",
+  "status": "AUTHORITATIVE_SOURCE_SELECTED_LUT_NOT_BUNDLED",
+  "reason": "Do not ship fabricated or unverified coefficients. Build the six-band LUT only after published-source provenance and source-structure QA pass.",
   "preferred_source": {
     "name": "Yang/Bi ice particle single-scattering database Version 2",
-    "spectral_range_um": [0.2, 100.0],
+    "zenodo_record": "5348402",
+    "zenodo_url": "https://zenodo.org/records/5348402",
+    "shortwave_archive": "Data_0.2_15.25.tar.gz",
+    "shortwave_archive_md5": "2fb9bbab2c2c735a869c863a680e2f70",
+    "readme": "README_0.2-99um.txt",
+    "readme_md5": "50ae2be17e08bdccda9a5f5f3b194936",
+    "spectral_range_um": [0.2, 15.25],
     "shortwave_wavelength_count": 396,
     "particle_size_range_um": [2.0, 10000.0],
     "particle_size_count": 189,
+    "habits": ["single_column", "plate", "HC", "droxtal", "HBR", "SBR", "8_columns", "5_plates", "10_plates"],
     "roughness_states": ["Rough000", "Rough003", "Rough050"],
+    "expected_isca_file_count": 27,
+    "expected_isca_rows_each": 74844,
     "raw_columns": ["wavelength_um", "maximum_dimension_um", "volume_um3", "projected_area_um2", "extinction_efficiency", "single_scattering_albedo", "asymmetry_parameter"],
     "references": [
       "Yang et al. 2013, Journal of the Atmospheric Sciences 70, 330-347, DOI 10.1175/JAS-D-12-039.1",
       "Bi & Yang 2017, Journal of Quantitative Spectroscopy and Radiative Transfer 189, 228-237"
-    ],
-    "archive": "Zenodo record 5348402"
+    ]
   },
   "firecloud_target_wavelengths_nm": [550, 575, 600, 650, 700, 750],
+  "source_wavelength_policy": "Exact source wavelength when available; otherwise linear interpolation strictly inside the published source spectral grid; no extrapolation.",
   "mass_extinction_formula": "k_ext = Qext * A_proj / (rho_ice * V)",
   "ice_density_kg_m3": 917.0,
-  "frozen_rule": "Missing != Clear != Zero; no RH/CF proxy or unlabelled fixed r_eff/habit may synthesize spectral ice tau."
+  "size_coordinate_note": "D_eff = 1.5*V/A and r_eff_coordinate = D_eff/2 are geometry-derived LUT coordinates and are not silently equated with forecast-native microphysical effective radius.",
+  "release_gate": "Portable calibrated LUT release requires published archive MD5 verification plus complete 27-file source QA, six-band spectral-domain QA, finite optics, geometry consistency, and unambiguous runtime size coordinates.",
+  "frozen_rule": "Missing != Clear != Zero; no RH/CF proxy or unlabelled fixed r_eff/habit may synthesize spectral ice tau.",
+  "physics_promotion_allowed": false
 }
