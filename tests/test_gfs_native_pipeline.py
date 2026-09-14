@@ -3,12 +3,12 @@ import pandas as pd
 from firecloud.providers.gfs_native import resolve_run_and_lead, build_nomads_request, merge_native_into_snapshot
 
 
-def test_resolve_cycle_and_lead_future():
+def test_resolve_cycle_and_lead_future_uses_hourly_gfs_through_f120():
     target=datetime(2026,9,3,10,tzinfo=timezone.utc)
     now=datetime(2026,9,3,8,tzinfo=timezone.utc)
     run,lead=resolve_run_and_lead(target,now)
-    assert run.hour in (0,6,12,18)
-    assert lead % 3 == 0 and lead >= 0
+    assert run == datetime(2026,9,3,0,tzinfo=timezone.utc)
+    assert lead == 10
 
 
 def test_nomads_request_has_native_fields_and_levels():

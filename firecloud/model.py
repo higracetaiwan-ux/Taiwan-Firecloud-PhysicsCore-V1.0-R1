@@ -1801,6 +1801,12 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             "decoded_route_rows": int(len(_pdf)) if isinstance(_pdf, pd.DataFrame) else 0,
             "probe_contract": str((_pmeta or {}).get("probe_contract", "")),
             "error": str((_pmeta or {}).get("error", "")),
+            "gfs_run_utc": (_pmeta or {}).get("gfs_run_utc"),
+            "gfs_forecast_hour": (_pmeta or {}).get("gfs_forecast_hour"),
+            "gfs_target_time_utc": (_pmeta or {}).get("gfs_target_time_utc"),
+            "gfs_valid_time_utc": (_pmeta or {}).get("gfs_valid_time_utc"),
+            "gfs_valid_time_offset_seconds": (_pmeta or {}).get("gfs_valid_time_offset_seconds"),
+            "gfs_forecast_cadence_policy": (_pmeta or {}).get("gfs_forecast_cadence_policy"),
         })
     performance_rows.append({
         "stage": "GFS_PGRB2B_CANVAS_OPTICAL_PROBE_PREFETCH",
@@ -3175,8 +3181,17 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
             continue
         _seen_gfs_meta.add(_k); _gfs_meta_unique.append(_m)
     gfs_native_request_audit = pd.DataFrame([
-        {**r, "gfs_run_utc":m.get("gfs_run_utc"), "gfs_forecast_hour":m.get("gfs_forecast_hour"),
-         "gfs_file":m.get("gfs_file"), "native_status":m.get("native_status")}
+        {
+            **r,
+            "gfs_run_utc": m.get("gfs_run_utc"),
+            "gfs_forecast_hour": m.get("gfs_forecast_hour"),
+            "gfs_target_time_utc": m.get("gfs_target_time_utc"),
+            "gfs_valid_time_utc": m.get("gfs_valid_time_utc"),
+            "gfs_valid_time_offset_seconds": m.get("gfs_valid_time_offset_seconds"),
+            "gfs_forecast_cadence_policy": m.get("gfs_forecast_cadence_policy"),
+            "gfs_file": m.get("gfs_file"),
+            "native_status": m.get("native_status"),
+        }
         for m in _gfs_meta_unique for r in (m.get("gfs_native_request_audit", []) or [])
     ])
     gfs_grib_message_inventory = pd.DataFrame([
@@ -3328,6 +3343,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_observer_environment_timeline": v1_observer_environment_timeline,
         "v1_observer_environment_timeline_summary": v1_observer_environment_timeline_summary,
         "gfs_native_request_audit": gfs_native_request_audit,
+        "gfs_native_valid_time_alignment_required": True,
         "gfs_grib_message_inventory": gfs_grib_message_inventory,
         "gfs_native_field_completeness": gfs_native_field_completeness,
         "native_cloud_voxel_matrix": native_cloud_voxel_matrix,

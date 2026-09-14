@@ -37,7 +37,7 @@ from ..native_cloud import NATIVE_CONDENSATE_THRESHOLD_KGKG
 from ..runtime_hardening import atomic_write_bytes, stamp_cache_artifact, cache_provenance
 
 PROVIDER_NAME = "NOAA_GFS_0P25_PGRB2B_CANVAS_OPTICAL_PROBE"
-PROVIDER_SCHEMA_VERSION = "R5.7.40_GFS_PGRB2B_CANVAS_HYDROMETEOR_PROBE_V2"
+PROVIDER_SCHEMA_VERSION = "R5.7.41.3.4.10.9.5_GFS_PGRB2B_HOURLY_VALID_TIME_V3"
 NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25b.pl"
 
 # pgrb2b provides the pressure levels that sit between the main pgrb2 levels.
@@ -178,11 +178,17 @@ def download_probe_subset(points: list[dict], valid_time: datetime, *, cache_dir
                     f"NOMADS={type(nomads_exc).__name__}: {nomads_exc}; "
                     f"AWS={type(aws_exc).__name__}: {aws_exc}"
                 ) from aws_exc
+    _target_utc = valid_time if valid_time.tzinfo is not None else valid_time.replace(tzinfo=run.tzinfo)
+    _target_utc = _target_utc.astimezone(run.tzinfo)
+    _resolved_valid_utc = run + timedelta(hours=lead)
     meta = {
         "provider": PROVIDER_NAME,
         "provider_schema_version": PROVIDER_SCHEMA_VERSION,
         "gfs_run_utc": run.isoformat(), "gfs_forecast_hour": int(lead),
-        "gfs_valid_time_utc": (run + timedelta(hours=lead)).isoformat(),
+        "gfs_target_time_utc": _target_utc.isoformat(),
+        "gfs_valid_time_utc": _resolved_valid_utc.isoformat(),
+        "gfs_valid_time_offset_seconds": float((_resolved_valid_utc - _target_utc).total_seconds()),
+        "gfs_forecast_cadence_policy": "HOURLY_F000_F120_THEN_3HOURLY_F123_F384",
         "gfs_file": out.name, "gfs_bbox": bbox,
         "requested_pressure_levels_hpa": list(SUPPLEMENT_PRESSURE_LEVELS_HPA),
         "requested_variables": sorted(PROBE_SHORTNAMES),

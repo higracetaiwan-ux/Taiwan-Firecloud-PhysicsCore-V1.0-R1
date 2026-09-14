@@ -117,6 +117,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     route_ref = _df(result.get("route_reference_contract"))
     forecast = _df(result.get("hourly_raw"))
     gfs_req = _df(result.get("gfs_native_request_audit"))
+    gfs_native_valid_time_alignment_required = bool(result.get("gfs_native_valid_time_alignment_required", False))
     gfs_inv = _df(result.get("gfs_grib_message_inventory"))
     gfs_comp = _df(result.get("gfs_native_field_completeness"))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
@@ -204,6 +205,74 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             add("GFS_PROVIDER_FAILURE_VISIBLE", WARN, "NOAA_GFS_NATIVE", _rows(gfs_req), "failure must remain visible in request audit")
     else:
         add("GFS_NATIVE_PIPELINE", WARN, "NOAA_GFS_NATIVE", 0, "pipeline audit expected when native GFS is configured")
+
+    # R5.7.41.3.4.10.9.5: native GFS valid-time provenance.  This is an
+    # operational/provider alignment guard only; it never changes cloud state,
+    # COT, Formation, Viewing, or Glow.  Legacy/unit-test payloads that do not
+    # opt into this contract remain unaffected.
+    if gfs_native_valid_time_alignment_required:
+        _required_time_cols = {
+            "gfs_run_utc", "gfs_forecast_hour", "gfs_target_time_utc",
+            "gfs_valid_time_utc", "gfs_valid_time_offset_seconds",
+            "gfs_forecast_cadence_policy",
+        }
+        if gfs_req.empty:
+            add(
+                "GFS_NATIVE_VALID_TIME_ALIGNMENT", FAIL, "NOAA_GFS_NATIVE_VALID_TIME",
+                0, "request audit with target/valid-time provenance",
+                "Hourly/3-hourly forecast-hour alignment cannot be verified without an audit row.",
+            )
+        elif not _required_time_cols.issubset(gfs_req.columns):
+            add(
+                "GFS_NATIVE_VALID_TIME_ALIGNMENT", FAIL, "NOAA_GFS_NATIVE_VALID_TIME",
+                "SCHEMA_INCOMPLETE",
+                "run, lead, target time, resolved valid time, offset, cadence policy",
+                f"missing={sorted(_required_time_cols - set(gfs_req.columns))}",
+            )
+        else:
+            _ok = True
+            _max_abs_offset = 0.0
+            _detail_bits = []
+            _checked = 0
+            for _row in gfs_req.drop_duplicates(subset=[
+                "gfs_run_utc", "gfs_forecast_hour", "gfs_target_time_utc", "gfs_valid_time_utc"
+            ]).itertuples(index=False):
+                try:
+                    _run = pd.Timestamp(getattr(_row, "gfs_run_utc"))
+                    _target = pd.Timestamp(getattr(_row, "gfs_target_time_utc"))
+                    _valid = pd.Timestamp(getattr(_row, "gfs_valid_time_utc"))
+                    _lead = int(float(getattr(_row, "gfs_forecast_hour")))
+                    _offset = float(getattr(_row, "gfs_valid_time_offset_seconds"))
+                    _policy = str(getattr(_row, "gfs_forecast_cadence_policy"))
+                    _calc_valid = _run + pd.Timedelta(hours=_lead)
+                    _calc_offset = float((_valid - _target).total_seconds())
+                    _tolerance = 1800.0 if _lead < 120 else 5400.0
+                    _row_ok = (
+                        _policy == "HOURLY_F000_F120_THEN_3HOURLY_F123_F384"
+                        and abs(float((_calc_valid - _valid).total_seconds())) <= 1e-6
+                        and abs(_calc_offset - _offset) <= 1e-6
+                        and abs(_offset) <= _tolerance + 1e-6
+                        and 0 <= _lead <= 384
+                    )
+                    _ok = bool(_ok and _row_ok)
+                    _max_abs_offset = max(_max_abs_offset, abs(_offset))
+                    _checked += 1
+                    if not _row_ok:
+                        _detail_bits.append(
+                            f"run={_run.isoformat()},lead={_lead},target={_target.isoformat()},"
+                            f"valid={_valid.isoformat()},offset={_offset},tol={_tolerance},policy={_policy}"
+                        )
+                except Exception as _exc:
+                    _ok = False
+                    _detail_bits.append(f"decode_error={type(_exc).__name__}:{_exc}")
+            add(
+                "GFS_NATIVE_VALID_TIME_ALIGNMENT", PASS if (_ok and _checked > 0) else FAIL,
+                "NOAA_GFS_NATIVE_VALID_TIME",
+                f"checked={_checked};max_abs_offset_seconds={_max_abs_offset:.3f}",
+                "f000-f119 <=1800 s; f120+ <=5400 s; valid=run+lead; offset provenance exact",
+                "; ".join(_detail_bits[:3]) if _detail_bits else
+                "Provider cadence/provenance only; no physics decision dependency.",
+            )
 
     if not gfs_comp.empty:
         text_cols = [c for c in ["field", "variable", "short_name", "parameter"] if c in gfs_comp.columns]

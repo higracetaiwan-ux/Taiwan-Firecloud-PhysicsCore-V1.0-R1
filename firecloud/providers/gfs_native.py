@@ -23,7 +23,7 @@ from .gfs_aws_range import (
 
 NATIVE_PROVIDER_NAME = "NOAA_GFS_0P25_NOMADS_GRIB2_CLWMR_ICMR"
 NOMADS_FILTER_URL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
-GFS_PROVIDER_SCHEMA_VERSION = "R5.7_NATIVE_CLOUD_AND_HYDROMETEOR_V3"
+GFS_PROVIDER_SCHEMA_VERSION = "R5.7_NATIVE_CLOUD_AND_HYDROMETEOR_V4_HOURLY_VALID_TIME"
 GFS_NATIVE_SHORTNAMES = {
     "CLWMR":"cloud_liquid_water_kgkg", "ICMR":"cloud_ice_water_kgkg",
     "RWMR":"rain_water_kgkg", "SNMR":"snow_water_kgkg", "GRLE":"graupel_kgkg",
@@ -45,6 +45,7 @@ def native_provider_status() -> dict:
         "transport": "NCEP_NOMADS_GRIB_FILTER_WITH_AWS_IDX_RANGE_FALLBACK",
         "grid": "GFS_0P25",
         "provider_schema_version": GFS_PROVIDER_SCHEMA_VERSION,
+        "forecast_cadence_policy": "HOURLY_F000_F120_THEN_3HOURLY_F123_F384",
         "fallback_policy": "EXPLICIT_OPEN_METEO_PRESSURE_PROFILE; NEVER RH_AS_NATIVE_CONDENSATE",
     }
 
@@ -55,12 +56,29 @@ def _utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _snap_gfs_0p25_forecast_hour(raw_lead_hours: float) -> int:
+    """Snap a target offset to an actually published GFS 0.25 deg forecast hour.
+
+    NOAA GFS 0.25 degree pgrb2/pgrb2b output is hourly through forecast hour 120
+    and then 3-hourly.  R5.7.41.3.4.10.9.5 fixes the older blanket 3-hour
+    rounding, which could bind an event near HH:00 to a native state one hour
+    early even though an exact hourly file exists.
+    """
+    h = float(raw_lead_hours)
+    if not math.isfinite(h):
+        raise ValueError("GFS lead is not finite")
+    if h <= 120.0:
+        return int(round(h))
+    return int(120 + round((h - 120.0) / 3.0) * 3)
+
+
 def resolve_run_and_lead(valid_time: datetime, now_utc: datetime | None = None) -> tuple[datetime,int]:
-    """Resolve a likely-available GFS cycle and nearest 3-hour forecast lead.
+    """Resolve a likely-available GFS cycle and nearest published 0.25 deg lead.
 
     Operational latency is conservatively treated as 5 h. For future targets the
     latest likely-published cycle is used; for past targets a cycle no later than
-    the target is used. Forecast lead is rounded to the nearest 3 h.
+    the target is used. GFS 0.25 degree output is hourly through f120 and 3-hourly
+    afterward, so the lead is snapped to that real publication cadence.
     """
     target = _utc(valid_time)
     if now_utc is None:
@@ -78,9 +96,10 @@ def resolve_run_and_lead(valid_time: datetime, now_utc: datetime | None = None) 
     anchor = min(target, now - timedelta(hours=5))
     cycle_hour = max(h for h in (0,6,12,18) if h <= anchor.hour)
     run = anchor.replace(hour=cycle_hour, minute=0, second=0, microsecond=0)
-    lead = int(round((target-run).total_seconds()/3600/3)*3)
+    lead = _snap_gfs_0p25_forecast_hour((target-run).total_seconds()/3600.0)
     if lead < 0:
-        run -= timedelta(hours=6); lead = int(round((target-run).total_seconds()/3600/3)*3)
+        run -= timedelta(hours=6)
+        lead = _snap_gfs_0p25_forecast_hour((target-run).total_seconds()/3600.0)
     if lead > 384:
         raise ValueError(f"GFS target is outside supported forecast horizon: f{lead:03d}")
     return run, lead
@@ -280,9 +299,16 @@ def download_native_subset(points: list[dict], valid_time: datetime, cache_dir: 
     inventory=grib_message_inventory(out)
     completeness=_field_completeness_from_inventory(inventory)
     condensate_ok=_inventory_has_required_condensate(inventory)
+    _target_utc = _utc(valid_time)
+    _resolved_valid_utc = run + timedelta(hours=lead)
+    _valid_time_offset_seconds = float((_resolved_valid_utc - _target_utc).total_seconds())
     meta={
         "gfs_run_utc":run.isoformat(),"gfs_forecast_hour":lead,
-        "gfs_valid_time_utc":(run+timedelta(hours=lead)).isoformat(),"gfs_bbox":bbox,"gfs_file":out.name,
+        "gfs_target_time_utc":_target_utc.isoformat(),
+        "gfs_valid_time_utc":_resolved_valid_utc.isoformat(),
+        "gfs_valid_time_offset_seconds":_valid_time_offset_seconds,
+        "gfs_forecast_cadence_policy":"HOURLY_F000_F120_THEN_3HOURLY_F123_F384",
+        "gfs_bbox":bbox,"gfs_file":out.name,
         "gfs_cache_status":cache_status,"gfs_request_schema_version":GFS_PROVIDER_SCHEMA_VERSION,
         "gfs_request_schema_fingerprint":schema_fp,"gfs_requested_variables":sorted(GFS_NATIVE_SHORTNAMES),
         "gfs_requested_pressure_levels_hpa":[int(x) for x in DEFAULT_PRESSURE_LEVELS_HPA],

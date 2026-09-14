@@ -40,7 +40,7 @@ def test_gfs_uses_same_analysis_clock_freeze(monkeypatch):
     monkeypatch.setenv('FIRECLOUD_PROVIDER_RESOLUTION_NOW_UTC', '2026-09-08T16:59:00+00:00')
     run, lead = resolve_run_and_lead(target)
     assert run == dt('2026-09-08T06:00:00+00:00')
-    assert lead == 15
+    assert lead == 14
     run2, lead2 = resolve_run_and_lead(target, now_utc=dt('2026-09-08T17:01:00+00:00'))
     assert run2 == dt('2026-09-08T12:00:00+00:00')
-    assert lead2 == 9
+    assert lead2 == 8
