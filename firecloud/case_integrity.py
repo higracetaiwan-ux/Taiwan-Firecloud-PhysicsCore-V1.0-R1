@@ -1716,6 +1716,79 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     else:
         add("FULL_RT_COMPLETENESS_V1_PATH_CONSISTENCY", WARN, "FORMATION_RT", "SCHEMA_NOT_AVAILABLE", "R5.7.25+ V1 path/completeness schema", "Legacy/minimal CASE may omit the required columns")
 
+    # R5.7.41.3.4.10.9.3 observer near-field cloud-environment diagnostic.
+    # This evidence is intentionally target-independent and must never synthesize
+    # tau/COT or promote Formation.  Empty remains allowed when the underlying
+    # route provider is unavailable; it is not interpreted as clear sky.
+    _near_env = _df(result.get("v1_observer_nearfield_cloud_environment"))
+    _near_summary = _df(result.get("v1_observer_nearfield_cloud_environment_summary"))
+    _near_required = {
+        "time", "solar_altitude_deg", "direction_offset_deg", "distance_km",
+        "cloud_cover_low_pct", "native_low_cloud_geometry_state",
+        "coarse_native_low_cloud_relation", "diagnostic_role",
+        "tau_synthesis_allowed", "formation_promotion_allowed",
+        "viewing_target_required",
+    }
+    if _near_env.empty:
+        add(
+            "OBSERVER_NEARFIELD_CLOUD_ENVIRONMENT_PRESENT", ALLOWED_EMPTY,
+            "OBSERVER_ENVIRONMENT", 0, "0-100 km diagnostic rows when route evidence is available",
+            "Empty is allowed on provider/mode paths; Missing is not Clear.",
+        )
+        add(
+            "OBSERVER_NEARFIELD_DIAGNOSTIC_ROLE_SEPARATION", NOT_APPLICABLE,
+            "OBSERVER_ENVIRONMENT", "NO_ROWS", "diagnostic-only rows",
+            "No rows to validate; no Formation inference is performed.",
+        )
+    else:
+        schema_ok = _near_required.issubset(_near_env.columns)
+        add(
+            "OBSERVER_NEARFIELD_CLOUD_ENVIRONMENT_PRESENT", PASS if schema_ok else FAIL,
+            "OBSERVER_ENVIRONMENT", int(len(_near_env)), "diagnostic rows with frozen evidence schema",
+            f"schema_ok={schema_ok}; point-level exact-time coarse/native evidence only",
+        )
+        if schema_ok:
+            role_ok = _near_env["diagnostic_role"].astype(str).eq("OBSERVER_ENVIRONMENT_ONLY_NO_FORMATION_PROMOTION").all()
+            tau_ok = ~_near_env["tau_synthesis_allowed"].fillna(True).astype(bool).any()
+            promo_ok = ~_near_env["formation_promotion_allowed"].fillna(True).astype(bool).any()
+            target_ok = ~_near_env["viewing_target_required"].fillna(True).astype(bool).any()
+            distance = pd.to_numeric(_near_env["distance_km"], errors="coerce")
+            domain_ok = distance.dropna().between(0.0, 100.0, inclusive="both").all()
+            sep_ok = bool(role_ok and tau_ok and promo_ok and target_ok and domain_ok)
+            add(
+                "OBSERVER_NEARFIELD_DIAGNOSTIC_ROLE_SEPARATION", PASS if sep_ok else FAIL,
+                "OBSERVER_ENVIRONMENT",
+                f"role={role_ok};tau={tau_ok};promotion={promo_ok};target_independent={target_ok};domain={domain_ok}",
+                "diagnostic-only; no tau synthesis; no Formation promotion; no formed target required; 0-100 km",
+                "Observer environment cannot rewrite Formation/Viewing/Glow state.",
+            )
+        else:
+            add(
+                "OBSERVER_NEARFIELD_DIAGNOSTIC_ROLE_SEPARATION", FAIL,
+                "OBSERVER_ENVIRONMENT", "SCHEMA_INCOMPLETE", "complete diagnostic schema",
+                "Cannot validate role separation without the required columns.",
+            )
+    if _near_summary.empty:
+        add(
+            "OBSERVER_NEARFIELD_CLOUD_ENVIRONMENT_SUMMARY", ALLOWED_EMPTY if _near_env.empty else WARN,
+            "OBSERVER_ENVIRONMENT", 0, "band summary when point rows exist",
+            "Summary is diagnostic convenience only.",
+        )
+    else:
+        _sum_role_ok = (
+            "diagnostic_role" in _near_summary.columns
+            and _near_summary["diagnostic_role"].astype(str).eq("OBSERVER_ENVIRONMENT_ONLY_NO_FORMATION_PROMOTION").all()
+            and "tau_synthesis_allowed" in _near_summary.columns
+            and not _near_summary["tau_synthesis_allowed"].fillna(True).astype(bool).any()
+            and "formation_promotion_allowed" in _near_summary.columns
+            and not _near_summary["formation_promotion_allowed"].fillna(True).astype(bool).any()
+        )
+        add(
+            "OBSERVER_NEARFIELD_CLOUD_ENVIRONMENT_SUMMARY", PASS if _sum_role_ok else FAIL,
+            "OBSERVER_ENVIRONMENT", int(len(_near_summary)), "diagnostic band summary with no promotion",
+            "Coarse/native mismatch is evidence, not a physics failure or synthesized blocker.",
+        )
+
     hard_fail = any(r["status"] == FAIL for r in rows)
     rows.append({
         "check_id": "ANALYSIS_INTEGRITY_OVERALL",
@@ -1757,6 +1830,8 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "gfs_grib_message_inventory.csv",
         "gfs_native_field_completeness.csv",
         "v1_formation.csv",
+        "v1_observer_nearfield_cloud_environment.csv",
+        "v1_observer_nearfield_cloud_environment_summary.csv",
         "v1_viewing_summary.csv",
         "v1_viewing_precipitation_evidence.csv",
         "v1_viewing_spectral_extinction_550_750nm.csv",

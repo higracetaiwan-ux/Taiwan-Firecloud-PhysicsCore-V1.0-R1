@@ -217,7 +217,9 @@ def test_phase1_production_handoff_and_case_members_are_explicit():
     manifest = pd.DataFrame({"artifact": [
         "summary.csv", "route_reference_contract.csv", "route_points.csv", "forecast_raw.csv",
         "performance_diagnostics.csv", "gfs_native_request_audit.csv", "gfs_grib_message_inventory.csv",
-        "gfs_native_field_completeness.csv", "v1_formation.csv", "v1_viewing_summary.csv",
+        "gfs_native_field_completeness.csv", "v1_formation.csv",
+            "v1_observer_nearfield_cloud_environment.csv", "v1_observer_nearfield_cloud_environment_summary.csv",
+            "v1_viewing_summary.csv",
         "v1_viewing_precipitation_evidence.csv", "v1_viewing_spectral_extinction_550_750nm.csv",
         "v1_viewing_spectral_summary.csv", "v1_twilight_glow_scattering_volume_550_750nm.csv",
         "v1_twilight_glow_sun_to_scatter_extinction_550_750nm.csv",

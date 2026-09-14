@@ -180,9 +180,25 @@ def build_collection_integrity_audit(archive_manifest: pd.DataFrame, case_manife
     rows.append({"check_id":"SHADOW_COLLECTION_LOCATION_IDENTITY", "status":PASS if location_ok else FAIL,
                  "component":"SHADOW_VALIDATION_COLLECTION","observed":f"{location_source}:{cm.get('site_id')}:{cm.get('site_name')}",
                  "expected":"stable preset identity or explicit manual coordinates", "detail":"Repeat CASE comparisons require stable location provenance."})
+    # R5.7.41.3.4.10.9.2 diagnostic-only integrity hotfix:
+    # A physically valid no-Canvas event produces an empty semantic-migration
+    # table.  Empty evidence cannot imply that a production switch/promotion
+    # occurred.  Treat the guard as vacuously preserved only when the cohort
+    # itself also reports zero migration targets, and verify the frozen
+    # production-source contract from the case manifest.  This changes audit
+    # semantics only; it does not create COT evidence or alter Formation.
+    cohort_target_count = 0
+    if not cohort.empty and "target_count" in cohort.columns:
+        _target_vals = pd.to_numeric(cohort["target_count"], errors="coerce").dropna()
+        cohort_target_count = int(_target_vals.iloc[0]) if not _target_vals.empty else 0
+    empty_cohort_allowed = bool(migration.empty and cohort_target_count == 0)
     if migration.empty:
-        no_switch = no_promote = False
-        production_source_ok = False
+        no_switch = empty_cohort_allowed
+        no_promote = empty_cohort_allowed
+        production_source_ok = bool(
+            empty_cohort_allowed
+            and cm.get("production_cot_source_expected") == PRODUCTION_COT_SOURCE
+        )
     else:
         no_switch = not migration.get("production_switch_performed", pd.Series([True]*len(migration))).fillna(True).astype(bool).any()
         no_promote = not migration.get("cot_promotion_allowed", pd.Series([True]*len(migration))).fillna(True).astype(bool).any() and not migration.get("formation_promotion_allowed", pd.Series([True]*len(migration))).fillna(True).astype(bool).any()
@@ -191,7 +207,7 @@ def build_collection_integrity_audit(archive_manifest: pd.DataFrame, case_manife
     for cid, ok, observed, expected, detail in [
         ("SHADOW_COLLECTION_NO_PRODUCTION_SWITCH", no_switch, no_switch, True, "Collection version must remain Shadow-only."),
         ("SHADOW_COLLECTION_NO_PROMOTION", no_promote, no_promote, True, "COT/Formation promotion remains prohibited during cohort collection."),
-        ("SHADOW_COLLECTION_PRODUCTION_SOURCE_FROZEN", production_source_ok, sorted(set(migration.get('production_target_cot_source', pd.Series(dtype=str)).dropna().astype(str))) if not migration.empty else [], [PRODUCTION_COT_SOURCE], "Legacy production COT source stays frozen for A/B comparability."),
+        ("SHADOW_COLLECTION_PRODUCTION_SOURCE_FROZEN", production_source_ok, sorted(set(migration.get('production_target_cot_source', pd.Series(dtype=str)).dropna().astype(str))) if not migration.empty else ([cm.get("production_cot_source_expected")] if empty_cohort_allowed else []), [PRODUCTION_COT_SOURCE], "Legacy production COT source stays frozen for A/B comparability; zero-target cohorts validate the frozen manifest contract without inventing target evidence."),
     ]:
         rows.append({"check_id":cid,"status":PASS if ok else FAIL,"component":"SHADOW_VALIDATION_COLLECTION","observed":observed,"expected":expected,"detail":detail})
     return pd.DataFrame(rows)

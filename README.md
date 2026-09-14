@@ -1,6 +1,6 @@
-> Current release: **V1.0-R5.7.41.3.4.10.9** — Viewing→Glow Gas Spectroscopy Cache Handoff; science baseline remains frozen.
+> Current release: **V1.0-R5.7.41.3.4.10.9.3** — Observer Near-field Cloud Environment Diagnostic; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.9.3
 
 
 ## R5.7.41.3.4.10.9 Viewing→Glow Gas Spectroscopy Cache Handoff

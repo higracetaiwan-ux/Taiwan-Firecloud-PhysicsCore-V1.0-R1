@@ -108,6 +108,10 @@ from .illuminated_canvas_retreat import build_illuminated_canvas_retreat, build_
 from .red_window import build_canvas_spectral_evolution, build_canvas_peak_windows
 from .canvas_optical_suitability import build_canvas_optical_suitability, summarize_canvas_optical_suitability
 from .viewing import build_viewing_path_geometry, summarize_viewing_path
+from .observer_nearfield_cloud_environment import (
+    build_observer_nearfield_cloud_environment,
+    summarize_observer_nearfield_cloud_environment,
+)
 from .viewing_spectral import (
     build_viewing_spectral_extinction, summarize_viewing_spectral_extinction,
     attach_viewing_spectral_status, prepare_viewing_spectral_runtime_context,
@@ -2626,6 +2630,28 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     # native RWMR/SNMR/GRLE are merged.  Drain it before cleanup; R5.7.29
     # cleaned the spool first, so the later drain was necessarily empty.
     _view_route_snapshots = _drain_spool_matrix("viewing_route_snapshot")
+    # R5.7.41.3.4.10.9.3 diagnostic-only observer environment:
+    # preserve exact-time 0-100 km low/mid/high cloud-cover evidence even when
+    # Formation has no Canvas target.  This table is not used by Formation,
+    # Viewing target selection, tau/COT synthesis, Glow, or Photography Decision.
+    _nearfield_env_t0 = perf_counter()
+    v1_observer_nearfield_cloud_environment = build_observer_nearfield_cloud_environment(
+        _view_route_snapshots, native_cloud_columns, max_distance_km=100.0
+    )
+    v1_observer_nearfield_cloud_environment_summary = summarize_observer_nearfield_cloud_environment(
+        v1_observer_nearfield_cloud_environment
+    )
+    performance_rows.append({
+        "stage": "OBSERVER_NEARFIELD_CLOUD_ENVIRONMENT_DIAGNOSTIC",
+        "elapsed_seconds": max(0.0, perf_counter() - _nearfield_env_t0),
+        "cache_status": "DIAGNOSTIC_ONLY_NO_FORMATION_PROMOTION",
+        "detail": (
+            f"point_rows={len(v1_observer_nearfield_cloud_environment)};"
+            f"summary_rows={len(v1_observer_nearfield_cloud_environment_summary)};"
+            "0-100km exact-time coarse low/mid/high + native-column relation;"
+            "NO_TAU_SYNTHESIS;NO_FORMATION_PROMOTION"
+        ),
+    })
     _aggregation_checkpoint("光譜與大氣矩陣完成", spectral_rt_voxel_matrix=spectral_rt_voxel_matrix, gas_profile_route_snapshots=gas_profile_route_snapshots)
     # All local-temp heavyweight frame families have now been rehydrated into
     # their final matrices.  Remove the spool directory immediately.
@@ -3271,6 +3297,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "route_points": pd.DataFrame(route_points),
         "route_reference_contract": route_reference_contract,
         "hourly_raw": hourly,
+        "v1_observer_nearfield_cloud_environment": v1_observer_nearfield_cloud_environment,
+        "v1_observer_nearfield_cloud_environment_summary": v1_observer_nearfield_cloud_environment_summary,
         "gfs_native_request_audit": gfs_native_request_audit,
         "gfs_grib_message_inventory": gfs_grib_message_inventory,
         "gfs_native_field_completeness": gfs_native_field_completeness,
@@ -3358,6 +3386,8 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "route_points": pd.DataFrame(route_points),
         "horizontal_sampling_profile": horizontal_sampling_profile,
         "hourly_raw": hourly,
+        "v1_observer_nearfield_cloud_environment": v1_observer_nearfield_cloud_environment,
+        "v1_observer_nearfield_cloud_environment_summary": v1_observer_nearfield_cloud_environment_summary,
         "aerosol_hourly_raw": aerosol_hourly,
         "aerosol_spectral_route_snapshots": aerosol_spectral_route_snapshots,
         "cams_native_aerosol_route_snapshots": cams_native_aerosol_route_snapshots,
