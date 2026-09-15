@@ -1,0 +1,38 @@
+{
+  "consumer": "WINDY_FIRECLOUD_OBSERVER",
+  "consumer_input_caveat": "If WINDY does not have native/calibrated Dmax or a separately validated microphysics mapping, the evaluator must return ICE_MAXIMUM_DIMENSION_MISSING for positive IWP.",
+  "deployment_boundary": "PhysicsCore builds/calibrates/certifies the package; WINDY imports the released artifact and evaluates locally without calling PhysicsCore.",
+  "effective_radius_semantics": "Source-row-derived diagnostic/mapping metadata only; wavelength-dependent values are preserved and must not be treated as the authoritative six-band lookup key.",
+  "equations": {
+    "tau": "tau_ice_lambda = IWP_kg_m2 * k_ext_ice_lambda_m2_kg",
+    "transmission": "T_ice_lambda = exp(-tau_ice_lambda)"
+  },
+  "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+  "ice_optics_contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+  "interpolation": {
+    "effective_radius": "DIAGNOSTIC_ONLY_NOT_RUNTIME_LOOKUP_AXIS",
+    "extrapolation": "PROHIBITED",
+    "habit": "NO_INTERPOLATION",
+    "maximum_dimension": "LINEAR_WITHIN_SAME_HABIT_AND_ROUGHNESS_ONLY",
+    "surface_roughness": "NO_INTERPOLATION",
+    "wavelength": "NONE_AT_RUNTIME_LUT_ALREADY_NORMALIZED_TO_SIX_BANDS"
+  },
+  "missing_semantics": "Missing != Clear != Zero; positive IWP requires complete vertical support, calibrated Dmax, habit, roughness and LUT domain coverage. No r_eff-to-Dmax substitution is permitted.",
+  "physics_promotion_allowed": false,
+  "physicscore_authoring_version": "1.0.0-R5.7.41.3.4.10.11.1",
+  "portable_package_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+  "primary_size_coordinate": "maximum_dimension_um",
+  "runtime_dependency_on_physicscore": "NONE",
+  "runtime_dependency_on_python": "NONE",
+  "runtime_dependency_on_streamlit": "NONE",
+  "schema_version": 2,
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "wavelengths_nm": [
+    550,
+    575,
+    600,
+    650,
+    700,
+    750
+  ]
+}

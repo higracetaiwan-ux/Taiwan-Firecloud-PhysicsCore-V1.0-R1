@@ -1,0 +1,795 @@
+{
+  "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+  "primary_size_coordinate": "maximum_dimension_um",
+  "purpose": "Cross-language software parity only; not meteorological calibration.",
+  "validation_contract": "FIRECLOUD_ICE_OPTICS_CROSS_LANGUAGE_V1_1",
+  "vectors": [
+    {
+      "case_id": "READY_001",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.74780467,
+            "k_ext_m2_kg": 2988.4668600965065,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999998,
+            "tau": 29.884668600965064,
+            "transmission": 1.0501548273913909e-13
+          },
+          "575": {
+            "g": 0.741223095,
+            "k_ext_m2_kg": 2681.28906615948,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.999999955,
+            "tau": 26.812890661594803,
+            "transmission": 2.2662589998559788e-12
+          },
+          "600": {
+            "g": 0.73385712,
+            "k_ext_m2_kg": 2410.5733531342194,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999993,
+            "tau": 24.105733531342196,
+            "transmission": 3.3963539602394306e-11
+          },
+          "650": {
+            "g": 0.71897425,
+            "k_ext_m2_kg": 1964.4253190374523,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999981,
+            "tau": 19.644253190374524,
+            "transmission": 2.941773546478961e-09
+          },
+          "700": {
+            "g": 0.7057884,
+            "k_ext_m2_kg": 1629.4488555107732,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999957,
+            "tau": 16.294488555107733,
+            "transmission": 8.382885515734393e-08
+          },
+          "750": {
+            "g": 0.69819541,
+            "k_ext_m2_kg": 1362.6850431761266,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999904,
+            "tau": 13.626850431761266,
+            "transmission": 1.2076304407824966e-06
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "EXACT_DMAX_LUT_ROW",
+        "maximum_dimension_um": 2.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough000"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 2.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough000"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "READY_002",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.887704,
+            "k_ext_m2_kg": 5.3753193853008,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.053753193853008,
+            "transmission": 0.9476659674275104
+          },
+          "575": {
+            "g": 0.8881032,
+            "k_ext_m2_kg": 5.363952115684812,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.05363952115684812,
+            "transmission": 0.9477736972959432
+          },
+          "600": {
+            "g": 0.8887008000000001,
+            "k_ext_m2_kg": 5.3847679518982465,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.053847679518982464,
+            "transmission": 0.9475764308074869
+          },
+          "650": {
+            "g": 0.8888,
+            "k_ext_m2_kg": 5.3636737735233835,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.99990029992,
+            "tau": 0.053636737735233836,
+            "transmission": 0.9477763353534091
+          },
+          "700": {
+            "g": 0.8893016,
+            "k_ext_m2_kg": 5.368536051260142,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.99980069992,
+            "tau": 0.05368536051260142,
+            "transmission": 0.9477302529559971
+          },
+          "750": {
+            "g": 0.8896984,
+            "k_ext_m2_kg": 5.392376558931663,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.99970104992,
+            "tau": 0.053923765589316636,
+            "transmission": 0.9475043361832586
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "LINEAR_DMAX_INTERPOLATION_WITHIN_LUT",
+        "maximum_dimension_um": 5001.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough000"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 5001.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough000"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "READY_003",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.888,
+            "k_ext_m2_kg": 2.690210404455039,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 1.0,
+            "tau": 0.026902104044550387,
+            "transmission": 0.9734565343173869
+          },
+          "575": {
+            "g": 0.88855,
+            "k_ext_m2_kg": 2.679134608408551,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99995009,
+            "tau": 0.02679134608408551,
+            "transmission": 0.9735643583488037
+          },
+          "600": {
+            "g": 0.8889,
+            "k_ext_m2_kg": 2.6824911984538677,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.9999002,
+            "tau": 0.02682491198453868,
+            "transmission": 0.9735316803329033
+          },
+          "650": {
+            "g": 0.8887,
+            "k_ext_m2_kg": 2.677412308124692,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99980038,
+            "tau": 0.02677412308124692,
+            "transmission": 0.973581126194907
+          },
+          "700": {
+            "g": 0.8891,
+            "k_ext_m2_kg": 2.688224206562158,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99970067,
+            "tau": 0.02688224206562158,
+            "transmission": 0.9734758692825742
+          },
+          "750": {
+            "g": 0.89,
+            "k_ext_m2_kg": 2.684217517483041,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99940133,
+            "tau": 0.026842175174830413,
+            "transmission": 0.9735148742153146
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "EXACT_DMAX_LUT_ROW",
+        "maximum_dimension_um": 10000.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough000"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 10000.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough000"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "READY_004",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.74780467,
+            "k_ext_m2_kg": 2988.4668600965065,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999998,
+            "tau": 29.884668600965064,
+            "transmission": 1.0501548273913909e-13
+          },
+          "575": {
+            "g": 0.741223095,
+            "k_ext_m2_kg": 2681.28906615948,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.999999955,
+            "tau": 26.812890661594803,
+            "transmission": 2.2662589998559788e-12
+          },
+          "600": {
+            "g": 0.73385712,
+            "k_ext_m2_kg": 2410.5733531342194,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999993,
+            "tau": 24.105733531342196,
+            "transmission": 3.3963539602394306e-11
+          },
+          "650": {
+            "g": 0.71897425,
+            "k_ext_m2_kg": 1964.4253190374523,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999981,
+            "tau": 19.644253190374524,
+            "transmission": 2.941773546478961e-09
+          },
+          "700": {
+            "g": 0.7057884,
+            "k_ext_m2_kg": 1629.4488555107732,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999957,
+            "tau": 16.294488555107733,
+            "transmission": 8.382885515734393e-08
+          },
+          "750": {
+            "g": 0.69819541,
+            "k_ext_m2_kg": 1362.6850431761266,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999904,
+            "tau": 13.626850431761266,
+            "transmission": 1.2076304407824966e-06
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "EXACT_DMAX_LUT_ROW",
+        "maximum_dimension_um": 2.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough003"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 2.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough003"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "READY_005",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.8730008,
+            "k_ext_m2_kg": 5.372970281536898,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.053729702815368985,
+            "transmission": 0.9476882293458972
+          },
+          "575": {
+            "g": 0.873702,
+            "k_ext_m2_kg": 5.371452836739575,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.05371452836739575,
+            "transmission": 0.947702610100738
+          },
+          "600": {
+            "g": 0.8742951999999999,
+            "k_ext_m2_kg": 5.371537659639815,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.05371537659639815,
+            "transmission": 0.9477018062322394
+          },
+          "650": {
+            "g": 0.8743983999999999,
+            "k_ext_m2_kg": 5.373046445701093,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.99990027,
+            "tau": 0.053730464457010935,
+            "transmission": 0.9476875075473531
+          },
+          "700": {
+            "g": 0.8750968,
+            "k_ext_m2_kg": 5.385815064678439,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.9998006699199999,
+            "tau": 0.05385815064678439,
+            "transmission": 0.9475665086655259
+          },
+          "750": {
+            "g": 0.8756976000000001,
+            "k_ext_m2_kg": 5.365711530739351,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.99970096992,
+            "tau": 0.05365711530739351,
+            "transmission": 0.9477570221695227
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "LINEAR_DMAX_INTERPOLATION_WITHIN_LUT",
+        "maximum_dimension_um": 5001.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough003"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 5001.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough003"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "READY_006",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.8737,
+            "k_ext_m2_kg": 2.685055291923054,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 1.0,
+            "tau": 0.02685055291923054,
+            "transmission": 0.9735067183906925
+          },
+          "575": {
+            "g": 0.87405,
+            "k_ext_m2_kg": 2.688144568425831,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99990016,
+            "tau": 0.026881445684258314,
+            "transmission": 0.9734766445409229
+          },
+          "600": {
+            "g": 0.8737,
+            "k_ext_m2_kg": 2.6879587014550097,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99990018,
+            "tau": 0.026879587014550097,
+            "transmission": 0.9734784539141552
+          },
+          "650": {
+            "g": 0.8749,
+            "k_ext_m2_kg": 2.6930302240844415,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99980034,
+            "tau": 0.026930302240844417,
+            "transmission": 0.9734290849859611
+          },
+          "700": {
+            "g": 0.8748,
+            "k_ext_m2_kg": 2.687009473811592,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99970063,
+            "tau": 0.02687009473811592,
+            "transmission": 0.9734876944845995
+          },
+          "750": {
+            "g": 0.8756,
+            "k_ext_m2_kg": 2.6907126136612445,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99930143,
+            "tau": 0.026907126136612447,
+            "transmission": 0.973451645541329
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "EXACT_DMAX_LUT_ROW",
+        "maximum_dimension_um": 10000.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough003"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 10000.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough003"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "READY_007",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.74780467,
+            "k_ext_m2_kg": 2988.4668600965065,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999998,
+            "tau": 29.884668600965064,
+            "transmission": 1.0501548273913909e-13
+          },
+          "575": {
+            "g": 0.741223095,
+            "k_ext_m2_kg": 2681.28906615948,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.999999955,
+            "tau": 26.812890661594803,
+            "transmission": 2.2662589998559788e-12
+          },
+          "600": {
+            "g": 0.73385712,
+            "k_ext_m2_kg": 2410.5733531342194,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999993,
+            "tau": 24.105733531342196,
+            "transmission": 3.3963539602394306e-11
+          },
+          "650": {
+            "g": 0.71897425,
+            "k_ext_m2_kg": 1964.4253190374523,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999981,
+            "tau": 19.644253190374524,
+            "transmission": 2.941773546478961e-09
+          },
+          "700": {
+            "g": 0.7057884,
+            "k_ext_m2_kg": 1629.4488555107732,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999957,
+            "tau": 16.294488555107733,
+            "transmission": 8.382885515734393e-08
+          },
+          "750": {
+            "g": 0.69819541,
+            "k_ext_m2_kg": 1362.6850431761266,
+            "source_effective_radius_um": 0.12211039568378533,
+            "ssa": 0.99999904,
+            "tau": 13.626850431761266,
+            "transmission": 1.2076304407824966e-06
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "EXACT_DMAX_LUT_ROW",
+        "maximum_dimension_um": 2.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough050"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 2.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough050"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "READY_008",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.8410991999999999,
+            "k_ext_m2_kg": 5.345459080661893,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.053454590806618935,
+            "transmission": 0.9479489856252886
+          },
+          "575": {
+            "g": 0.8421472,
+            "k_ext_m2_kg": 5.349876532742824,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.05349876532742824,
+            "transmission": 0.9479071113579917
+          },
+          "600": {
+            "g": 0.841304,
+            "k_ext_m2_kg": 5.362973967544983,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 1.0,
+            "tau": 0.05362973967544983,
+            "transmission": 0.9477829679720735
+          },
+          "650": {
+            "g": 0.8431008,
+            "k_ext_m2_kg": 5.352656327065692,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.9999002299199999,
+            "tau": 0.05352656327065693,
+            "transmission": 0.9478807618561567
+          },
+          "700": {
+            "g": 0.843892,
+            "k_ext_m2_kg": 5.358565125190105,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.99980058,
+            "tau": 0.053585651251901054,
+            "transmission": 0.9478247551501564
+          },
+          "750": {
+            "g": 0.8439008,
+            "k_ext_m2_kg": 5.341315081024234,
+            "source_effective_radius_um": 305.33705638732675,
+            "ssa": 0.99970083992,
+            "tau": 0.053413150810242345,
+            "transmission": 0.9479882694417732
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "LINEAR_DMAX_INTERPOLATION_WITHIN_LUT",
+        "maximum_dimension_um": 5001.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough050"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 5001.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough050"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "READY_009",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": 0.8409,
+            "k_ext_m2_kg": 2.670101004772999,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 1.0,
+            "tau": 0.02670101004772999,
+            "transmission": 0.973652310266628
+          },
+          "575": {
+            "g": 0.84155,
+            "k_ext_m2_kg": 2.6691370417300937,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.9999001350000001,
+            "tau": 0.026691370417300936,
+            "transmission": 0.9736616959603026
+          },
+          "600": {
+            "g": 0.8419,
+            "k_ext_m2_kg": 2.6669137378636227,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99990016,
+            "tau": 0.02666913737863623,
+            "transmission": 0.9736833436590814
+          },
+          "650": {
+            "g": 0.8433,
+            "k_ext_m2_kg": 2.6700496987911437,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99980029,
+            "tau": 0.026700496987911437,
+            "transmission": 0.9736528098086338
+          },
+          "700": {
+            "g": 0.8438,
+            "k_ext_m2_kg": 2.672473002216126,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99960074,
+            "tau": 0.02672473002216126,
+            "transmission": 0.9736292155326278
+          },
+          "750": {
+            "g": 0.8446,
+            "k_ext_m2_kg": 2.6692073697731065,
+            "source_effective_radius_um": 610.5520565873436,
+            "ssa": 0.99930125,
+            "tau": 0.026692073697731064,
+            "transmission": 0.973661011203327
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "lookup_state": "EXACT_DMAX_LUT_ROW",
+        "maximum_dimension_um": 10000.0,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_SIX_BAND_OPTICS_READY",
+        "surface_roughness": "Rough050"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": 10000.0,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough050"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "EXACT_ZERO_IWP",
+      "expected": {
+        "bands": {
+          "550": {
+            "g": null,
+            "k_ext_m2_kg": null,
+            "source_effective_radius_um": null,
+            "ssa": null,
+            "tau": 0.0,
+            "transmission": 1.0
+          },
+          "575": {
+            "g": null,
+            "k_ext_m2_kg": null,
+            "source_effective_radius_um": null,
+            "ssa": null,
+            "tau": 0.0,
+            "transmission": 1.0
+          },
+          "600": {
+            "g": null,
+            "k_ext_m2_kg": null,
+            "source_effective_radius_um": null,
+            "ssa": null,
+            "tau": 0.0,
+            "transmission": 1.0
+          },
+          "650": {
+            "g": null,
+            "k_ext_m2_kg": null,
+            "source_effective_radius_um": null,
+            "ssa": null,
+            "tau": 0.0,
+            "transmission": 1.0
+          },
+          "700": {
+            "g": null,
+            "k_ext_m2_kg": null,
+            "source_effective_radius_um": null,
+            "ssa": null,
+            "tau": 0.0,
+            "transmission": 1.0
+          },
+          "750": {
+            "g": null,
+            "k_ext_m2_kg": null,
+            "source_effective_radius_um": null,
+            "ssa": null,
+            "tau": 0.0,
+            "transmission": 1.0
+          }
+        },
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "UNKNOWN",
+        "iwp_kg_m2": 0.0,
+        "maximum_dimension_um": null,
+        "missing_reason": "",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "NO_ICE_CONDENSATE_AT_NATIVE_STATE",
+        "surface_roughness": "UNKNOWN"
+      },
+      "input": {
+        "ice_habit": null,
+        "iwp_kg_m2": 0.0,
+        "maximum_dimension_um": null,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": null
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "INCOMPLETE_VERTICAL_SUPPORT",
+      "expected": {
+        "bands": {},
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "UNKNOWN",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": null,
+        "missing_reason": "NATIVE_VERTICAL_COMPLETENESS_LT_1",
+        "native_vertical_completeness": 0.5,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_IWP_INCOMPLETE_NATIVE_VERTICAL_SUPPORT",
+        "surface_roughness": "UNKNOWN"
+      },
+      "input": {
+        "ice_habit": null,
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": null,
+        "native_vertical_completeness": 0.5,
+        "surface_roughness": null
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    },
+    {
+      "case_id": "POSITIVE_IWP_DMAX_MISSING_FAIL_CLOSED",
+      "expected": {
+        "bands": {},
+        "contract_version": "FIRECLOUD_ICE_OPTICS_V1",
+        "evaluator_version": "ICE_OPTICS_EVALUATOR_V1_1",
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": null,
+        "missing_reason": "NO_NATIVE_OR_CALIBRATED_ICE_DMAX",
+        "native_vertical_completeness": 1.0,
+        "portable_contract_version": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1",
+        "state": "ICE_MAXIMUM_DIMENSION_MISSING",
+        "surface_roughness": "Rough000"
+      },
+      "input": {
+        "ice_habit": "10_plates",
+        "iwp_kg_m2": 0.01,
+        "maximum_dimension_um": null,
+        "native_vertical_completeness": 1.0,
+        "surface_roughness": "Rough000"
+      },
+      "purpose": "SOFTWARE_VALIDATION_ONLY"
+    }
+  ]
+}

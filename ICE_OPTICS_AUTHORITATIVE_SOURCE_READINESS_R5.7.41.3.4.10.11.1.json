@@ -1,0 +1,22 @@
+{
+  "version": "1.0.0-R5.7.41.3.4.10.11.1",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "source_dataset": "TAMU_ICE_SINGLE_SCATTERING_V2",
+  "source_version": "Yang2013_Bi2017_V2",
+  "archive_md5_expected": "2fb9bbab2c2c735a869c863a680e2f70",
+  "archive_md5_user_verified": true,
+  "user_extracted_isca_count": 27,
+  "source_contract_correction": {
+    "canonical_HC_source_directory": "hollow_column",
+    "authoritative_primary_size_coordinate": "maximum_dimension_um",
+    "source_geometry_policy": "ROWWISE_SOURCE_GEOMETRY_PRESERVED_DMAX_FIRST",
+    "effective_radius_runtime_key": false,
+    "portable_contract": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1"
+  },
+  "real_sample_validation": {
+    "HBR_Rough000": {"status": "PASS", "target_band_pass": 6, "target_band_fail": 0, "max_volume_relative_spread": 1.598301175790902},
+    "SBR_Rough000": {"status": "PASS", "target_band_pass": 6, "target_band_fail": 0, "max_volume_relative_spread": 1.1122642597127481}
+  },
+  "full_27_source_retest": "REQUIRED_ON_USER_LOCAL_EXTRACTED_SOURCE",
+  "physics_promotion_allowed": false
+}

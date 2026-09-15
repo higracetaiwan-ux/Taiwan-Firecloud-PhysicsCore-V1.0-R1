@@ -30,8 +30,8 @@ from .ice_cloud_spectral_optics import (
     validate_ice_optics_lut,
 )
 
-AUTHORITATIVE_SOURCE_CONTRACT_VERSION = "FIRECLOUD_ICE_OPTICS_TAMU_V2_SOURCE_V1"
-AUTHORITATIVE_BUILD_GATE_VERSION = "FIRECLOUD_ICE_OPTICS_AUTHORITATIVE_BUILD_GATE_V1"
+AUTHORITATIVE_SOURCE_CONTRACT_VERSION = "FIRECLOUD_ICE_OPTICS_TAMU_V2_SOURCE_V1_1"
+AUTHORITATIVE_BUILD_GATE_VERSION = "FIRECLOUD_ICE_OPTICS_AUTHORITATIVE_BUILD_GATE_V1_1"
 SOURCE_DATASET = "TAMU_ICE_SINGLE_SCATTERING_V2"
 SOURCE_VERSION = "Yang2013_Bi2017_V2"
 SOURCE_ZENODO_RECORD = "5348402"
@@ -59,10 +59,18 @@ HABITS: tuple[str, ...] = (
 )
 ROUGHNESS_STATES: tuple[str, ...] = ("Rough000", "Rough003", "Rough050")
 
-# Geometry in isca.dat should be particle geometry rather than a spectral
-# property.  Allow tiny text/round-off differences while still detecting a
-# malformed source extraction.
-GEOMETRY_RELATIVE_SPREAD_TOLERANCE = 1.0e-6
+# Canonical Firecloud habit names are kept stable, while source directory names
+# follow the published Yang/Bi archive.  In the downloaded shortwave archive the
+# hollow-column directory is ``hollow_column`` rather than ``HC``.
+HABIT_SOURCE_DIR_ALIASES: dict[str, tuple[str, ...]] = {
+    "HC": ("hollow_column", "HC"),
+}
+
+# Yang/Bi V2 HBR/SBR rows can carry wavelength-dependent volume metadata for the
+# same Dmax.  Therefore wavelength invariance of V/A is diagnostic only.  The
+# authoritative source coordinate is habit + roughness + Dmax + wavelength.
+SOURCE_PRIMARY_SIZE_COORDINATE = "maximum_dimension_um"
+SOURCE_GEOMETRY_POLICY = "ROWWISE_SOURCE_GEOMETRY_PRESERVED_DMAX_FIRST"
 
 
 @dataclass(frozen=True)
@@ -79,6 +87,9 @@ class SourceFileRecord:
     min_maximum_dimension_um: float | None = None
     max_maximum_dimension_um: float | None = None
     geometry_consistent: bool | None = None
+    max_volume_relative_spread_across_wavelength: float | None = None
+    max_projected_area_relative_spread_across_wavelength: float | None = None
+    geometry_policy: str = SOURCE_GEOMETRY_POLICY
     source_sha256: str | None = None
     status: str = "UNINSPECTED"
     detail: str = ""
@@ -112,7 +123,11 @@ def authoritative_source_manifest() -> dict[str, Any]:
         },
         "readme": {"filename": SOURCE_README, "md5": SOURCE_README_MD5},
         "habits": list(HABITS),
+        "habit_source_directory_aliases": {k: list(v) for k, v in HABIT_SOURCE_DIR_ALIASES.items()},
         "roughness_states": list(ROUGHNESS_STATES),
+        "authoritative_primary_size_coordinate": SOURCE_PRIMARY_SIZE_COORDINATE,
+        "source_geometry_policy": SOURCE_GEOMETRY_POLICY,
+        "effective_radius_semantics": "SOURCE_ROW_DERIVED_DIAGNOSTIC_MAPPING_COORDINATE_NOT_AUTHORITATIVE_CROSS_BAND_KEY",
         "particle_size_count": SOURCE_EXPECTED_SIZE_COUNT,
         "particle_size_range_um": list(SOURCE_PARTICLE_SIZE_RANGE_UM),
         "expected_isca_rows_per_habit_roughness": SOURCE_EXPECTED_ISCA_ROWS,
@@ -184,12 +199,15 @@ def _candidate_source_roots(root: Path) -> list[Path]:
 
 def resolve_isca_path(root: str | Path, ice_habit: str, surface_roughness: str) -> Path:
     base = Path(root).expanduser()
+    source_dirs = HABIT_SOURCE_DIR_ALIASES.get(str(ice_habit), (str(ice_habit),))
     for candidate in _candidate_source_roots(base):
-        p = candidate / ice_habit / surface_roughness / "isca.dat"
-        if p.exists():
-            return p
-    # Return canonical expected path even if absent, for actionable audit output.
-    return base / "Data_0.2_15.25" / ice_habit / surface_roughness / "isca.dat"
+        for source_dir in source_dirs:
+            p = candidate / source_dir / surface_roughness / "isca.dat"
+            if p.exists():
+                return p
+    # Return the published/primary alias even if absent, for actionable audit output.
+    source_dir = source_dirs[0]
+    return base / "Data_0.2_15.25" / source_dir / surface_roughness / "isca.dat"
 
 
 def _relative_spread(values: pd.Series) -> float:
@@ -212,8 +230,9 @@ def _geometry_consistency(raw: pd.DataFrame) -> tuple[bool, float, float]:
             max_v_spread = max(max_v_spread, v)
         if math.isfinite(a):
             max_a_spread = max(max_a_spread, a)
-    ok = max(max_v_spread, max_a_spread) <= GEOMETRY_RELATIVE_SPREAD_TOLERANCE
-    return ok, max_v_spread, max_a_spread
+    # Diagnostic only: wavelength-dependent source geometry is permitted.
+    invariant = max(max_v_spread, max_a_spread) <= 1.0e-6
+    return invariant, max_v_spread, max_a_spread
 
 
 def inspect_isca_file(path: str | Path, *, ice_habit: str, surface_roughness: str) -> tuple[SourceFileRecord, pd.DataFrame | None]:
@@ -278,8 +297,9 @@ def inspect_isca_file(path: str | Path, *, ice_habit: str, surface_roughness: st
             reasons.append(f"min_maximum_dimension_um={float(sizes.min())}, expected={SOURCE_PARTICLE_SIZE_RANGE_UM[0]}")
         if not math.isclose(float(sizes.max()), SOURCE_PARTICLE_SIZE_RANGE_UM[1], rel_tol=0.0, abs_tol=1e-9):
             reasons.append(f"max_maximum_dimension_um={float(sizes.max())}, expected={SOURCE_PARTICLE_SIZE_RANGE_UM[1]}")
-    if not geometry_ok:
-        reasons.append(f"geometry varies across wavelength: volume spread={v_spread:.3g}, area spread={a_spread:.3g}")
+    # Do not fail on wavelength-dependent V/A.  HBR/SBR in the authoritative
+    # Yang/Bi V2 source contain such rows.  We preserve each source row's V/A
+    # and compute k_ext on the Dmax+wavelength row itself.
 
     finite_optics = raw[["extinction_efficiency", "single_scattering_albedo", "asymmetry_parameter"]].replace([np.inf, -np.inf], np.nan)
     if finite_optics.isna().any().any():
@@ -306,9 +326,16 @@ def inspect_isca_file(path: str | Path, *, ice_habit: str, surface_roughness: st
         min_maximum_dimension_um=float(sizes.min()) if len(sizes) else None,
         max_maximum_dimension_um=float(sizes.max()) if len(sizes) else None,
         geometry_consistent=geometry_ok,
+        max_volume_relative_spread_across_wavelength=float(v_spread),
+        max_projected_area_relative_spread_across_wavelength=float(a_spread),
+        geometry_policy=SOURCE_GEOMETRY_POLICY,
         source_sha256=_sha256_file(p),
         status="PASS" if not reasons else "FAIL",
-        detail="; ".join(reasons),
+        detail=(
+            "; ".join(reasons) if reasons else
+            ("SOURCE_GEOMETRY_WAVELENGTH_INVARIANT" if geometry_ok else
+             f"SOURCE_GEOMETRY_WAVELENGTH_DEPENDENT_ACCEPTED: volume spread={v_spread:.3g}, area spread={a_spread:.3g}")
+        ),
     )
     return record, raw
 
@@ -402,13 +429,14 @@ def _lut_group_qa(lut: pd.DataFrame) -> dict[str, Any]:
     six_band_groups = int((group_counts == len(ICE_OPTICS_WAVELENGTHS_NM)).sum())
     expected_groups = len(HABITS) * len(ROUGHNESS_STATES) * SOURCE_EXPECTED_SIZE_COUNT
 
-    # Detect ambiguity in the runtime r_eff coordinate.  The portable evaluator
-    # keys by effective radius within each habit/roughness group, so duplicate
-    # radius values mapped to different Dmax would be ambiguous and must be
-    # resolved scientifically before release.
-    radius_table = lut[["ice_habit", "surface_roughness", "maximum_dimension_um", "effective_radius_um"]].drop_duplicates()
-    radius_dups = radius_table.duplicated(["ice_habit", "surface_roughness", "effective_radius_um"], keep=False)
-    ambiguous_radius_rows = int(radius_dups.sum())
+    # r_eff is source-row-derived diagnostic metadata and may vary by wavelength
+    # for one Dmax.  It is intentionally NOT a release key in the Dmax-first
+    # authoritative contract.  Report variation for provenance, but do not fail.
+    reff_span = (
+        lut.groupby(["ice_habit", "surface_roughness", "maximum_dimension_um"])["effective_radius_um"]
+        .agg(lambda x: float(pd.to_numeric(x, errors="coerce").max() - pd.to_numeric(x, errors="coerce").min()))
+    )
+    wavelength_dependent_reff_groups = int((reff_span > 1e-9).sum())
 
     reasons: list[str] = []
     if len(lut) != expected_rows:
@@ -419,8 +447,6 @@ def _lut_group_qa(lut: pd.DataFrame) -> dict[str, Any]:
         reasons.append(f"duplicate source-size-band keys={dup}")
     if nonfinite:
         reasons.append(f"nonfinite optical rows={nonfinite}")
-    if ambiguous_radius_rows:
-        reasons.append(f"ambiguous effective-radius coordinate rows={ambiguous_radius_rows}")
     if (lut["mass_extinction_coefficient_m2_kg"] < 0).any():
         reasons.append("negative k_ext")
     if (~lut["single_scattering_albedo"].between(0.0, 1.0)).any():
@@ -435,7 +461,9 @@ def _lut_group_qa(lut: pd.DataFrame) -> dict[str, Any]:
         "expected_six_band_group_count": expected_groups,
         "duplicate_key_rows": dup,
         "nonfinite_rows": nonfinite,
-        "ambiguous_effective_radius_rows": ambiguous_radius_rows,
+        "primary_size_coordinate": SOURCE_PRIMARY_SIZE_COORDINATE,
+        "effective_radius_runtime_key": False,
+        "wavelength_dependent_effective_radius_group_count": wavelength_dependent_reff_groups,
         "k_ext_min_m2_kg": float(lut["mass_extinction_coefficient_m2_kg"].min()),
         "k_ext_max_m2_kg": float(lut["mass_extinction_coefficient_m2_kg"].max()),
         "ssa_min": float(lut["single_scattering_albedo"].min()),
@@ -525,8 +553,10 @@ def build_authoritative_six_band_lut(
         "overall_status": "PASS" if not release_reasons else "FAIL",
         "release_ready": not release_reasons,
         "reasons": release_reasons,
+        "authoritative_primary_size_coordinate": SOURCE_PRIMARY_SIZE_COORDINATE,
+        "source_geometry_policy": SOURCE_GEOMETRY_POLICY,
         "physics_promotion_allowed": False,
-        "note": "PASS certifies source-to-portable-LUT construction only; it does not promote ice optics into Formation/Viewing/Glow production physics.",
+        "note": "PASS certifies authoritative source-to-six-band Dmax-first LUT construction only; it does not promote ice optics into Formation/Viewing/Glow production physics or fabricate an r_eff-to-Dmax mapping.",
     }
     return AuthoritativeBuildResult(lut=lut, source_inventory=inventory, spectral_grid_audit=spectral, qa_summary=qa)
 

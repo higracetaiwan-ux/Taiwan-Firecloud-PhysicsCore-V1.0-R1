@@ -14,6 +14,7 @@ from firecloud.ice_optics_portable import (
     PORTABLE_PACKAGE_CONTRACT_VERSION,
     build_portable_package_files,
     build_portable_package_zip_bytes,
+    evaluate_portable_ice_optics,
     portable_contract_payload,
 )
 
@@ -42,7 +43,7 @@ def _fake_lut():
 
 
 def test_version_and_portable_contract_runtime_decoupling():
-    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.11'
+    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.11.2'
     c=portable_contract_payload(physicscore_version=firecloud.__version__, science_baseline='R5.7.41.2_SHADOW_COT_AB_FROZEN')
     assert c['portable_package_contract_version']==PORTABLE_PACKAGE_CONTRACT_VERSION
     assert c['runtime_dependency_on_physicscore']=='NONE'
@@ -50,7 +51,36 @@ def test_version_and_portable_contract_runtime_decoupling():
     assert c['runtime_dependency_on_streamlit']=='NONE'
     assert c['consumer']=='WINDY_FIRECLOUD_OBSERVER'
     assert c['wavelengths_nm']==list(ICE_OPTICS_WAVELENGTHS_NM)
+    assert c['primary_size_coordinate']=='maximum_dimension_um'
+    assert c['interpolation']['maximum_dimension']=='LINEAR_WITHIN_SAME_HABIT_AND_ROUGHNESS_ONLY'
+    assert c['interpolation']['effective_radius']=='DIAGNOSTIC_ONLY_NOT_RUNTIME_LOOKUP_AXIS'
 
+
+
+def test_portable_evaluator_is_dmax_first_even_when_reff_varies_by_wavelength():
+    lut=_fake_lut().copy()
+    # Make source-derived r_eff wavelength-dependent while Dmax remains stable.
+    mask=lut['maximum_dimension_um'].eq(40.0)
+    lut.loc[mask,'effective_radius_um']=lut.loc[mask,'wavelength_nm'].map({550:18.0,575:18.5,600:19.0,650:19.5,700:20.0,750:20.5})
+    lut.loc[mask,'effective_diameter_um']=2*lut.loc[mask,'effective_radius_um']
+    lut=validate_ice_optics_lut(lut)
+    got=evaluate_portable_ice_optics(
+        lut, iwp_kg_m2=0.01, native_vertical_completeness=1.0,
+        maximum_dimension_um=40.0, ice_habit='8_columns', surface_roughness='Rough050'
+    )
+    assert got['state']=='ICE_SIX_BAND_OPTICS_READY'
+    assert got['lookup_state']=='EXACT_DMAX_LUT_ROW'
+    assert set(map(int,got['bands'].keys()))==set(ICE_OPTICS_WAVELENGTHS_NM)
+    assert len({v['source_effective_radius_um'] for v in got['bands'].values()})>1
+
+
+def test_positive_iwp_without_dmax_fails_closed_no_reff_substitution():
+    got=evaluate_portable_ice_optics(
+        _fake_lut(), iwp_kg_m2=0.01, native_vertical_completeness=1.0,
+        maximum_dimension_um=None, ice_habit='8_columns', surface_roughness='Rough050'
+    )
+    assert got['state']=='ICE_MAXIMUM_DIMENSION_MISSING'
+    assert got['missing_reason']=='NO_NATIVE_OR_CALIBRATED_ICE_DMAX'
 
 def test_portable_package_contains_lut_evaluator_contract_and_vectors():
     lut=_fake_lut()

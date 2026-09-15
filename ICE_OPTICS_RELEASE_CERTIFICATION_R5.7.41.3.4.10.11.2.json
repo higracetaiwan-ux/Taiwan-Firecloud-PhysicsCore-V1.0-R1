@@ -1,0 +1,45 @@
+{
+  "release_version": "V1.0-R5.7.41.3.4.10.11.2",
+  "internal_version": "1.0.0-R5.7.41.3.4.10.11.2",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "parent_test_zip": "Taiwan-Firecloud-PhysicsCore-V1.0-R5.7.41.3.4.10.11.1-TEST.zip",
+  "parent_test_zip_sha256": "3fe6ae6898c47d5c6c7279163e4b6a2266201d7270ca30cf853bd69fdcfe2a49",
+  "authoritative_source": {
+    "dataset": "TAMU_ICE_SINGLE_SCATTERING_V2",
+    "source_version": "Yang2013_Bi2017_V2",
+    "archive_md5": "2fb9bbab2c2c735a869c863a680e2f70",
+    "source_files_pass": 27,
+    "source_files_fail": 0,
+    "spectral_targets_pass": 162,
+    "spectral_targets_fail": 0,
+    "lut_rows": 30618,
+    "six_band_groups": 5103,
+    "primary_size_coordinate": "maximum_dimension_um",
+    "source_geometry_policy": "ROWWISE_SOURCE_GEOMETRY_PRESERVED_DMAX_FIRST",
+    "release_ready": true,
+    "authoritative_build_manifest_sha256": "5506041848f96caa516047a5944fdbb1a5f27d62452d07d5a050fca4e29b371e",
+    "authoritative_build_lut_sha256": "d6a9b1be541044b2fc95c1794d3568e4a7183c35f66a9c37b8d265ebcd9743c5"
+  },
+  "portable_v1_1": {
+    "artifact": "Firecloud-Ice-Optics-Portable-V1.1-R5.7.41.3.4.10.11.1.zip",
+    "sha256": "802d82b49cef4e20a4458bc50f063133a58b19fcfcb4e49941cc8ca16f7afd05",
+    "validation": "PASS",
+    "node_reference_vectors": "12/12 PASS",
+    "python_js_randomized_parity": "100/100 PASS",
+    "typescript_strict_compile": "PASS",
+    "bundled_portable_lut_sha256": "99c64fd6b9d46256b325d4c08c39b188a7877e033a6a1bfa260f16e366a9398d",
+    "note": "Portable LUT is builder reserialization; byte hash need not equal authoritative build LUT hash."
+  },
+  "runtime_alignment": {
+    "diagnostic_primary_size_coordinate": "maximum_dimension_um",
+    "effective_radius_runtime_key": false,
+    "reff_to_dmax_substitution_allowed": false,
+    "physics_promotion_allowed": false
+  },
+  "regression": {
+    "working_tree_full_pytest": "766 passed / 0 failed / 1 existing pandas FutureWarning",
+    "targeted_ice_pipeline": "29 passed / 0 failed",
+    "fresh_extract_full_pytest": "766 passed / 0 failed / 1 existing pandas FutureWarning",
+    "candidate_validation": "PASS"
+  }
+}

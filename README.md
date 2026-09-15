@@ -1,6 +1,24 @@
-> Current release: **V1.0-R5.7.41.3.4.10.11** — Authoritative Ice LUT Source Intake + QA Build Gate; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.11.2** — Dmax Runtime Contract Alignment + Certified Portable Bundle; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.11
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.11.2
+
+
+## R5.7.41.3.4.10.11.2 Dmax Runtime Contract Alignment + Certified Portable Bundle
+
+- PhysicsCore Phase-1 Ice diagnostic runtime 已由舊 `r_eff` lookup 改為 authoritative `maximum_dimension_um`（Dmax）lookup。
+- Positive IWP 若缺 calibrated/native Dmax，固定 fail-close 為 `ICE_MAXIMUM_DIMENSION_MISSING`；即使存在 `ice_effective_radius_um` 也不得代替 Dmax。
+- CASE / Analysis Integrity 現在要求 `ice_maximum_dimension_um` 與 `primary_size_coordinate=maximum_dimension_um`。
+- 已驗證的 Portable V1.1 science artifact / source manifest / contract / reference vectors / certification 納入完整 release provenance。
+- Bundled portable LUT 不會自動進入 Production Formation / Viewing / Glow；`physics_promotion_allowed=false` 維持不變。
+
+## R5.7.41.3.4.10.11.1 TAMU V2 Source Contract Correction + Dmax-First Ice LUT
+
+- 修正 Yang/Bi V2 hollow-column 實際 source directory `hollow_column` 與 Firecloud canonical habit `HC` 的 resolver alias。
+- HBR/SBR 的 wavelength-dependent `volume_um3` 不再被錯誤當成 source corruption；每一個 Dmax+wavelength row 保留原始 V/A/Qext/SSA/g。
+- Authoritative key 固定為 `habit + roughness + maximum_dimension_um + wavelength_nm`。
+- `effective_radius_um` 保留為 source-row-derived 診斷/映射欄位，不再是 authoritative cross-band key。
+- WINDY portable contract 升為 `FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1`，以 Dmax 為 lookup/interpolation 軸；不得自行把 r_eff 轉成 Dmax。
+- Ice Optics 仍不得晉升 Production Formation / Viewing / Glow。
 
 ## R5.7.41.3.4.10.11 Authoritative Ice LUT Source Intake + QA Build Gate
 

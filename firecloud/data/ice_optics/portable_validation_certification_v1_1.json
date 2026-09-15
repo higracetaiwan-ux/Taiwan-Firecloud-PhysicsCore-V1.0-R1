@@ -1,0 +1,29 @@
+{
+  "artifact": "Firecloud-Ice-Optics-Portable-V1.1-R5.7.41.3.4.10.11.1.zip",
+  "sha256": "802d82b49cef4e20a4458bc50f063133a58b19fcfcb4e49941cc8ca16f7afd05",
+  "byte_size": 1466710,
+  "validation_status": "PASS",
+  "package_structure_pass": true,
+  "internal_manifest_hashes_pass": true,
+  "lut_rows": 30618,
+  "six_band_groups": 5103,
+  "bands_nm": [
+    550,
+    575,
+    600,
+    650,
+    700,
+    750
+  ],
+  "node_reference_vectors": {
+    "pass": 12,
+    "fail": 0
+  },
+  "python_js_randomized_parity": {
+    "pass": 100,
+    "fail": 0
+  },
+  "typescript_strict_compile": "PASS",
+  "physics_promotion_allowed": false,
+  "primary_size_coordinate": "maximum_dimension_um"
+}

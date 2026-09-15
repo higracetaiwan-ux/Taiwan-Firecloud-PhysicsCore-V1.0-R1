@@ -1190,6 +1190,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.11.1**：TAMU V2 Source Contract Correction + Dmax-First Ice LUT。修正 `hollow_column` source resolver，允許 HBR/SBR 官方 source-row wavelength-dependent geometry，改以 `habit + roughness + Dmax + wavelength` 為 authoritative key；`r_eff` 降為診斷/映射欄位，不改 Frozen Science。
 - **R5.7.41.3.4.10.11**：Authoritative Ice LUT Source Intake + QA Build Gate。建立 Yang/Bi V2 來源驗證、27 組 habit×roughness source inventory、六波段 spectral-grid audit 與 fail-closed LUT release gate；不改 Frozen Science。
 - **R5.7.41.3.4.10.10.2**：UI Information Architecture Cleanup。只整理主畫面的資訊層級、版本歷史、資料來源與 Runtime 顯示；不改 Frozen Science。
 - **R5.7.41.3.4.10.10.1**：Ice Optics Portable WINDY Runtime Decoupling。PhysicsCore 為 Ice Engine/LUT 發布權威；WINDY 使用 standalone portable package。
@@ -1806,7 +1807,7 @@ with st.expander("Ice Cloud Spectral Optics｜PhysicsCore Authoring / WINDY Cons
         f"""
 - 固定六波段：**{SIX_BAND_LABEL}**。
 - PhysicsCore：Ice Engine/LUT 建立、校準、驗證、版本發布。
-- WINDY：匯入 `FIRECLOUD_ICE_OPTICS_PORTABLE_V1` 後本地 lookup/interpolation；**不依賴 PhysicsCore、Python 或 Streamlit runtime**。
+- WINDY：匯入 `FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1` 後以 Dmax 為主軸本地 lookup/interpolation；**不依賴 PhysicsCore、Python 或 Streamlit runtime**。
 - Authoritative calibrated LUT 尚未 READY 時，positive IWP 不得以固定 `r_eff` / habit 或未校準係數補造 `tau_ice`。
 - 現階段 Ice Optics 保持 diagnostic/no-promotion；Phase 3 另立 release gate 才能接回 production Formation / Canvas / Viewing。
 """
@@ -1993,7 +1994,7 @@ if run or st.session_state.analysis_result is not None:
     with st.expander("Ice Cloud Spectral Optics｜PhysicsCore Authoring + WINDY Standalone Portable Package", expanded=False):
         st.caption(
             "R5.7.41.3.4.10.10.1 正式拆開部署邊界：PhysicsCore 只負責 Ice Engine/LUT 建立、校準、驗證與發布；"
-            "WINDY 匯入 FIRECLOUD_ICE_OPTICS_PORTABLE_V1 後在瀏覽器本地 lookup/interpolation，不需要 PhysicsCore、Python 或 Streamlit 執行。"
+            "WINDY 匯入 FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1 後以 Dmax 為主軸在瀏覽器本地 lookup/interpolation，不需要 PhysicsCore、Python 或 Streamlit 執行。"
             "目前 CASE 的 WINDY Summary 仍保留作 A/B/Field 驗證，不是 WINDY 未來 runtime 必要依賴。"
         )
         if _ice_lut_state == "ICE_OPTICS_LUT_READY":

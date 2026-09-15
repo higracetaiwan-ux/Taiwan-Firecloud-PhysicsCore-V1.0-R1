@@ -39,7 +39,7 @@ def _fake_lut():
 
 
 def test_version_and_six_band_contract():
-    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.11'
+    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.11.2'
     assert ICE_OPTICS_WAVELENGTHS_NM == (550,575,600,650,700,750)
 
 
@@ -74,12 +74,12 @@ def test_runtime_missing_semantics_and_tau_formula():
         {
             'time':'2026-09-15T05:40:00+08:00','solar_altitude_deg':-2.0,'direction_offset_deg':0.0,'distance_km':60.0,
             'native_vertical_completeness':1.0,'ice_water_path_proxy_gm3_km':0.02,
-            'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
+            'ice_maximum_dimension_um':60.0,'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
         },
         {
             'time':'2026-09-15T05:40:00+08:00','solar_altitude_deg':-2.0,'direction_offset_deg':5.0,'distance_km':80.0,
             'native_vertical_completeness':0.5,'ice_water_path_proxy_gm3_km':0.03,
-            'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
+            'ice_maximum_dimension_um':60.0,'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
         },
     ])
     status=IceOpticsLUTStatus(True,'test.csv',len(lut),True,'ICE_OPTICS_LUT_READY')
@@ -97,11 +97,63 @@ def test_runtime_missing_semantics_and_tau_formula():
     assert not rt['formation_promotion_allowed'].any()
 
 
-def test_no_lut_positive_iwp_fail_closes():
+
+def test_positive_iwp_with_reff_but_without_dmax_fails_closed_no_reff_substitution():
+    lut=_fake_lut()
     native=pd.DataFrame([{
         'solar_altitude_deg':-2.0,'direction_offset_deg':0.0,'distance_km':60.0,
         'native_vertical_completeness':1.0,'ice_water_path_proxy_gm3_km':0.02,
         'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
+    }])
+    status=IceOpticsLUTStatus(True,'test.csv',len(lut),True,'ICE_OPTICS_LUT_READY')
+    rt=build_ice_cloud_spectral_optics_runtime(native,lut=lut,lut_status=status)
+    assert rt.iloc[0]['ice_optics_state']=='ICE_MAXIMUM_DIMENSION_MISSING'
+    assert rt.iloc[0]['ice_optics_missing_reason']=='NO_NATIVE_OR_CALIBRATED_ICE_DMAX'
+    assert pd.isna(rt.iloc[0]['ice_maximum_dimension_um'])
+    assert rt.iloc[0]['ice_effective_radius_um']==30.0
+    assert all(pd.isna(rt.iloc[0][f'tau_ice_{wl}']) for wl in ICE_OPTICS_WAVELENGTHS_NM)
+
+
+def test_dmax_lookup_is_cross_band_stable_when_source_reff_is_wavelength_dependent():
+    rows=[]
+    for dmax,scale in [(40.0,1.0),(80.0,2.0)]:
+        for idx,wl in enumerate(ICE_OPTICS_WAVELENGTHS_NM):
+            rows.append({
+                'wavelength_nm':wl,
+                'maximum_dimension_um':dmax,
+                'effective_diameter_um':10.0*scale + idx,
+                'effective_radius_um':5.0*scale + idx*0.5,
+                'ice_habit':'HBR',
+                'surface_roughness':'Rough000',
+                'mass_extinction_coefficient_m2_kg':100.0*scale + idx,
+                'single_scattering_albedo':0.999,
+                'asymmetry_parameter':0.75,
+                'source_dataset':'TEST_WAVELENGTH_DEPENDENT_REFF',
+                'source_version':'v1',
+                'source_record_provenance':'TEST',
+            })
+    lut=validate_ice_optics_lut(pd.DataFrame(rows))
+    native=pd.DataFrame([{
+        'solar_altitude_deg':-2.0,'direction_offset_deg':0.0,'distance_km':60.0,
+        'native_vertical_completeness':1.0,'ice_water_path_proxy_gm3_km':0.01,
+        'ice_maximum_dimension_um':60.0,'ice_effective_radius_um':999.0,
+        'ice_habit':'HBR','ice_surface_roughness':'Rough000',
+    }])
+    status=IceOpticsLUTStatus(True,'test.csv',len(lut),True,'ICE_OPTICS_LUT_READY')
+    rt=build_ice_cloud_spectral_optics_runtime(native,lut=lut,lut_status=status)
+    assert rt.iloc[0]['ice_optics_state']=='ICE_SIX_BAND_OPTICS_READY'
+    assert rt.iloc[0]['ice_optics_lookup_state']=='LINEAR_DMAX_INTERPOLATION_WITHIN_LUT'
+    assert rt.iloc[0]['ice_maximum_dimension_um']==60.0
+    # Deliberately nonsensical r_eff is preserved only as metadata and cannot alter lookup.
+    assert rt.iloc[0]['ice_effective_radius_um']==999.0
+    assert all(pd.notna(rt.iloc[0][f'tau_ice_{wl}']) for wl in ICE_OPTICS_WAVELENGTHS_NM)
+
+
+def test_no_lut_positive_iwp_fail_closes():
+    native=pd.DataFrame([{
+        'solar_altitude_deg':-2.0,'direction_offset_deg':0.0,'distance_km':60.0,
+        'native_vertical_completeness':1.0,'ice_water_path_proxy_gm3_km':0.02,
+        'ice_maximum_dimension_um':60.0,'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
     }])
     status=IceOpticsLUTStatus(False,None,0,False,'ICE_OPTICS_LUT_NOT_CONFIGURED')
     rt=build_ice_cloud_spectral_optics_runtime(native,lut=pd.DataFrame(columns=[
@@ -117,13 +169,14 @@ def test_windy_export_contract_is_compact_and_non_promoting():
     native=pd.DataFrame([{
         'time':'2026-09-15T05:40:00+08:00','solar_altitude_deg':-2.0,'direction_offset_deg':0.0,'distance_km':60.0,
         'native_vertical_completeness':1.0,'ice_water_path_proxy_gm3_km':0.02,
-        'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
+        'ice_maximum_dimension_um':60.0,'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
     }])
     rt=build_ice_cloud_spectral_optics_runtime(native,lut=lut,lut_status=status)
     summary=summarize_ice_cloud_spectral_optics(rt)
     frame,payload=build_windy_ice_optics_summary(summary,physicscore_version=firecloud.__version__,science_baseline='R5.7.41.2_SHADOW_COT_AB_FROZEN',lut_status=status)
     assert payload['ice_optics_contract_version']=='FIRECLOUD_ICE_OPTICS_V1'
     assert payload['wavelengths_nm']==list(ICE_OPTICS_WAVELENGTHS_NM)
+    assert payload['primary_size_coordinate']=='maximum_dimension_um'
     assert payload['physics_promotion_allowed'] is False
     assert len(payload['records'])==1
     assert frame.iloc[0]['distance_band']=='40-100km_EXTENDED_CANVAS'
@@ -134,6 +187,8 @@ def test_contract_payload_freezes_missing_semantics():
     assert c['wavelengths_nm']==list(ICE_OPTICS_WAVELENGTHS_NM)
     assert 'Missing != Clear != Zero' in c['missing_semantics']
     assert 'tau_ice_lambda = IWP_kg_m2 * k_ext_ice_lambda_m2_kg' == c['tau_definition']
+    assert c['primary_size_coordinate']=='maximum_dimension_um'
+    assert 'r_eff-to-Dmax' in c['missing_semantics']
 
 def test_analysis_integrity_guards_ice_optics_and_windy_contract():
     from firecloud.case_integrity import build_analysis_integrity_audit
@@ -141,7 +196,7 @@ def test_analysis_integrity_guards_ice_optics_and_windy_contract():
     native=pd.DataFrame([{
         'time':'2026-09-15T05:40:00+08:00','solar_altitude_deg':-2.0,'direction_offset_deg':0.0,'distance_km':60.0,
         'native_vertical_completeness':1.0,'ice_water_path_proxy_gm3_km':0.02,
-        'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
+        'ice_maximum_dimension_um':60.0,'ice_effective_radius_um':30.0,'ice_habit':'8_columns','ice_surface_roughness':'Rough050',
     }])
     rt=build_ice_cloud_spectral_optics_runtime(native,lut=lut,lut_status=status)
     sm=summarize_ice_cloud_spectral_optics(rt)

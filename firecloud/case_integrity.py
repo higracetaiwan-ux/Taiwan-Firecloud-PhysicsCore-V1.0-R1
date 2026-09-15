@@ -365,7 +365,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         _ssa_cols = [f"ssa_ice_{w}" for w in _wl]
         _g_cols = [f"g_ice_{w}" for w in _wl]
         _required_cols = {
-            "native_iwp_kg_m2", "ice_effective_radius_um", "ice_habit",
+            "native_iwp_kg_m2", "ice_maximum_dimension_um", "ice_effective_radius_um", "ice_habit",
             "surface_roughness", "ice_optics_contract_version",
             "ice_optics_phase", "ice_optics_state", "ice_optics_missing_reason",
             "physics_role", "tau_synthesis_allowed", "formation_promotion_allowed",
@@ -377,13 +377,14 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             ice_optics_contract.get("contract_version") == "FIRECLOUD_ICE_OPTICS_V1"
             and _contract_wl == _wl
             and "IWP_kg_m2" in str(ice_optics_contract.get("tau_definition", ""))
+            and ice_optics_contract.get("primary_size_coordinate") == "maximum_dimension_um"
         )
         add(
             "ICE_CLOUD_SPECTRAL_OPTICS_SIX_BAND_CONTRACT",
             PASS if (_schema_ok and _contract_ok) else FAIL,
             "ICE_CLOUD_SPECTRAL_OPTICS",
             f"rows={len(ice_optics)};wavelengths={_contract_wl};schema_ok={_schema_ok}",
-            f"FIRECLOUD_ICE_OPTICS_V1;wavelengths={_wl};six-band runtime schema",
+            f"FIRECLOUD_ICE_OPTICS_V1;wavelengths={_wl};primary_size_coordinate=maximum_dimension_um;six-band runtime schema",
             "Diagnostic/shared-export contract only; production cloud optics remain frozen.",
         )
 
@@ -445,13 +446,14 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
                 "ICE_CLOUD_SPECTRAL_OPTICS",
                 f"ready={int(_ready.sum())};positive_not_ready={int(_positive_not_ready.sum())};zero_iwp={int(_zero.sum())};missing_iwp={int(_missing_iwp.sum())}",
                 "Missing stays Missing; exact zero may yield tau=0/T=1; ready tau=IWP*k_ext",
-                ";".join(_sem_detail) if _sem_detail else "No RH/CF/seasonal proxy or hidden fixed habit/r_eff synthesis.",
+                ";".join(_sem_detail) if _sem_detail else "No RH/CF/seasonal proxy, hidden fixed habit/roughness, or r_eff-to-Dmax synthesis.",
             )
 
         _windy_ok = bool(
             isinstance(windy_ice_json, Mapping)
             and windy_ice_json.get("ice_optics_contract_version") == "FIRECLOUD_ICE_OPTICS_V1"
             and tuple(int(x) for x in windy_ice_json.get("wavelengths_nm", [])) == _wl
+            and windy_ice_json.get("primary_size_coordinate") == "maximum_dimension_um"
             and windy_ice_json.get("physics_promotion_allowed") is False
         )
         if not windy_ice_optics.empty:
@@ -465,20 +467,24 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         _portable_wl = tuple(int(x) for x in ice_optics_portable_contract.get("wavelengths_nm", [])) if isinstance(ice_optics_portable_contract, Mapping) else ()
         _portable_ok = bool(
             isinstance(ice_optics_portable_contract, Mapping)
-            and ice_optics_portable_contract.get("portable_package_contract_version") == "FIRECLOUD_ICE_OPTICS_PORTABLE_V1"
+            and ice_optics_portable_contract.get("portable_package_contract_version") in {"FIRECLOUD_ICE_OPTICS_PORTABLE_V1", "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1"}
             and ice_optics_portable_contract.get("ice_optics_contract_version") == "FIRECLOUD_ICE_OPTICS_V1"
             and ice_optics_portable_contract.get("consumer") == "WINDY_FIRECLOUD_OBSERVER"
             and ice_optics_portable_contract.get("runtime_dependency_on_physicscore") == "NONE"
             and ice_optics_portable_contract.get("runtime_dependency_on_python") == "NONE"
             and ice_optics_portable_contract.get("runtime_dependency_on_streamlit") == "NONE"
             and _portable_wl == _wl
+            and (
+                ice_optics_portable_contract.get("portable_package_contract_version") != "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1"
+                or ice_optics_portable_contract.get("primary_size_coordinate") == "maximum_dimension_um"
+            )
             and ice_optics_portable_contract.get("physics_promotion_allowed") is False
         )
         add(
             "ICE_OPTICS_PORTABLE_WINDY_RUNTIME_DECOUPLING", PASS if _portable_ok else FAIL,
             "WINDY_PORTABLE_ICE_OPTICS",
             f"portable_contract={ice_optics_portable_contract.get('portable_package_contract_version') if isinstance(ice_optics_portable_contract, Mapping) else None};runtime_dependency={ice_optics_portable_contract.get('runtime_dependency_on_physicscore') if isinstance(ice_optics_portable_contract, Mapping) else None};wavelengths={_portable_wl}",
-            "FIRECLOUD_ICE_OPTICS_PORTABLE_V1; WINDY runtime has no PhysicsCore/Python/Streamlit dependency; six-band contract preserved",
+            "FIRECLOUD_ICE_OPTICS_PORTABLE_V1/V1_1; WINDY runtime has no PhysicsCore/Python/Streamlit dependency; six-band contract preserved; V1_1 uses Dmax-first lookup",
             "PhysicsCore is the LUT authoring/calibration/release authority only; WINDY evaluates the released package locally.",
         )
         add(

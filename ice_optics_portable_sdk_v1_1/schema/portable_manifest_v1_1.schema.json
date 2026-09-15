@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "files": {
+      "type": "object"
+    },
+    "ice_optics_contract_version": {
+      "const": "FIRECLOUD_ICE_OPTICS_V1"
+    },
+    "portable_package_contract_version": {
+      "const": "FIRECLOUD_ICE_OPTICS_PORTABLE_V1_1"
+    },
+    "primary_size_coordinate": {
+      "const": "maximum_dimension_um"
+    },
+    "runtime_dependency_on_physicscore": {
+      "const": "NONE"
+    },
+    "runtime_dependency_on_python": {
+      "const": "NONE"
+    },
+    "runtime_dependency_on_streamlit": {
+      "const": "NONE"
+    },
+    "schema_version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "portable_package_contract_version",
+    "schema_version",
+    "ice_optics_contract_version",
+    "primary_size_coordinate",
+    "runtime_dependency_on_physicscore",
+    "runtime_dependency_on_python",
+    "runtime_dependency_on_streamlit",
+    "files"
+  ],
+  "title": "Firecloud Ice Optics Portable Manifest V1.1",
+  "type": "object"
+}
