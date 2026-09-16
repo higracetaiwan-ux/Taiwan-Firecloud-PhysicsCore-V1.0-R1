@@ -1173,7 +1173,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3 — Global Mapping Candidate Intake + Scheme Contract Qualification"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3B — GFS v16 Exact Scheme Pinning Evidence Gate"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1190,6 +1190,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.15**：Ice Optics Phase 2 Step 3B — GFS v16 Exact Scheme Pinning Evidence Gate。公開重現路徑釘至 GFDL v1/2019、GFS_v16 emulation namelist `reiflag=2` 與 cloud-ice effective-radius semantic；NCEP production binary exact commit 與 Yang/Bi Dmax bridge 仍 unresolved，因此 Dmax/PSD/production promotion 維持 fail-close。
 - **R5.7.41.3.4.10.14**：Ice Optics Phase 2 Step 3 — Global Mapping Candidate Intake + Scheme Contract Qualification。全球 forecast coverage 優先；GFS v16 為現行第一調查候選，GFS v17 Thompson 為未來候選；未釘死 exact scheme revision / operational config / Yang-Bi Dmax semantic bridge 前一律 fail-close。
 - **R5.7.41.3.4.10.13**：Ice Optics Phase 2 Step 2 — Authoritative Size/PSD Source Capability Registry + Eligibility Gate。建立全球來源能力分類與 source-selection fail-close。
 - **R5.7.41.3.4.10.12.1**：Phase 2 Evidence Integrity Gate Hotfix。將 capability audit、mapping eligibility、Phase 2 contract 納入 Analysis Integrity 與 CASE Archive required-evidence gate；不改 Frozen Science。
@@ -2604,6 +2605,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_source_eligibility_gate.csv", result.get("v1_ice_microphysics_source_eligibility_gate", pd.DataFrame())),
             ("ice_microphysics_global_mapping_candidate_registry.csv", result.get("v1_ice_microphysics_global_mapping_candidate_registry", pd.DataFrame())),
             ("ice_microphysics_global_mapping_qualification_gate.csv", result.get("v1_ice_microphysics_global_mapping_qualification_gate", pd.DataFrame())),
+            ("ice_microphysics_gfsv16_scheme_pin_evidence.csv", result.get("v1_ice_microphysics_gfsv16_scheme_pin_evidence", pd.DataFrame())),
+            ("ice_microphysics_gfsv16_scheme_pin_gate.csv", result.get("v1_ice_microphysics_gfsv16_scheme_pin_gate", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2688,6 +2691,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_phase2_contract.json", result.get("ice_microphysics_phase2_contract", {})),
             ("ice_microphysics_source_registry_contract.json", result.get("ice_microphysics_source_registry_contract", {})),
             ("ice_microphysics_global_mapping_candidate_contract.json", result.get("ice_microphysics_global_mapping_candidate_contract", {})),
+            ("ice_microphysics_gfsv16_scheme_pin_contract.json", result.get("ice_microphysics_gfsv16_scheme_pin_contract", {})),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

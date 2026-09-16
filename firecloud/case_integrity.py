@@ -142,6 +142,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_mapping_gate = _df(result.get("v1_ice_microphysics_global_mapping_qualification_gate"))
     ice_microphysics_mapping_contract = result.get("ice_microphysics_global_mapping_candidate_contract", {}) or {}
     ice_microphysics_mapping_candidate_required = bool(result.get("ice_microphysics_mapping_candidate_required", False))
+    ice_microphysics_gfsv16_pin_evidence = _df(result.get("v1_ice_microphysics_gfsv16_scheme_pin_evidence"))
+    ice_microphysics_gfsv16_pin_gate = _df(result.get("v1_ice_microphysics_gfsv16_scheme_pin_gate"))
+    ice_microphysics_gfsv16_pin_contract = result.get("ice_microphysics_gfsv16_scheme_pin_contract", {}) or {}
+    ice_microphysics_gfsv16_pin_required = bool(result.get("ice_microphysics_gfsv16_scheme_pin_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -739,6 +743,87 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             _cand_gate_detail,
             "global candidates may be prioritized for investigation but remain ineligible until exact scheme/version/size semantics and validation are complete",
             "GFS v16 current, GFS v17 future, ICON global, SHiELD MPv3 reference, IFS effective size and GEOS-FP remain separated by contract.",
+        )
+
+    # R5.7.41.3.4.10.15 Phase 2 Step 3B GFS v16 exact-scheme pinning gate.
+    if ice_microphysics_gfsv16_pin_required:
+        _pin_present_ok = bool(
+            not ice_microphysics_gfsv16_pin_evidence.empty
+            and not ice_microphysics_gfsv16_pin_gate.empty
+            and isinstance(ice_microphysics_gfsv16_pin_contract, Mapping)
+            and bool(ice_microphysics_gfsv16_pin_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_GFSV16_SCHEME_PIN_EVIDENCE_PRESENT",
+            PASS if _pin_present_ok else FAIL,
+            "ICE_MICROPHYSICS_GFSV16_SCHEME_PIN",
+            f"evidence_rows={len(ice_microphysics_gfsv16_pin_evidence)};gate_rows={len(ice_microphysics_gfsv16_pin_gate)};contract_present={bool(ice_microphysics_gfsv16_pin_contract)}",
+            "GFS v16 scheme-pin evidence + qualification gate + machine-readable contract all present",
+            "Evidence-only; no effective-radius→Dmax conversion or PSD reconstruction is executed.",
+        )
+
+        _pin_forbidden = {str(x) for x in ice_microphysics_gfsv16_pin_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_gfsv16_pin_contract, Mapping) else set()
+        _pin_required_forbidden = {
+            "CCPP_GFSv16_emulation_claimed_byte_identical_to_NCEP_production_binary",
+            "GFDL_v1_effective_radius_treated_as_Yang_Bi_Dmax",
+            "GFDL_MPv3_PSD_parameters_substituted_for_GFSv16_v1",
+            "reiflag2_effective_radius_bounds_used_as_Dmax_bounds",
+            "effective_radius_to_Dmax_without_habit_PSD_mass_size_contract",
+            "fixed_habit_default",
+            "fixed_surface_roughness_default",
+        }
+        _pin_contract_ok = bool(
+            isinstance(ice_microphysics_gfsv16_pin_contract, Mapping)
+            and ice_microphysics_gfsv16_pin_contract.get("contract_version") == "FIRECLOUD_ICE_GFSV16_SCHEME_PIN_V1"
+            and ice_microphysics_gfsv16_pin_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_gfsv16_pin_contract.get("mode") == "GFSV16_EXACT_SCHEME_PINNING_EVIDENCE_ONLY"
+            and ice_microphysics_gfsv16_pin_contract.get("public_reproduction_path") == "physics/MP/GFDL/v1_2019"
+            and ice_microphysics_gfsv16_pin_contract.get("emulation_namelist_reiflag") == 2
+            and ice_microphysics_gfsv16_pin_contract.get("pinned_size_semantic") == "cloud_ice_effective_radius"
+            and ice_microphysics_gfsv16_pin_contract.get("effective_radius_is_dmax") is False
+            and ice_microphysics_gfsv16_pin_contract.get("production_binary_exact_commit_pinned") is False
+            and ice_microphysics_gfsv16_pin_contract.get("dmax_mapping_eligible") is False
+            and ice_microphysics_gfsv16_pin_contract.get("psd_reconstruction_eligible") is False
+            and ice_microphysics_gfsv16_pin_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_gfsv16_pin_contract.get("frozen_science_unchanged") is True
+            and _pin_required_forbidden.issubset(_pin_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_GFSV16_SCHEME_PIN_CONTRACT_FREEZE",
+            PASS if _pin_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_GFSV16_SCHEME_PIN",
+            f"contract={ice_microphysics_gfsv16_pin_contract.get('contract_version') if isinstance(ice_microphysics_gfsv16_pin_contract, Mapping) else None};reiflag={ice_microphysics_gfsv16_pin_contract.get('emulation_namelist_reiflag') if isinstance(ice_microphysics_gfsv16_pin_contract, Mapping) else None};forbidden_shortcuts={len(_pin_forbidden)}",
+            "GFDL v1/2019 public path + reiflag=2 effective-radius semantic pinned; no Dmax reinterpretation or cross-version MPv3 substitution",
+        )
+
+        _pin_gate_ok = False
+        _pin_gate_detail = "GFS v16 scheme-pin gate missing"
+        if not ice_microphysics_gfsv16_pin_gate.empty:
+            row = ice_microphysics_gfsv16_pin_gate.iloc[0]
+            _pin_gate_ok = bool(
+                str(row.get("qualification_state", "")) == "GFSV16_EFFECTIVE_RADIUS_CONTRACT_PARTIALLY_PINNED_DMAX_BLOCKED"
+                and str(row.get("GFSV16_GFDL_FAMILY_PINNED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("GFSV16_PUBLIC_V1_2019_SOURCE_PATH_PINNED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("GFSV16_EMULATION_NAMELIST_REIFLAG_PINNED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("GFSV16_EFFECTIVE_RADIUS_SEMANTIC_PINNED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("NCEP_PRODUCTION_BINARY_EXACT_COMMIT_PINNED", "false")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("YANG_BI_DMAX_SEMANTIC_BRIDGE_VALIDATED", "false")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("GFSV16_DMAX_MAPPING_ELIGIBLE", "false")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("GFSV16_PSD_RECONSTRUCTION_ELIGIBLE", "false")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("PRODUCTION_ICE_OPTICS_READY", "false")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("physics_promotion_allowed", "false")).strip().lower() in {"false","0","0.0"}
+            )
+            _pin_gate_detail = (
+                f"state={row.get('qualification_state')};public_v1={row.get('GFSV16_PUBLIC_V1_2019_SOURCE_PATH_PINNED')};"
+                f"reiflag={row.get('GFSV16_EMULATION_NAMELIST_REIFLAG_PINNED')};rei_semantic={row.get('GFSV16_EFFECTIVE_RADIUS_SEMANTIC_PINNED')};"
+                f"dmax={row.get('GFSV16_DMAX_MAPPING_ELIGIBLE')};promotion={row.get('physics_promotion_allowed')}"
+            )
+        add(
+            "ICE_MICROPHYSICS_GFSV16_SCHEME_PIN_FAIL_CLOSED",
+            PASS if _pin_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_GFSV16_SCHEME_PIN",
+            _pin_gate_detail,
+            "public GFS v16/GFDL-v1 effective-radius evidence may be pinned while Dmax/PSD/production remain blocked until exact provenance + semantic bridge + validation complete",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2569,6 +2654,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_global_mapping_candidate_registry.csv",
         "ice_microphysics_global_mapping_qualification_gate.csv",
         "ice_microphysics_global_mapping_candidate_contract.json",
+        "ice_microphysics_gfsv16_scheme_pin_evidence.csv",
+        "ice_microphysics_gfsv16_scheme_pin_gate.csv",
+        "ice_microphysics_gfsv16_scheme_pin_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",

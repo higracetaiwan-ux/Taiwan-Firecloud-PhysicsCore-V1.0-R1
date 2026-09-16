@@ -1,8 +1,8 @@
-> Current release: **V1.0-R5.7.41.3.4.10.14** — Ice Optics Phase 2 Step 3: Global Mapping Candidate Intake + Scheme Contract Qualification; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.15** — Ice Optics Phase 2 Step 3B: GFS v16 Exact Scheme Pinning Evidence Gate; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.14
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.15
 
-## R5.7.41.3.4.10.14 Ice Optics Phase 2 Step 3 — Global Mapping Candidate Intake + Scheme Contract Qualification
+## R5.7.41.3.4.10.15 Ice Optics Phase 2 Step 3B — GFS v16 Exact Scheme Pinning Evidence Gate
 
 本版延續 `.10.13 FIELD PASS`，將「**全球可用**」正式設定為 Ice Microphysics mapping candidate 的優先資格。它只做來源／scheme qualification，不執行 Dmax/PSD mapping，也不改 Formation、Viewing、Twilight Glow 或 Production Ice Optics。
 
