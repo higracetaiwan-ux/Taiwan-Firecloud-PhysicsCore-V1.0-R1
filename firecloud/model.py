@@ -3495,6 +3495,7 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_ice_microphysics_native_input_capability_audit": v1_ice_microphysics_native_input_capability_audit,
         "v1_ice_microphysics_phase2_mapping_eligibility": v1_ice_microphysics_phase2_mapping_eligibility,
         "ice_microphysics_phase2_contract": ice_microphysics_phase2_contract,
+        "ice_microphysics_phase2_required": True,
         "native_cloud_voxel_matrix": native_cloud_voxel_matrix,
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
         "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),

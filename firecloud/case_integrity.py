@@ -130,6 +130,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_optics_contract = result.get("ice_cloud_spectral_optics_contract", {}) or {}
     ice_optics_portable_contract = result.get("ice_optics_portable_consumer_contract", {}) or {}
     ice_optics_phase1_required = bool(result.get("ice_cloud_spectral_optics_phase1_required", False))
+    ice_microphysics_audit = _df(result.get("v1_ice_microphysics_native_input_capability_audit"))
+    ice_microphysics_eligibility = _df(result.get("v1_ice_microphysics_phase2_mapping_eligibility"))
+    ice_microphysics_contract = result.get("ice_microphysics_phase2_contract", {}) or {}
+    ice_microphysics_phase2_required = bool(result.get("ice_microphysics_phase2_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -492,6 +496,88 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             PASS if (ice_optics.empty or not ice_optics_summary.empty) else FAIL,
             "ICE_CLOUD_SPECTRAL_OPTICS", len(ice_optics_summary),
             "summary rows when runtime rows exist",
+        )
+
+    # R5.7.41.3.4.10.12.1 Phase 2 evidence-integrity hotfix.
+    # This remains readiness-only and must never promote frozen Formation/Viewing physics.
+    if ice_microphysics_phase2_required:
+        _phase2_evidence_ok = bool(
+            not ice_microphysics_audit.empty
+            and not ice_microphysics_eligibility.empty
+            and isinstance(ice_microphysics_contract, Mapping)
+            and bool(ice_microphysics_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_PHASE2_EVIDENCE_PRESENT",
+            PASS if _phase2_evidence_ok else FAIL,
+            "ICE_MICROPHYSICS_PHASE2",
+            f"audit_rows={len(ice_microphysics_audit)};eligibility_rows={len(ice_microphysics_eligibility)};contract_present={bool(ice_microphysics_contract)}",
+            "native capability audit + mapping eligibility + machine-readable contract all present",
+            "Evidence-chain gate only; no science promotion.",
+        )
+
+        _forbidden = {str(x) for x in ice_microphysics_contract.get("forbidden_implicit_mappings", [])} if isinstance(ice_microphysics_contract, Mapping) else set()
+        _required_forbidden = {
+            "effective_radius_um_to_maximum_dimension_um", "CER_to_Dmax", "IWP_to_Dmax",
+            "temperature_to_Dmax", "cloud_thickness_to_Dmax", "RH_to_Dmax", "TCDC_to_Dmax",
+            "temperature_or_cloud_regime_to_habit", "fixed_habit_default",
+            "fixed_surface_roughness_default", "assumed_PSD_without_source_contract",
+        }
+        _contract_ok = bool(
+            isinstance(ice_microphysics_contract, Mapping)
+            and ice_microphysics_contract.get("contract_version") == "FIRECLOUD_ICE_MICROPHYSICS_PHASE2_ELIGIBILITY_V1"
+            and ice_microphysics_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_contract.get("mode") == "DIAGNOSTIC_READINESS_ONLY"
+            and ice_microphysics_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_contract.get("authoritative_runtime_size_axis") == "maximum_dimension_um"
+            and ice_microphysics_contract.get("frozen_science_unchanged") is True
+            and _required_forbidden.issubset(_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_PHASE2_CONTRACT_FREEZE",
+            PASS if _contract_ok else FAIL,
+            "ICE_MICROPHYSICS_PHASE2",
+            f"contract={ice_microphysics_contract.get('contract_version') if isinstance(ice_microphysics_contract, Mapping) else None};forbidden_rules={len(_forbidden)};promotion={ice_microphysics_contract.get('physics_promotion_allowed') if isinstance(ice_microphysics_contract, Mapping) else None}",
+            "frozen science + Dmax-first axis + diagnostic-only + all implicit mappings prohibited",
+        )
+
+        _fail_closed_ok = False
+        _fail_closed_detail = "eligibility table missing"
+        if not ice_microphysics_eligibility.empty:
+            _false_cols = [
+                "NATIVE_DMAX_AVAILABLE", "CALIBRATED_DMAX_MAPPING_AVAILABLE",
+                "NATIVE_PSD_AVAILABLE", "CALIBRATED_PSD_MAPPING_AVAILABLE",
+                "ICE_HABIT_RESOLUTION_READY", "ICE_ROUGHNESS_RESOLUTION_READY",
+                "MICROPHYSICS_MAPPING_READY", "SINGLE_PARTICLE_LUT_LOOKUP_ELIGIBLE",
+                "BULK_PSD_SYNTHESIS_ELIGIBLE", "PRODUCTION_ICE_OPTICS_READY",
+                "physics_promotion_allowed",
+            ]
+            _missing_false_cols = [c for c in _false_cols if c not in ice_microphysics_eligibility.columns]
+            _all_false = not _missing_false_cols
+            if _all_false:
+                for c in _false_cols:
+                    _vals = ice_microphysics_eligibility[c].map(lambda v: str(v).strip().lower())
+                    if not _vals.isin({"false", "0", "0.0", ""}).all():
+                        _all_false = False
+                        break
+            _state_ok = bool(
+                "eligibility_state" in ice_microphysics_eligibility.columns
+                and ice_microphysics_eligibility["eligibility_state"].astype(str).eq("INSUFFICIENT_MICROPHYSICS").all()
+            )
+            _blocker_text = "|".join(ice_microphysics_eligibility.get("eligibility_blockers", pd.Series(dtype=str)).astype(str).tolist())
+            _blockers_ok = all(tok in _blocker_text for tok in [
+                "ICE_DMAX_NATIVE_FIELD_UNAVAILABLE", "ICE_DMAX_MAPPING_UNAVAILABLE",
+                "ICE_PSD_INPUT_INCOMPLETE", "ICE_HABIT_UNRESOLVED", "ICE_ROUGHNESS_UNRESOLVED",
+            ])
+            _fail_closed_ok = bool(_all_false and _state_ok and _blockers_ok)
+            _fail_closed_detail = f"missing_cols={_missing_false_cols};state_ok={_state_ok};blockers_ok={_blockers_ok}"
+        add(
+            "ICE_MICROPHYSICS_PHASE2_MAPPING_FAIL_CLOSED",
+            PASS if _fail_closed_ok else FAIL,
+            "ICE_MICROPHYSICS_PHASE2",
+            _fail_closed_detail,
+            "no native/calibrated Dmax or PSD => no mapping readiness, no LUT eligibility, no production readiness, no promotion",
+            "ICMR/IWP/T/RH/TCDC/cloud geometry remain context only; no hidden defaults.",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2313,6 +2399,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "windy_firecloud_ice_optics_summary_v1.json",
         "ice_cloud_spectral_optics_contract.json",
         "ice_optics_portable_consumer_contract.json",
+        "ice_microphysics_native_input_capability_audit.csv",
+        "ice_microphysics_phase2_mapping_eligibility.csv",
+        "ice_microphysics_phase2_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",

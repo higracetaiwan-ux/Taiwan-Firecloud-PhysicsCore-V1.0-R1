@@ -1173,7 +1173,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 — Native Microphysics Capability Audit + Dmax/PSD Mapping Eligibility Contract"
+CURRENT_MILESTONE = "Ice Optics Phase 2 — Evidence Integrity Gate Hotfix"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1190,6 +1190,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.12.1**：Phase 2 Evidence Integrity Gate Hotfix。將 capability audit、mapping eligibility、Phase 2 contract 納入 Analysis Integrity 與 CASE Archive required-evidence gate；不改 Frozen Science。
 - **R5.7.41.3.4.10.12**：Ice Optics Phase 2 — Native Microphysics Capability Audit + Dmax/PSD Mapping Eligibility Contract。只盤點當次 GFS/CASE 真正存在的 microphysics 證據與 mapping eligibility；不建立 `r_eff/IWP/T/RH/TCDC → Dmax`、habit、roughness 或 PSD 假設規則；不改 Frozen Science。
 - **R5.7.41.3.4.10.11.2**：Dmax Runtime Contract Alignment + Certified Portable Bundle。Ice runtime 改為 authoritative Dmax-first lookup；positive IWP 缺合法 Dmax 時 fail-close，不允許 `r_eff` 代替 Dmax。
 - **R5.7.41.3.4.10.11.1**：TAMU V2 Source Contract Correction + Dmax-First Ice LUT。修正 `hollow_column` source resolver，允許 HBR/SBR 官方 source-row wavelength-dependent geometry，改以 `habit + roughness + Dmax + wavelength` 為 authoritative key；`r_eff` 降為診斷/映射欄位，不改 Frozen Science。

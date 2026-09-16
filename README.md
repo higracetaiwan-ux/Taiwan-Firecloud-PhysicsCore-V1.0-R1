@@ -1,6 +1,13 @@
-> Current release: **V1.0-R5.7.41.3.4.10.12** — Ice Optics Phase 2: Native Microphysics Capability Audit + Dmax/PSD Mapping Eligibility Contract; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.12.1** — Ice Optics Phase 2 Evidence Integrity Gate Hotfix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.12
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.12.1
+
+
+## R5.7.41.3.4.10.12.1 Phase 2 Evidence Integrity Gate Hotfix
+
+- `ice_microphysics_native_input_capability_audit.csv`、`ice_microphysics_phase2_mapping_eligibility.csv`、`ice_microphysics_phase2_contract.json` 現在是 CASE Archive required evidence。
+- Analysis Integrity 新增 Phase 2 evidence presence、contract freeze、mapping fail-closed 三項硬檢查。
+- 不新增任何 `r_eff/IWP/T/RH/TCDC → Dmax`、habit、roughness 或 PSD 假設；Frozen Science 不變。
 
 ## R5.7.41.3.4.10.12 Ice Optics Phase 2 — Native Microphysics Capability Audit + Dmax/PSD Mapping Eligibility Contract
 

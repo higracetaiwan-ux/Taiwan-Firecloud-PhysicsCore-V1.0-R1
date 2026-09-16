@@ -1,6 +1,6 @@
 """Ice Optics Phase 2 native-microphysics capability audit.
 
-R5.7.41.3.4.10.12 is diagnostic/readiness only.  This module inspects the
+R5.7.41.3.4.10.12.1 is diagnostic/readiness only.  This module inspects the
 microphysical evidence that already exists in the GFS/CASE pipeline and reports
 whether a Dmax or PSD mapping is *eligible* to be attempted.  It must never
 invent particle size, PSD, habit, surface roughness, cloud condensate, or a
@@ -18,7 +18,7 @@ import pandas as pd
 from .providers.gfs_native import GFS_PROVIDER_SCHEMA_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-ICE_PHASE2_VERSION = "R5.7.41.3.4.10.12"
+ICE_PHASE2_VERSION = "R5.7.41.3.4.10.12.1"
 ICE_PHASE2_MODE = "DIAGNOSTIC_READINESS_ONLY"
 PHYSICS_PROMOTION_ALLOWED = False
 
@@ -257,7 +257,7 @@ def build_native_microphysics_capability_audit(
             dmax_mapping_role="REQUIRED_CONTEXT_NOT_DMAX", psd_mapping_role="REQUIRED_CONTEXT_NOT_PSD",
             eligibility_state="RUNTIME_CONTEXT_UNRESOLVED" if resolved == 0 else "RUNTIME_VALUE_PRESENT_PROVENANCE_STILL_REQUIRED",
             eligibility_blockers=blocker,
-            notes="No fixed/default/proxy rule is authorized in R5.7.41.3.4.10.12.",
+            notes="No fixed/default/proxy rule is authorized in R5.7.41.3.4.10.12.1.",
         ))
 
     for short_name, semantic, note in (
