@@ -1173,7 +1173,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Authoritative Ice LUT Source Intake + QA Build Gate"
+CURRENT_MILESTONE = "Ice Optics Phase 2 — Native Microphysics Capability Audit + Dmax/PSD Mapping Eligibility Contract"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1190,6 +1190,8 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.12**：Ice Optics Phase 2 — Native Microphysics Capability Audit + Dmax/PSD Mapping Eligibility Contract。只盤點當次 GFS/CASE 真正存在的 microphysics 證據與 mapping eligibility；不建立 `r_eff/IWP/T/RH/TCDC → Dmax`、habit、roughness 或 PSD 假設規則；不改 Frozen Science。
+- **R5.7.41.3.4.10.11.2**：Dmax Runtime Contract Alignment + Certified Portable Bundle。Ice runtime 改為 authoritative Dmax-first lookup；positive IWP 缺合法 Dmax 時 fail-close，不允許 `r_eff` 代替 Dmax。
 - **R5.7.41.3.4.10.11.1**：TAMU V2 Source Contract Correction + Dmax-First Ice LUT。修正 `hollow_column` source resolver，允許 HBR/SBR 官方 source-row wavelength-dependent geometry，改以 `habit + roughness + Dmax + wavelength` 為 authoritative key；`r_eff` 降為診斷/映射欄位，不改 Frozen Science。
 - **R5.7.41.3.4.10.11**：Authoritative Ice LUT Source Intake + QA Build Gate。建立 Yang/Bi V2 來源驗證、27 組 habit×roughness source inventory、六波段 spectral-grid audit 與 fail-closed LUT release gate；不改 Frozen Science。
 - **R5.7.41.3.4.10.10.2**：UI Information Architecture Cleanup。只整理主畫面的資訊層級、版本歷史、資料來源與 Runtime 顯示；不改 Frozen Science。
@@ -2593,6 +2595,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_ice_cloud_spectral_optics_runtime.csv", result.get("v1_ice_cloud_spectral_optics_runtime", pd.DataFrame())),
             ("v1_ice_cloud_spectral_optics_summary.csv", result.get("v1_ice_cloud_spectral_optics_summary", pd.DataFrame())),
             ("v1_windy_ice_optics_summary.csv", result.get("v1_windy_ice_optics_summary", pd.DataFrame())),
+            ("ice_microphysics_native_input_capability_audit.csv", result.get("v1_ice_microphysics_native_input_capability_audit", pd.DataFrame())),
+            ("ice_microphysics_phase2_mapping_eligibility.csv", result.get("v1_ice_microphysics_phase2_mapping_eligibility", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2674,6 +2678,7 @@ if run or st.session_state.analysis_result is not None:
             ("event_timezone_resolution.json", result.get("event_timezone_resolution", {})),
             ("ice_cloud_spectral_optics_contract.json", result.get("ice_cloud_spectral_optics_contract", {})),
             ("ice_optics_portable_consumer_contract.json", result.get("ice_optics_portable_consumer_contract", {})),
+            ("ice_microphysics_phase2_contract.json", result.get("ice_microphysics_phase2_contract", {})),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

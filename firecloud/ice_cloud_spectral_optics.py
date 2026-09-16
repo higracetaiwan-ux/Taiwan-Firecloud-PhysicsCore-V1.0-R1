@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Ice-cloud six-band spectral-optics shared contract (Phase 1).
 
-This module remains diagnostic-only through R5.7.41.3.4.10.11.2.
+This module remains diagnostic-only through R5.7.41.3.4.10.12.
 It establishes a calibrated-LUT import contract and a WINDY-facing runtime
 export without changing Formation, Viewing, Twilight Glow, or production COT.
 The authoritative runtime lookup axis is maximum particle dimension (Dmax).

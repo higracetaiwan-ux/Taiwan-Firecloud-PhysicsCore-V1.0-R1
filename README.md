@@ -1,7 +1,14 @@
-> Current release: **V1.0-R5.7.41.3.4.10.11.2** — Dmax Runtime Contract Alignment + Certified Portable Bundle; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.12** — Ice Optics Phase 2: Native Microphysics Capability Audit + Dmax/PSD Mapping Eligibility Contract; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.11.2
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.12
 
+## R5.7.41.3.4.10.12 Ice Optics Phase 2 — Native Microphysics Capability Audit + Dmax/PSD Mapping Eligibility Contract
+
+- 每次分析依真正 GFS/CASE 證據產生 native microphysics capability audit，清楚區分 `NATIVE_GFS`、`DETERMINISTIC_DERIVED`、`RUNTIME_SLOT`、`MISSING_CAPABILITY`。
+- 正式凍結 Dmax/PSD eligibility contract：禁止 `r_eff/IWP/T/RH/TCDC/cloud thickness → Dmax` 的未校準轉換，也不允許 fixed habit / roughness / assumed PSD。
+- CASE ZIP 新增 `ice_microphysics_native_input_capability_audit.csv`、`ice_microphysics_phase2_mapping_eligibility.csv`、`ice_microphysics_phase2_contract.json`。
+- `.10.11.2` TWS175 FIELD CASE replay：2691 ice runtime rows、213 positive-IWP，但 Dmax/r_eff/habit/roughness 可用數皆為 0，故維持 `INSUFFICIENT_MICROPHYSICS`。
+- `physics_promotion_allowed=false`；Formation / Viewing / Twilight Glow / Production COT 完全不變。
 
 ## R5.7.41.3.4.10.11.2 Dmax Runtime Contract Alignment + Certified Portable Bundle
 

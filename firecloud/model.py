@@ -126,6 +126,11 @@ from .ice_cloud_spectral_optics import (
     ice_optics_contract_payload,
 )
 from .ice_optics_portable import portable_contract_payload
+from .ice_microphysics_capability import (
+    build_native_microphysics_capability_audit,
+    build_mapping_eligibility_summary as build_ice_microphysics_mapping_eligibility_summary,
+    phase2_contract_payload as ice_microphysics_phase2_contract_payload,
+)
 from .shadow_validation_collection import SCIENCE_BASELINE_ID
 from . import __version__ as PHYSICSCORE_VERSION
 from .viewing_spectral import (
@@ -3293,16 +3298,51 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
     ])
     gfs_grib_message_inventory = pd.DataFrame([
         {**r, "gfs_run_utc":m.get("gfs_run_utc"), "gfs_forecast_hour":m.get("gfs_forecast_hour"),
-         "gfs_file":m.get("gfs_file")}
+         "gfs_valid_time_utc":m.get("gfs_valid_time_utc"), "gfs_file":m.get("gfs_file")}
         for m in _gfs_meta_unique for r in (m.get("gfs_grib_message_inventory", []) or [])
     ])
     gfs_native_field_completeness = pd.DataFrame([
         {**r, "gfs_run_utc":m.get("gfs_run_utc"), "gfs_forecast_hour":m.get("gfs_forecast_hour"),
+         "gfs_valid_time_utc":m.get("gfs_valid_time_utc"),
          "gfs_file":m.get("gfs_file"), "native_status":m.get("native_status"),
          "clwmr_nonnull_route_values":m.get("native_clwmr_nonnull_values"),
          "icmr_nonnull_route_values":m.get("native_icmr_nonnull_values")}
         for m in _gfs_meta_unique for r in (m.get("gfs_native_field_completeness", []) or [])
     ])
+
+    # R5.7.41.3.4.10.12 Ice Optics Phase 2 Step 1B:
+    # evidence-only native microphysics capability audit. This branch must not
+    # synthesize Dmax/PSD/habit/roughness or promote any frozen physics.
+    _ice_phase2_audit_t0 = perf_counter()
+    v1_ice_microphysics_native_input_capability_audit = build_native_microphysics_capability_audit(
+        gfs_grib_message_inventory,
+        gfs_native_field_completeness,
+        native_cloud_voxel_matrix,
+        native_cloud_columns,
+        v1_ice_cloud_spectral_optics_runtime,
+    )
+    v1_ice_microphysics_phase2_mapping_eligibility = build_ice_microphysics_mapping_eligibility_summary(
+        v1_ice_microphysics_native_input_capability_audit,
+        native_cloud_columns,
+        v1_ice_cloud_spectral_optics_runtime,
+    )
+    ice_microphysics_phase2_contract = ice_microphysics_phase2_contract_payload(
+        physicscore_version=PHYSICSCORE_VERSION
+    )
+    _eligibility_state = (
+        str(v1_ice_microphysics_phase2_mapping_eligibility.iloc[0].get("eligibility_state", "UNKNOWN"))
+        if not v1_ice_microphysics_phase2_mapping_eligibility.empty else "UNKNOWN"
+    )
+    performance_rows.append({
+        "stage": "ICE_MICROPHYSICS_PHASE2_CAPABILITY_AUDIT",
+        "elapsed_seconds": max(0.0, perf_counter() - _ice_phase2_audit_t0),
+        "cache_status": "DIAGNOSTIC_READINESS_ONLY_NO_PHYSICS_PROMOTION",
+        "detail": (
+            f"audit_rows={len(v1_ice_microphysics_native_input_capability_audit)};"
+            f"eligibility={_eligibility_state};"
+            "NO_REFF_TO_DMAX;NO_IWP_TO_DMAX;NO_ASSUMED_PSD;NO_HABIT_DEFAULT;NO_ROUGHNESS_DEFAULT"
+        ),
+    })
 
     # R5.7.5: compact provider-I/O efficiency audit.  This is operational
     # diagnostics only; it does not participate in any physical gate.
@@ -3452,6 +3492,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "gfs_native_valid_time_alignment_required": True,
         "gfs_grib_message_inventory": gfs_grib_message_inventory,
         "gfs_native_field_completeness": gfs_native_field_completeness,
+        "v1_ice_microphysics_native_input_capability_audit": v1_ice_microphysics_native_input_capability_audit,
+        "v1_ice_microphysics_phase2_mapping_eligibility": v1_ice_microphysics_phase2_mapping_eligibility,
+        "ice_microphysics_phase2_contract": ice_microphysics_phase2_contract,
         "native_cloud_voxel_matrix": native_cloud_voxel_matrix,
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
         "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),
@@ -3562,6 +3605,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "gfs_native_request_audit": gfs_native_request_audit,
         "gfs_grib_message_inventory": gfs_grib_message_inventory,
         "gfs_native_field_completeness": gfs_native_field_completeness,
+        "v1_ice_microphysics_native_input_capability_audit": v1_ice_microphysics_native_input_capability_audit,
+        "v1_ice_microphysics_phase2_mapping_eligibility": v1_ice_microphysics_phase2_mapping_eligibility,
+        "ice_microphysics_phase2_contract": ice_microphysics_phase2_contract,
         "cams_request_audit": _cams_audit_df,
         "cams_tile_audit": _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_tile_audit", []) or [])]) if details else pd.DataFrame(),
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
