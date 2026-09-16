@@ -1,0 +1,63 @@
+{
+  "contract_version": "FIRECLOUD_ICE_WYSER_YANG_BULK_INTEGRATION_QUALIFICATION_V1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.17",
+  "step3d_version": "R5.7.41.3.4.10.17",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "WYSER_PSD_YANG_BI_HABIT_BULK_INTEGRATION_QUALIFICATION_ONLY",
+  "source_population": "Wyser_1998_mixed_hexagonal_column_population_candidate",
+  "authoritative_single_particle_optics": "Yang_Bi_V2_Zenodo_5348402",
+  "authoritative_size_axis": "maximum_dimension_um",
+  "wavelengths_nm": [
+    550,
+    575,
+    600,
+    650,
+    700,
+    750
+  ],
+  "wyser_psd_core_structure_pinned": true,
+  "wyser_absolute_psd_normalization_pinned": false,
+  "wyser_column_geometry_pinned": false,
+  "wyser_L_to_yang_dmax_coordinate_validated": false,
+  "yang_bi_solid_column_candidate_identified": true,
+  "yang_bi_habit_bridge_validated": false,
+  "yang_bi_roughness_bridge_validated": false,
+  "bulk_integration_math_pinned": true,
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "gfsv16_dmax_mapping_eligible": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "bulk_integration_equations": {
+    "C_ext": "Q_ext(D,lambda) * A_proj(D)",
+    "C_sca": "omega0(D,lambda) * C_ext(D,lambda)",
+    "beta_ext": "integral n(D) * C_ext(D,lambda) dD",
+    "beta_sca": "integral n(D) * C_sca(D,lambda) dD",
+    "omega_bulk": "beta_sca / beta_ext",
+    "g_bulk": "integral n(D) * C_sca(D,lambda) * g(D,lambda) dD / beta_sca",
+    "k_ext": "beta_ext / IWC",
+    "tau_ice": "IWP * k_ext"
+  },
+  "candidate_roughness_policy": "diagnostic_three_state_ensemble_smooth_moderate_severe_not_yet_validated",
+  "forbidden_shortcuts": [
+    "Wyser_length_L_silently_treated_as_Yang_Bi_Dmax",
+    "Wyser_hex_column_silently_treated_as_Yang_Bi_solid_column",
+    "PSD_amplitude_invented_from_IWC_without_exact_contract",
+    "single_roughness_state_silently_selected",
+    "bulk_tau_synthesized_before_independent_validation",
+    "GFDL_rei_treated_as_Yang_Bi_Dmax",
+    "Dmax_equal_2_times_rei",
+    "production_promotion_before_bulk_integration_qualification"
+  ],
+  "qualification_requirements": [
+    "pin_complete_Wyser_absolute_PSD_normalization",
+    "pin_primary_source_size_dependent_hex_column_geometry",
+    "validate_Wyser_L_to_Yang_Bi_maximum_dimension_coordinate",
+    "validate_Wyser_geometry_against_Yang_Bi_solid_column_area_volume_aspect_ratio",
+    "validate_roughness_uncertainty_policy_or_obtain_runtime_roughness_state",
+    "implement_diagnostic_only_six_band_bulk_integrator",
+    "validate_mass_conservation_and_IWC_normalization",
+    "independent_bulk_shortwave_optics_validation",
+    "separate_production_promotion_gate"
+  ],
+  "frozen_science_unchanged": true
+}

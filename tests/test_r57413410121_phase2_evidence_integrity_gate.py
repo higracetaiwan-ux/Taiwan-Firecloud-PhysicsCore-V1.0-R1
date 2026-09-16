@@ -37,7 +37,7 @@ def _analysis_result():
 
 
 def test_version_hotfix():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.16"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.17"
 
 
 def test_phase2_analysis_integrity_gate_passes_fail_closed_contract():

@@ -108,6 +108,11 @@ from firecloud.ice_microphysics_gfsv16_rei_dmax_bridge import (
     build_gfsv16_rei_dmax_bridge_gate,
     gfsv16_rei_dmax_bridge_contract_payload,
 )
+from firecloud.ice_microphysics_wyser_yang_bulk_contract import (
+    build_wyser_yang_bulk_evidence,
+    build_wyser_yang_bulk_gate,
+    wyser_yang_bulk_contract_payload,
+)
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -1183,7 +1188,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3C — GFS v16 Effective-Radius ↔ Yang/Bi Dmax Bridge Feasibility Audit"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3D — Wyser PSD + Yang/Bi Habit Bulk-Integration Contract Qualification"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1200,6 +1205,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.17**：Step 3D Wyser PSD + Yang/Bi Habit Bulk-Integration Contract Qualification。釘住 mixed PSD 核心結構、10–1000 µm 積分域、GFS-v16 公開 B(T,IWC) 公式與六波段 bulk normalization；solid-column/roughness 僅候選，完整 PSD normalization、幾何/Dmax 座標與 independent validation 未完成，production 仍 fail-close。
 - **R5.7.41.3.4.10.16**：Step 3C GFS v16 Effective-Radius ↔ Yang/Bi Dmax Bridge Feasibility Audit。直接 rei→Dmax 語義橋接判定不合格；識別 Wyser PSD/hex-column population 積分 Yang/Bi Dmax 單粒子光學的 bulk 路徑，但仍 fail-close、不得 production promotion。
 - **R5.7.41.3.4.10.15.1**：Step 3B CASE Evidence Handoff Integrity Hotfix。CASE export 直接由當前 release builder 重建 GFS v16 scheme-pin 靜態 evidence，Archive Integrity 新增內容非空 gate；修正 `.10.15` FIELD CASE 中「Analysis Integrity PASS 但實際 CASE 只寫出 0-row/空 `{}` evidence」的證據鏈漏洞，不改 Frozen Science。
 - **R5.7.41.3.4.10.15**：Ice Optics Phase 2 Step 3B — GFS v16 Exact Scheme Pinning Evidence Gate。公開重現路徑釘至 GFDL v1/2019、GFS_v16 emulation namelist `reiflag=2` 與 cloud-ice effective-radius semantic；NCEP production binary exact commit 與 Yang/Bi Dmax bridge 仍 unresolved，因此 Dmax/PSD/production promotion 維持 fail-close。
@@ -2563,6 +2569,13 @@ if run or st.session_state.analysis_result is not None:
         _case_gfsv16_rei_dmax_bridge_contract = gfsv16_rei_dmax_bridge_contract_payload(
             physicscore_version=__version__
         )
+        _case_wyser_yang_bulk_evidence = build_wyser_yang_bulk_evidence()
+        _case_wyser_yang_bulk_gate = build_wyser_yang_bulk_gate(
+            _case_wyser_yang_bulk_evidence
+        )
+        _case_wyser_yang_bulk_contract = wyser_yang_bulk_contract_payload(
+            physicscore_version=__version__
+        )
         _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
         _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
         _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
@@ -2641,6 +2654,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_gfsv16_scheme_pin_gate.csv", _case_gfsv16_scheme_pin_gate),
             ("ice_microphysics_gfsv16_rei_dmax_bridge_evidence.csv", _case_gfsv16_rei_dmax_bridge_evidence),
             ("ice_microphysics_gfsv16_rei_dmax_bridge_gate.csv", _case_gfsv16_rei_dmax_bridge_gate),
+            ("ice_microphysics_wyser_yang_bulk_evidence.csv", _case_wyser_yang_bulk_evidence),
+            ("ice_microphysics_wyser_yang_bulk_gate.csv", _case_wyser_yang_bulk_gate),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2727,6 +2742,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_global_mapping_candidate_contract.json", result.get("ice_microphysics_global_mapping_candidate_contract", {})),
             ("ice_microphysics_gfsv16_scheme_pin_contract.json", _case_gfsv16_scheme_pin_contract),
             ("ice_microphysics_gfsv16_rei_dmax_bridge_contract.json", _case_gfsv16_rei_dmax_bridge_contract),
+            ("ice_microphysics_wyser_yang_bulk_contract.json", _case_wyser_yang_bulk_contract),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

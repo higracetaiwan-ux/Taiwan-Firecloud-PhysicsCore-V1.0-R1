@@ -150,6 +150,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_gfsv16_rei_dmax_bridge_gate = _df(result.get("v1_ice_microphysics_gfsv16_rei_dmax_bridge_gate"))
     ice_microphysics_gfsv16_rei_dmax_bridge_contract = result.get("ice_microphysics_gfsv16_rei_dmax_bridge_contract", {}) or {}
     ice_microphysics_gfsv16_rei_dmax_bridge_required = bool(result.get("ice_microphysics_gfsv16_rei_dmax_bridge_required", False))
+    ice_microphysics_wyser_yang_bulk_evidence = _df(result.get("v1_ice_microphysics_wyser_yang_bulk_evidence"))
+    ice_microphysics_wyser_yang_bulk_gate = _df(result.get("v1_ice_microphysics_wyser_yang_bulk_gate"))
+    ice_microphysics_wyser_yang_bulk_contract = result.get("ice_microphysics_wyser_yang_bulk_contract", {}) or {}
+    ice_microphysics_wyser_yang_bulk_required = bool(result.get("ice_microphysics_wyser_yang_bulk_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -914,6 +918,84 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE",
             _bridge_gate_detail,
             "direct rei→Dmax rejected; bulk PSD integration may be identified but remains blocked until exact PSD/geometry/habit/roughness/provenance/validation requirements pass",
+        )
+
+    # R5.7.41.3.4.10.17 Phase 2 Step 3D Wyser PSD + Yang/Bi bulk-integration qualification.
+    if ice_microphysics_wyser_yang_bulk_required:
+        _bulk_present_ok = bool(
+            not ice_microphysics_wyser_yang_bulk_evidence.empty
+            and not ice_microphysics_wyser_yang_bulk_gate.empty
+            and isinstance(ice_microphysics_wyser_yang_bulk_contract, Mapping)
+            and bool(ice_microphysics_wyser_yang_bulk_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_WYSER_YANG_BULK_EVIDENCE_PRESENT",
+            PASS if _bulk_present_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_YANG_BULK",
+            f"evidence_rows={len(ice_microphysics_wyser_yang_bulk_evidence)};gate_rows={len(ice_microphysics_wyser_yang_bulk_gate)};contract_present={bool(ice_microphysics_wyser_yang_bulk_contract)}",
+            "Step 3D PSD/habit/bulk-integration evidence + gate + contract present",
+        )
+        _bulk_forbidden = {str(x) for x in ice_microphysics_wyser_yang_bulk_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_wyser_yang_bulk_contract, Mapping) else set()
+        _bulk_required_forbidden = {
+            "Wyser_length_L_silently_treated_as_Yang_Bi_Dmax",
+            "Wyser_hex_column_silently_treated_as_Yang_Bi_solid_column",
+            "PSD_amplitude_invented_from_IWC_without_exact_contract",
+            "single_roughness_state_silently_selected",
+            "bulk_tau_synthesized_before_independent_validation",
+        }
+        _bulk_contract_ok = bool(
+            isinstance(ice_microphysics_wyser_yang_bulk_contract, Mapping)
+            and ice_microphysics_wyser_yang_bulk_contract.get("contract_version") == "FIRECLOUD_ICE_WYSER_YANG_BULK_INTEGRATION_QUALIFICATION_V1"
+            and ice_microphysics_wyser_yang_bulk_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_wyser_yang_bulk_contract.get("mode") == "WYSER_PSD_YANG_BI_HABIT_BULK_INTEGRATION_QUALIFICATION_ONLY"
+            and ice_microphysics_wyser_yang_bulk_contract.get("bulk_integration_math_pinned") is True
+            and ice_microphysics_wyser_yang_bulk_contract.get("wyser_absolute_psd_normalization_pinned") is False
+            and ice_microphysics_wyser_yang_bulk_contract.get("wyser_column_geometry_pinned") is False
+            and ice_microphysics_wyser_yang_bulk_contract.get("wyser_L_to_yang_dmax_coordinate_validated") is False
+            and ice_microphysics_wyser_yang_bulk_contract.get("yang_bi_habit_bridge_validated") is False
+            and ice_microphysics_wyser_yang_bulk_contract.get("yang_bi_roughness_bridge_validated") is False
+            and ice_microphysics_wyser_yang_bulk_contract.get("bulk_yang_bi_psd_integration_eligible") is False
+            and ice_microphysics_wyser_yang_bulk_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_wyser_yang_bulk_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_wyser_yang_bulk_contract.get("frozen_science_unchanged") is True
+            and _bulk_required_forbidden.issubset(_bulk_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_WYSER_YANG_BULK_CONTRACT_FREEZE",
+            PASS if _bulk_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_YANG_BULK",
+            f"contract={ice_microphysics_wyser_yang_bulk_contract.get('contract_version') if isinstance(ice_microphysics_wyser_yang_bulk_contract, Mapping) else None};forbidden_shortcuts={len(_bulk_forbidden)}",
+            "Step 3D contract preserves diagnostic-only/fail-close semantics",
+        )
+        _bulk_gate_ok = False
+        _bulk_gate_detail = "Step 3D bulk qualification gate missing"
+        if not ice_microphysics_wyser_yang_bulk_gate.empty:
+            row = ice_microphysics_wyser_yang_bulk_gate.iloc[0]
+            _bulk_gate_ok = bool(
+                str(row.get("WYSER_PSD_CORE_STRUCTURE_PINNED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("BULK_INTEGRATION_NORMALIZATION_PINNED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("SIX_BAND_BULK_OUTPUT_CONTRACT_PINNED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("WYSER_ABSOLUTE_PSD_NORMALIZATION_PINNED", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("WYSER_COLUMN_GEOMETRY_PINNED", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("YANG_BI_HABIT_BRIDGE_VALIDATED", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("YANG_BI_ROUGHNESS_BRIDGE_VALIDATED", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("BULK_YANG_BI_PSD_INTEGRATION_ELIGIBLE", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("PRODUCTION_ICE_OPTICS_READY", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("physics_promotion_allowed", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("qualification_state", "")) == "WYSER_PSD_CORE_PINNED_GEOMETRY_HABIT_ROUGHNESS_BLOCKED"
+            )
+            _bulk_gate_detail = (
+                f"state={row.get('qualification_state')};psd_core={row.get('WYSER_PSD_CORE_STRUCTURE_PINNED')};"
+                f"normalization={row.get('WYSER_ABSOLUTE_PSD_NORMALIZATION_PINNED')};geometry={row.get('WYSER_COLUMN_GEOMETRY_PINNED')};"
+                f"habit={row.get('YANG_BI_HABIT_BRIDGE_VALIDATED')};roughness={row.get('YANG_BI_ROUGHNESS_BRIDGE_VALIDATED')};"
+                f"eligible={row.get('BULK_YANG_BI_PSD_INTEGRATION_ELIGIBLE')};promotion={row.get('physics_promotion_allowed')}"
+            )
+        add(
+            "ICE_MICROPHYSICS_WYSER_YANG_BULK_FAIL_CLOSED",
+            PASS if _bulk_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_YANG_BULK",
+            _bulk_gate_detail,
+            "PSD core/math may be pinned while normalization/geometry/habit/roughness/integration remain blocked",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2750,6 +2832,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_gfsv16_rei_dmax_bridge_evidence.csv",
         "ice_microphysics_gfsv16_rei_dmax_bridge_gate.csv",
         "ice_microphysics_gfsv16_rei_dmax_bridge_contract.json",
+        "ice_microphysics_wyser_yang_bulk_evidence.csv",
+        "ice_microphysics_wyser_yang_bulk_gate.csv",
+        "ice_microphysics_wyser_yang_bulk_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -2858,6 +2943,43 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "component":"CASE_ARCHIVE", "observed":int(_bridge_contract_bytes),
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3C CASE evidence.",
+        })
+
+    # R5.7.41.3.4.10.17 Step 3D serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _bulk_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _bulk_evidence_name = "ice_microphysics_wyser_yang_bulk_evidence.csv"
+        _bulk_gate_name = "ice_microphysics_wyser_yang_bulk_gate.csv"
+        _bulk_contract_name = "ice_microphysics_wyser_yang_bulk_contract.json"
+        _bulk_evidence_rows = _bulk_manifest_metric(_bulk_evidence_name, "row_count", 0.0)
+        _bulk_gate_rows = _bulk_manifest_metric(_bulk_gate_name, "row_count", 0.0)
+        _bulk_contract_bytes = _bulk_manifest_metric(_bulk_contract_name, "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_YANG_BULK_EVIDENCE_NONEMPTY",
+            "status":PASS if _bulk_evidence_rows >= 16 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_bulk_evidence_rows),
+            "expected":">=16 serialized evidence rows",
+            "detail":"Step 3D PSD/habit/bulk-integration evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_YANG_BULK_GATE_NONEMPTY",
+            "status":PASS if _bulk_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_bulk_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3D bulk-integration qualification gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_YANG_BULK_CONTRACT_NONEMPTY",
+            "status":PASS if _bulk_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_bulk_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3D CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:
