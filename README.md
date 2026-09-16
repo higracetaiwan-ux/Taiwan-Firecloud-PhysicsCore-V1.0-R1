@@ -1,7 +1,21 @@
-> Current release: **V1.0-R5.7.41.3.4.10.16** — Step 3C GFS v16 Effective-Radius ↔ Yang/Bi Dmax Bridge Feasibility Audit; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.18** — Step 3E Wyser PSD Normalization + Hex-Column Geometry / L→Dmax Coordinate Qualification; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.16
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.18
 
+
+## R5.7.41.3.4.10.18 Step 3E — Wyser PSD Normalization + Hex-Column Geometry / L→Dmax Coordinate Qualification
+
+- Primary-source Wyser normalization rule is pinned: `n(L)=A·phi(L)` and `A=IWC/∫m(L)phi(L)dL`.
+- Mixed PSD shape remains Gamma (≤20 µm) + power law (>20 µm), with continuity at 20 µm.
+- This does **not** make numerical absolute PSD reconstruction executable: exact primary-quality `m(L)` / Eq.(6) and Eq.(5) column geometry remain unresolved.
+- Later `D=0.7L / D=6.96√L` column relations are reference-only and may not substitute for Wyser Eq.(5).
+- `Wyser L → Yang/Bi maximum_dimension_um` remains blocked until exact geometry is pinned and mass closure is validated.
+- No Dmax synthesis, no habit/roughness default, no production Ice τ, and no Formation promotion.
+
+## R5.7.41.3.4.10.17 Step 3D — Wyser PSD + Yang/Bi Habit Bulk-Integration Contract Qualification
+
+- Mixed PSD core, 10–1000 µm nominal integration domain, GFS-v16 public B(T,IWC), Yang/Bi optical domain and six-band bulk integration mathematics were pinned.
+- Absolute PSD normalization, exact column geometry, L→Dmax coordinate, habit/roughness and independent validation remained blocked.
 
 ## R5.7.41.3.4.10.16 Step 3C — GFS v16 Effective-Radius ↔ Yang/Bi Dmax Bridge Feasibility Audit
 
