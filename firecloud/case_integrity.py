@@ -134,6 +134,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_eligibility = _df(result.get("v1_ice_microphysics_phase2_mapping_eligibility"))
     ice_microphysics_contract = result.get("ice_microphysics_phase2_contract", {}) or {}
     ice_microphysics_phase2_required = bool(result.get("ice_microphysics_phase2_required", False))
+    ice_microphysics_source_registry = _df(result.get("v1_ice_microphysics_source_capability_registry"))
+    ice_microphysics_source_gate = _df(result.get("v1_ice_microphysics_source_eligibility_gate"))
+    ice_microphysics_source_contract = result.get("ice_microphysics_source_registry_contract", {}) or {}
+    ice_microphysics_source_registry_required = bool(result.get("ice_microphysics_source_registry_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -578,6 +582,79 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             _fail_closed_detail,
             "no native/calibrated Dmax or PSD => no mapping readiness, no LUT eligibility, no production readiness, no promotion",
             "ICMR/IWP/T/RH/TCDC/cloud geometry remain context only; no hidden defaults.",
+        )
+
+    # R5.7.41.3.4.10.13 Phase 2 Step 2 external-source registry gate.
+    # Survey evidence is static/readiness-only: it cannot authorize a provider by name alone.
+    if ice_microphysics_source_registry_required:
+        _src_present_ok = bool(
+            not ice_microphysics_source_registry.empty
+            and not ice_microphysics_source_gate.empty
+            and isinstance(ice_microphysics_source_contract, Mapping)
+            and bool(ice_microphysics_source_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_SOURCE_REGISTRY_EVIDENCE_PRESENT",
+            PASS if _src_present_ok else FAIL,
+            "ICE_MICROPHYSICS_SOURCE_REGISTRY",
+            f"registry_rows={len(ice_microphysics_source_registry)};gate_rows={len(ice_microphysics_source_gate)};contract_present={bool(ice_microphysics_source_contract)}",
+            "source registry + source eligibility gate + machine-readable source contract all present",
+            "Evidence-only external-source survey; no provider download or physics promotion.",
+        )
+
+        _src_forbidden = {str(x) for x in ice_microphysics_source_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_source_contract, Mapping) else set()
+        _src_required_forbidden = {
+            "effective_radius_to_Dmax_without_validated_contract",
+            "effective_diameter_to_Dmax_without_validated_contract",
+            "IWC_or_IWP_to_Dmax", "temperature_to_Dmax",
+            "cloud_fraction_or_RH_to_Dmax",
+            "mass_plus_number_to_Dmax_without_scheme_specific_distribution_contract",
+            "assumed_PSD", "fixed_habit_default", "fixed_surface_roughness_default",
+            "reference_only_source_used_as_Taiwan_operational_source",
+        }
+        _src_contract_ok = bool(
+            isinstance(ice_microphysics_source_contract, Mapping)
+            and ice_microphysics_source_contract.get("contract_version") == "FIRECLOUD_ICE_MICROPHYSICS_SOURCE_REGISTRY_V1"
+            and ice_microphysics_source_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_source_contract.get("mode") == "SOURCE_CAPABILITY_SURVEY_ONLY"
+            and ice_microphysics_source_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_source_contract.get("authoritative_runtime_size_axis") == "maximum_dimension_um"
+            and ice_microphysics_source_contract.get("frozen_science_unchanged") is True
+            and _src_required_forbidden.issubset(_src_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_SOURCE_REGISTRY_CONTRACT_FREEZE",
+            PASS if _src_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_SOURCE_REGISTRY",
+            f"contract={ice_microphysics_source_contract.get('contract_version') if isinstance(ice_microphysics_source_contract, Mapping) else None};forbidden_shortcuts={len(_src_forbidden)};promotion={ice_microphysics_source_contract.get('physics_promotion_allowed') if isinstance(ice_microphysics_source_contract, Mapping) else None}",
+            "Dmax-first axis + source-class semantics + no implicit size/PSD shortcuts + frozen science",
+        )
+
+        _src_gate_ok = False
+        _src_gate_detail = "source eligibility gate missing"
+        if not ice_microphysics_source_gate.empty:
+            row = ice_microphysics_source_gate.iloc[0]
+            _src_gate_ok = bool(
+                str(row.get("eligibility_state", "")) == "NO_AUTHORITATIVE_TAIWAN_SIZE_OR_PSD_SOURCE"
+                and str(row.get("TAIWAN_DIRECT_DMAX_SOURCE_AVAILABLE", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("TAIWAN_PSD_SOURCE_AVAILABLE", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("DMAX_SOURCE_SELECTION_ELIGIBLE", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("PSD_SOURCE_SELECTION_ELIGIBLE", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("PRODUCTION_ICE_OPTICS_READY", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("physics_promotion_allowed", "false")).strip().lower() in {"false", "0", "0.0"}
+            )
+            _src_gate_detail = (
+                f"state={row.get('eligibility_state')};direct_dmax={row.get('TAIWAN_DIRECT_DMAX_SOURCE_AVAILABLE')};"
+                f"psd={row.get('TAIWAN_PSD_SOURCE_AVAILABLE')};eligible_sources={row.get('eligible_source_count')};"
+                f"promotion={row.get('physics_promotion_allowed')}"
+            )
+        add(
+            "ICE_MICROPHYSICS_SOURCE_SELECTION_FAIL_CLOSED",
+            PASS if _src_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_SOURCE_REGISTRY",
+            _src_gate_detail,
+            "no authoritative Taiwan Dmax/PSD source => no source selection, no production readiness, no promotion",
+            "Mass-only/effective-size/reference-only sources remain evidence categories, never implicit Dmax/PSD providers.",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2402,6 +2479,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_native_input_capability_audit.csv",
         "ice_microphysics_phase2_mapping_eligibility.csv",
         "ice_microphysics_phase2_contract.json",
+        "ice_microphysics_source_capability_registry.csv",
+        "ice_microphysics_source_eligibility_gate.csv",
+        "ice_microphysics_source_registry_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",

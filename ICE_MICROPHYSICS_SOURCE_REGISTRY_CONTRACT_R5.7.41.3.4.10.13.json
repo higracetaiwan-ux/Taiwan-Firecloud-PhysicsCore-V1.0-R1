@@ -1,0 +1,48 @@
+{
+  "contract_version": "FIRECLOUD_ICE_MICROPHYSICS_SOURCE_REGISTRY_V1",
+  "step2_version": "R5.7.41.3.4.10.13",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.13",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "SOURCE_CAPABILITY_SURVEY_ONLY",
+  "evidence_as_of": "2026-09-16",
+  "physics_promotion_allowed": false,
+  "authoritative_runtime_size_axis": "maximum_dimension_um",
+  "capability_classes": {
+    "MASS_ONLY": "cloud-ice mass is available but no particle-size/number/PSD semantic is proven",
+    "EFFECTIVE_RADIUS_ONLY": "effective radius/diameter may exist but is not maximum dimension",
+    "MASS_PLUS_NUMBER_MOMENT": "bulk ice mass plus ice number concentration; still requires an explicit microphysics scheme/PSD contract",
+    "DMAX_CAPABLE": "direct provider field proven semantically compatible with maximum particle dimension",
+    "PSD_CAPABLE": "provider exposes a documented PSD or sufficient scheme parameters under an explicit source contract",
+    "REFERENCE_ONLY": "may inform model design/validation but cannot drive Taiwan operational runtime",
+    "CONTEXT_ONLY": "thermodynamic/cloud context only; no ice-size mapping authorization"
+  },
+  "dmax_source_requires": [
+    "Taiwan operational coverage for the requested forecast valid time",
+    "raw provider field with direct maximum-dimension semantics",
+    "units directly convertible to micrometres without a physical-shape assumption",
+    "run/cycle/valid-time/vertical-level/provider provenance",
+    "cloud-ice population compatibility with the Yang/Bi LUT contract",
+    "finite positive values inside the authorized LUT domain"
+  ],
+  "psd_source_requires": [
+    "Taiwan operational coverage for the requested forecast valid time",
+    "native PSD bins or a documented microphysics distribution/moment contract",
+    "mass-size/density/habit assumptions sourced from the same compatible scheme or a separately validated mapping contract",
+    "explicit units, vertical semantics, validity domain, uncertainty and fail-close behavior",
+    "independent validation before any production promotion"
+  ],
+  "forbidden_shortcuts": [
+    "effective_radius_to_Dmax_without_validated_contract",
+    "effective_diameter_to_Dmax_without_validated_contract",
+    "IWC_or_IWP_to_Dmax",
+    "temperature_to_Dmax",
+    "cloud_fraction_or_RH_to_Dmax",
+    "mass_plus_number_to_Dmax_without_scheme_specific_distribution_contract",
+    "assumed_PSD",
+    "fixed_habit_default",
+    "fixed_surface_roughness_default",
+    "reference_only_source_used_as_Taiwan_operational_source"
+  ],
+  "current_state": "NO_AUTHORITATIVE_TAIWAN_SIZE_OR_PSD_SOURCE",
+  "frozen_science_unchanged": true
+}

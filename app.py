@@ -1173,7 +1173,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 — Evidence Integrity Gate Hotfix"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 2 — Authoritative Size/PSD Source Capability Registry + Eligibility Gate"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -2598,6 +2598,8 @@ if run or st.session_state.analysis_result is not None:
             ("v1_windy_ice_optics_summary.csv", result.get("v1_windy_ice_optics_summary", pd.DataFrame())),
             ("ice_microphysics_native_input_capability_audit.csv", result.get("v1_ice_microphysics_native_input_capability_audit", pd.DataFrame())),
             ("ice_microphysics_phase2_mapping_eligibility.csv", result.get("v1_ice_microphysics_phase2_mapping_eligibility", pd.DataFrame())),
+            ("ice_microphysics_source_capability_registry.csv", result.get("v1_ice_microphysics_source_capability_registry", pd.DataFrame())),
+            ("ice_microphysics_source_eligibility_gate.csv", result.get("v1_ice_microphysics_source_eligibility_gate", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2680,6 +2682,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_cloud_spectral_optics_contract.json", result.get("ice_cloud_spectral_optics_contract", {})),
             ("ice_optics_portable_consumer_contract.json", result.get("ice_optics_portable_consumer_contract", {})),
             ("ice_microphysics_phase2_contract.json", result.get("ice_microphysics_phase2_contract", {})),
+            ("ice_microphysics_source_registry_contract.json", result.get("ice_microphysics_source_registry_contract", {})),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

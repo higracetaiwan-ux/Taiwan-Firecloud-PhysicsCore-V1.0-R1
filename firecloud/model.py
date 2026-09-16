@@ -131,6 +131,11 @@ from .ice_microphysics_capability import (
     build_mapping_eligibility_summary as build_ice_microphysics_mapping_eligibility_summary,
     phase2_contract_payload as ice_microphysics_phase2_contract_payload,
 )
+from .ice_microphysics_source_registry import (
+    build_source_capability_registry as build_ice_microphysics_source_capability_registry,
+    build_source_eligibility_gate as build_ice_microphysics_source_eligibility_gate,
+    source_registry_contract_payload as ice_microphysics_source_registry_contract_payload,
+)
 from .shadow_validation_collection import SCIENCE_BASELINE_ID
 from . import __version__ as PHYSICSCORE_VERSION
 from .viewing_spectral import (
@@ -3344,6 +3349,32 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         ),
     })
 
+    # R5.7.41.3.4.10.13 Ice Optics Phase 2 Step 2:
+    # authoritative external-source capability registry + fail-closed source gate.
+    # Static registry only; no provider download or science promotion is performed.
+    _ice_source_registry_t0 = perf_counter()
+    v1_ice_microphysics_source_capability_registry = build_ice_microphysics_source_capability_registry()
+    v1_ice_microphysics_source_eligibility_gate = build_ice_microphysics_source_eligibility_gate(
+        v1_ice_microphysics_source_capability_registry
+    )
+    ice_microphysics_source_registry_contract = ice_microphysics_source_registry_contract_payload(
+        physicscore_version=PHYSICSCORE_VERSION
+    )
+    _source_gate_state = (
+        str(v1_ice_microphysics_source_eligibility_gate.iloc[0].get("eligibility_state", "UNKNOWN"))
+        if not v1_ice_microphysics_source_eligibility_gate.empty else "UNKNOWN"
+    )
+    performance_rows.append({
+        "stage": "ICE_MICROPHYSICS_SOURCE_CAPABILITY_REGISTRY",
+        "elapsed_seconds": max(0.0, perf_counter() - _ice_source_registry_t0),
+        "cache_status": "STATIC_SOURCE_SURVEY_NO_NETWORK_NO_PHYSICS_PROMOTION",
+        "detail": (
+            f"sources={len(v1_ice_microphysics_source_capability_registry)};"
+            f"eligibility={_source_gate_state};"
+            "NO_EFFECTIVE_RADIUS_TO_DMAX;NO_MASS_NUMBER_TO_DMAX;NO_REFERENCE_ONLY_PROMOTION"
+        ),
+    })
+
     # R5.7.5: compact provider-I/O efficiency audit.  This is operational
     # diagnostics only; it does not participate in any physical gate.
     _cams_audit_df = _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_request_audit", []) or [])]) if details else pd.DataFrame()
@@ -3496,6 +3527,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_ice_microphysics_phase2_mapping_eligibility": v1_ice_microphysics_phase2_mapping_eligibility,
         "ice_microphysics_phase2_contract": ice_microphysics_phase2_contract,
         "ice_microphysics_phase2_required": True,
+        "v1_ice_microphysics_source_capability_registry": v1_ice_microphysics_source_capability_registry,
+        "v1_ice_microphysics_source_eligibility_gate": v1_ice_microphysics_source_eligibility_gate,
+        "ice_microphysics_source_registry_contract": ice_microphysics_source_registry_contract,
+        "ice_microphysics_source_registry_required": True,
         "native_cloud_voxel_matrix": native_cloud_voxel_matrix,
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
         "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),
@@ -3609,6 +3644,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_ice_microphysics_native_input_capability_audit": v1_ice_microphysics_native_input_capability_audit,
         "v1_ice_microphysics_phase2_mapping_eligibility": v1_ice_microphysics_phase2_mapping_eligibility,
         "ice_microphysics_phase2_contract": ice_microphysics_phase2_contract,
+        "v1_ice_microphysics_source_capability_registry": v1_ice_microphysics_source_capability_registry,
+        "v1_ice_microphysics_source_eligibility_gate": v1_ice_microphysics_source_eligibility_gate,
+        "ice_microphysics_source_registry_contract": ice_microphysics_source_registry_contract,
         "cams_request_audit": _cams_audit_df,
         "cams_tile_audit": _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_tile_audit", []) or [])]) if details else pd.DataFrame(),
         "gas_profile_route_snapshots": gas_profile_route_snapshots,

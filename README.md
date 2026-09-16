@@ -1,7 +1,16 @@
-> Current release: **V1.0-R5.7.41.3.4.10.12.1** — Ice Optics Phase 2 Evidence Integrity Gate Hotfix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.13** — Ice Optics Phase 2 Step 2: Authoritative Size/PSD Source Capability Registry + Eligibility Gate; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.12.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.13
 
+
+## R5.7.41.3.4.10.13 Ice Optics Phase 2 Step 2 — Authoritative Size/PSD Source Capability Registry + Eligibility Gate
+
+- 新增 `ice_microphysics_source_capability_registry.csv`、`ice_microphysics_source_eligibility_gate.csv`、`ice_microphysics_source_registry_contract.json`，每次 CASE 都保存外部來源能力與 source-selection fail-closed 狀態。
+- 目前台灣可用全球來源：GFS、ICON global、GEOS-FP 仍屬 mass/context-only；沒有任何來源直接提供可合法餵入 Yang/Bi `maximum_dimension_um` 的 Dmax 或 production-ready PSD。
+- ECMWF IFS radiation effective diameter/radius 僅列為 `EFFECTIVE_RADIUS_ONLY|REFERENCE_ONLY`；明確禁止 `r_eff/De → Dmax` 未驗證轉換。
+- NOAA RAP `CIMIXR + NCCICE` 列為 `MASS_PLUS_NUMBER_MOMENT|REFERENCE_ONLY`；因僅北美覆蓋，且 mass+number 仍需 scheme-specific PSD/mass-size contract，不得用於台灣 operational runtime。
+- Analysis Integrity 新增 source registry presence、contract freeze、source-selection fail-closed 三項硬檢查；CASE Archive 同步要求三個 Step 2 evidence members。
+- 不新增 provider download、不改 Formation / Viewing / Twilight Glow / COT / 六波段；`physics_promotion_allowed=false`。
 
 ## R5.7.41.3.4.10.12.1 Phase 2 Evidence Integrity Gate Hotfix
 
