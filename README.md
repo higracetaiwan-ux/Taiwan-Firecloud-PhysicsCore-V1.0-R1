@@ -1,15 +1,22 @@
-> Current release: **V1.0-R5.7.41.3.4.10.15.1** — Step 3B CASE Evidence Handoff Integrity Hotfix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.16** — Step 3C GFS v16 Effective-Radius ↔ Yang/Bi Dmax Bridge Feasibility Audit; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.15.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.16
 
+
+## R5.7.41.3.4.10.16 Step 3C — GFS v16 Effective-Radius ↔ Yang/Bi Dmax Bridge Feasibility Audit
+
+- `GFDL/Wyser rei` 被正式定義為 bulk effective-radius semantic；不得直接轉為 Yang/Bi `maximum_dimension_um`。
+- 禁止 `Dmax=rei`、`Dmax=2×rei`、effective diameter 直接改名 Dmax，以及 `reimin/reimax` 當 Dmax bounds。
+- 公開 GFDL parameter comment 與 v1/2019 實際 `reiflag=2` source branch 的算法標籤存在 mismatch；本版保存為 provenance blocker，不自行消除。
+- 識別較合理的候選：重建 compatible Wyser PSD/hex-column population，再對 authoritative Yang/Bi Dmax single-particle optics 做 bulk integration。
+- 此 bulk integration 目前仍 `IDENTIFIED_NOT_QUALIFIED`；habit、roughness、PSD/aspect-ratio、uncertainty、independent validation 未完成。
+- Formation / Viewing / Twilight Glow / 六波段 / Frozen Science 全部不變。
 
 ## R5.7.41.3.4.10.15.1 Step 3B CASE Evidence Handoff Integrity Hotfix
 
-- 修正 `.10.15` FIELD CASE：model 內 Step 3B evidence 正常，但 CASE export 的三個 Step 3B artifacts 被寫成 0-row CSV / 空 `{}` JSON，而 presence-only archive gate 仍誤判 PASS。
-- CASE export 現在由當前 release 的 Step 3B builder 直接重建 release-static evidence。
-- CASE Archive Integrity 新增三個 content gate：evidence ≥8 rows、qualification gate ≥1 row、contract JSON >2 bytes；空 placeholder 會硬 FAIL。
-- 不更動 Formation / Viewing / Twilight Glow / 六波段 / Canvas / Corridor / REZ / Earth Shadow / Production-Shadow COT / Missing≠Clear≠Zero。
-- `effective radius ≠ Yang/Bi Dmax`；Dmax / PSD / habit / roughness / production promotion 仍 fail-close。
+- 修正 `.10.15` FIELD CASE 中 Step 3B evidence archive handoff 空檔問題。
+- CASE export 由 release builder 重建 scheme-pin evidence，Archive Integrity 同時檢查內容非空。
+- 不更動 Frozen Science。
 
 ## R5.7.41.3.4.10.15 Ice Optics Phase 2 Step 3B — GFS v16 Exact Scheme Pinning Evidence Gate
 

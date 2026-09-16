@@ -146,6 +146,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_gfsv16_pin_gate = _df(result.get("v1_ice_microphysics_gfsv16_scheme_pin_gate"))
     ice_microphysics_gfsv16_pin_contract = result.get("ice_microphysics_gfsv16_scheme_pin_contract", {}) or {}
     ice_microphysics_gfsv16_pin_required = bool(result.get("ice_microphysics_gfsv16_scheme_pin_required", False))
+    ice_microphysics_gfsv16_rei_dmax_bridge_evidence = _df(result.get("v1_ice_microphysics_gfsv16_rei_dmax_bridge_evidence"))
+    ice_microphysics_gfsv16_rei_dmax_bridge_gate = _df(result.get("v1_ice_microphysics_gfsv16_rei_dmax_bridge_gate"))
+    ice_microphysics_gfsv16_rei_dmax_bridge_contract = result.get("ice_microphysics_gfsv16_rei_dmax_bridge_contract", {}) or {}
+    ice_microphysics_gfsv16_rei_dmax_bridge_required = bool(result.get("ice_microphysics_gfsv16_rei_dmax_bridge_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -824,6 +828,92 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_GFSV16_SCHEME_PIN",
             _pin_gate_detail,
             "public GFS v16/GFDL-v1 effective-radius evidence may be pinned while Dmax/PSD/production remain blocked until exact provenance + semantic bridge + validation complete",
+        )
+
+    # R5.7.41.3.4.10.16 Phase 2 Step 3C GFS v16 rei↔Dmax bridge feasibility audit.
+    if ice_microphysics_gfsv16_rei_dmax_bridge_required:
+        _bridge_present_ok = bool(
+            not ice_microphysics_gfsv16_rei_dmax_bridge_evidence.empty
+            and not ice_microphysics_gfsv16_rei_dmax_bridge_gate.empty
+            and isinstance(ice_microphysics_gfsv16_rei_dmax_bridge_contract, Mapping)
+            and bool(ice_microphysics_gfsv16_rei_dmax_bridge_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE_EVIDENCE_PRESENT",
+            PASS if _bridge_present_ok else FAIL,
+            "ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE",
+            f"evidence_rows={len(ice_microphysics_gfsv16_rei_dmax_bridge_evidence)};gate_rows={len(ice_microphysics_gfsv16_rei_dmax_bridge_gate)};contract_present={bool(ice_microphysics_gfsv16_rei_dmax_bridge_contract)}",
+            "Step 3C bridge evidence + qualification gate + contract present",
+            "Feasibility-only; direct rei→Dmax is rejected and no Ice Optics production promotion is allowed.",
+        )
+
+        _bridge_forbidden = {str(x) for x in ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_gfsv16_rei_dmax_bridge_contract, Mapping) else set()
+        _bridge_required_forbidden = {
+            "GFDL_rei_treated_as_Yang_Bi_Dmax",
+            "Dmax_equal_2_times_rei",
+            "generalized_effective_diameter_treated_as_Dmax",
+            "GFDL_MPv3_PSD_substituted_for_GFSv16_v1",
+            "Yang_Bi_solid_column_habit_silently_selected",
+            "Yang_Bi_surface_roughness_silently_selected",
+            "reimin_reimax_used_as_Dmax_bounds",
+            "production_promotion_before_independent_bulk_optics_validation",
+        }
+        _bridge_contract_ok = bool(
+            isinstance(ice_microphysics_gfsv16_rei_dmax_bridge_contract, Mapping)
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("contract_version") == "FIRECLOUD_ICE_GFSV16_REI_DMAX_BRIDGE_FEASIBILITY_V1"
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("mode") == "GFSV16_REI_DMAX_BRIDGE_FEASIBILITY_AUDIT_ONLY"
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("source_size_semantic") == "bulk_cloud_ice_effective_radius_rei"
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("authoritative_optical_size_axis") == "maximum_dimension_um"
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("effective_radius_is_dmax") is False
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("direct_rei_to_dmax_one_to_one_eligible") is False
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("bulk_psd_integration_path_identified") is True
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("bulk_yang_bi_psd_integration_eligible") is False
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("gfsv16_dmax_mapping_eligible") is False
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_gfsv16_rei_dmax_bridge_contract.get("frozen_science_unchanged") is True
+            and _bridge_required_forbidden.issubset(_bridge_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE_CONTRACT_FREEZE",
+            PASS if _bridge_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE",
+            f"contract={ice_microphysics_gfsv16_rei_dmax_bridge_contract.get('contract_version') if isinstance(ice_microphysics_gfsv16_rei_dmax_bridge_contract, Mapping) else None};forbidden_shortcuts={len(_bridge_forbidden)}",
+            "bulk effective radius and single-particle Dmax remain semantically separated; only a future validated bulk-PSD integration path may proceed",
+        )
+
+        _bridge_gate_ok = False
+        _bridge_gate_detail = "Step 3C bridge gate missing"
+        if not ice_microphysics_gfsv16_rei_dmax_bridge_gate.empty:
+            row = ice_microphysics_gfsv16_rei_dmax_bridge_gate.iloc[0]
+            _bridge_gate_ok = bool(
+                str(row.get("GFSV16_REIFLAG2_SOURCE_FORMULA_PINNED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("REIFLAG2_DOCUMENTATION_LABEL_CONSISTENT", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("GFDL_REI_IS_BULK_EFFECTIVE_RADIUS", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("YANG_BI_SIZE_AXIS_IS_MAXIMUM_DIMENSION", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("DIRECT_REI_TO_DMAX_ONE_TO_ONE_ELIGIBLE", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("BULK_PSD_INTEGRATION_PATH_IDENTIFIED", "false")).strip().lower() in {"true","1","1.0"}
+                and str(row.get("WYSER_PSD_RECONSTRUCTION_PINNED", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("YANG_BI_HABIT_BRIDGE_VALIDATED", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("YANG_BI_ROUGHNESS_BRIDGE_VALIDATED", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("BULK_YANG_BI_PSD_INTEGRATION_ELIGIBLE", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("GFSV16_DMAX_MAPPING_ELIGIBLE", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("PRODUCTION_ICE_OPTICS_READY", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("physics_promotion_allowed", "true")).strip().lower() in {"false","0","0.0"}
+                and str(row.get("qualification_state", "")) == "DIRECT_DMAX_BRIDGE_REJECTED_BULK_PSD_PATH_IDENTIFIED_NOT_QUALIFIED"
+            )
+            _bridge_gate_detail = (
+                f"state={row.get('qualification_state')};doc_consistent={row.get('REIFLAG2_DOCUMENTATION_LABEL_CONSISTENT')};"
+                f"direct={row.get('DIRECT_REI_TO_DMAX_ONE_TO_ONE_ELIGIBLE')};bulk_path={row.get('BULK_PSD_INTEGRATION_PATH_IDENTIFIED')};"
+                f"bulk_eligible={row.get('BULK_YANG_BI_PSD_INTEGRATION_ELIGIBLE')};promotion={row.get('physics_promotion_allowed')}"
+            )
+        add(
+            "ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE_FAIL_CLOSED",
+            PASS if _bridge_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE",
+            _bridge_gate_detail,
+            "direct rei→Dmax rejected; bulk PSD integration may be identified but remains blocked until exact PSD/geometry/habit/roughness/provenance/validation requirements pass",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2657,6 +2747,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_gfsv16_scheme_pin_evidence.csv",
         "ice_microphysics_gfsv16_scheme_pin_gate.csv",
         "ice_microphysics_gfsv16_scheme_pin_contract.json",
+        "ice_microphysics_gfsv16_rei_dmax_bridge_evidence.csv",
+        "ice_microphysics_gfsv16_rei_dmax_bridge_gate.csv",
+        "ice_microphysics_gfsv16_rei_dmax_bridge_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -2728,6 +2821,43 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "observed": int(_contract_bytes),
             "expected": ">2 serialized JSON bytes",
             "detail": "A bare {} contract is not valid Step 3B CASE evidence.",
+        })
+
+    # R5.7.41.3.4.10.16 Step 3C serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _bridge_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _bridge_evidence_name = "ice_microphysics_gfsv16_rei_dmax_bridge_evidence.csv"
+        _bridge_gate_name = "ice_microphysics_gfsv16_rei_dmax_bridge_gate.csv"
+        _bridge_contract_name = "ice_microphysics_gfsv16_rei_dmax_bridge_contract.json"
+        _bridge_evidence_rows = _bridge_manifest_metric(_bridge_evidence_name, "row_count", 0.0)
+        _bridge_gate_rows = _bridge_manifest_metric(_bridge_gate_name, "row_count", 0.0)
+        _bridge_contract_bytes = _bridge_manifest_metric(_bridge_contract_name, "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE_EVIDENCE_NONEMPTY",
+            "status":PASS if _bridge_evidence_rows >= 13 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_bridge_evidence_rows),
+            "expected":">=13 serialized evidence rows",
+            "detail":"Step 3C semantic/bridge feasibility evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE_GATE_NONEMPTY",
+            "status":PASS if _bridge_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_bridge_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3C bridge qualification gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_GFSV16_REI_DMAX_BRIDGE_CONTRACT_NONEMPTY",
+            "status":PASS if _bridge_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_bridge_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3C CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:

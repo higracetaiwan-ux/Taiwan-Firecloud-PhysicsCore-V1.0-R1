@@ -1,0 +1,40 @@
+{
+  "contract_version": "FIRECLOUD_ICE_GFSV16_REI_DMAX_BRIDGE_FEASIBILITY_V1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.16",
+  "step3c_version": "R5.7.41.3.4.10.16",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "GFSV16_REI_DMAX_BRIDGE_FEASIBILITY_AUDIT_ONLY",
+  "source_model": "NOAA/NCEP GFS v16 / GFDL Cloud Microphysics v1-compatible public reproduction path",
+  "source_size_semantic": "bulk_cloud_ice_effective_radius_rei",
+  "authoritative_optical_size_axis": "maximum_dimension_um",
+  "effective_radius_is_dmax": false,
+  "direct_rei_to_dmax_one_to_one_eligible": false,
+  "bulk_psd_integration_path_identified": true,
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "gfsv16_dmax_mapping_eligible": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "source_documentation_label_consistent": false,
+  "candidate_bridge": "reconstruct_exact_Wyser_population_then_integrate_Yang_Bi_single_particle_optics_over_Dmax",
+  "forbidden_shortcuts": [
+    "GFDL_rei_treated_as_Yang_Bi_Dmax",
+    "Dmax_equal_2_times_rei",
+    "generalized_effective_diameter_treated_as_Dmax",
+    "GFDL_MPv3_PSD_substituted_for_GFSv16_v1",
+    "Yang_Bi_solid_column_habit_silently_selected",
+    "Yang_Bi_surface_roughness_silently_selected",
+    "reimin_reimax_used_as_Dmax_bounds",
+    "production_promotion_before_independent_bulk_optics_validation"
+  ],
+  "qualification_requirements": [
+    "resolve_reiflag2_documentation_source_mismatch_or_pin_exact_production_semantics",
+    "pin_exact_Wyser_PSD_coefficients_integration_limits_and_size_dependent_aspect_ratio",
+    "validate_Wyser_geometry_to_Yang_Bi_habit_mapping",
+    "qualify_surface_roughness_as_state_or_uncertainty_ensemble",
+    "define_bulk_integration_normalization_and_six_band_outputs",
+    "quantify_validity_domain_uncertainty_and_fail_close_boundaries",
+    "independent_bulk_optics_validation",
+    "separate_production_promotion_gate"
+  ],
+  "frozen_science_unchanged": true
+}
