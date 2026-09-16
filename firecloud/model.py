@@ -166,6 +166,11 @@ from .ice_microphysics_wyser_mass_geometry_closure import (
     build_wyser_mass_geometry_gate as build_ice_microphysics_wyser_mass_geometry_gate,
     wyser_mass_geometry_contract_payload as ice_microphysics_wyser_mass_geometry_contract_payload,
 )
+from .ice_microphysics_wyser_primary_numeric_recovery import (
+    build_wyser_primary_numeric_recovery_evidence as build_ice_microphysics_wyser_primary_numeric_recovery_evidence,
+    build_wyser_primary_numeric_recovery_gate as build_ice_microphysics_wyser_primary_numeric_recovery_gate,
+    wyser_primary_numeric_recovery_contract_payload as ice_microphysics_wyser_primary_numeric_recovery_contract_payload,
+)
 from .shadow_validation_collection import SCIENCE_BASELINE_ID
 from . import __version__ as PHYSICSCORE_VERSION
 from .viewing_spectral import (
@@ -3562,6 +3567,31 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         ),
     })
 
+    # R5.7.41.3.4.10.20 Ice Optics Phase 2 Step 3G:
+    # primary numeric recovery audit + synthetic-only mass-closure harness.
+    _ice_wyser_primary_numeric_recovery_t0 = perf_counter()
+    v1_ice_microphysics_wyser_primary_numeric_recovery_evidence = build_ice_microphysics_wyser_primary_numeric_recovery_evidence()
+    v1_ice_microphysics_wyser_primary_numeric_recovery_gate = build_ice_microphysics_wyser_primary_numeric_recovery_gate(
+        v1_ice_microphysics_wyser_primary_numeric_recovery_evidence
+    )
+    ice_microphysics_wyser_primary_numeric_recovery_contract = ice_microphysics_wyser_primary_numeric_recovery_contract_payload(
+        physicscore_version=PHYSICSCORE_VERSION
+    )
+    _ice_wyser_primary_numeric_recovery_state = (
+        str(v1_ice_microphysics_wyser_primary_numeric_recovery_gate.iloc[0].get("qualification_state", "UNKNOWN"))
+        if not v1_ice_microphysics_wyser_primary_numeric_recovery_gate.empty else "UNKNOWN"
+    )
+    performance_rows.append({
+        "stage": "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY_AUDIT",
+        "elapsed_seconds": max(0.0, perf_counter() - _ice_wyser_primary_numeric_recovery_t0),
+        "cache_status": "STATIC_PRIMARY_NUMERIC_RECOVERY_EVIDENCE_SYNTHETIC_HARNESS_NO_PHYSICS_PROMOTION",
+        "detail": (
+            f"evidence_rows={len(v1_ice_microphysics_wyser_primary_numeric_recovery_evidence)};"
+            f"state={_ice_wyser_primary_numeric_recovery_state};"
+            "EQ5_PRIMARY=BLOCKED;EQ6_PRIMARY=BLOCKED;SYNTHETIC_HARNESS=READY;SCIENTIFIC_CLOSURE=BLOCKED"
+        ),
+    })
+
     # R5.7.5: compact provider-I/O efficiency audit.  This is operational
     # diagnostics only; it does not participate in any physical gate.
     _cams_audit_df = _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_request_audit", []) or [])]) if details else pd.DataFrame()
@@ -3741,7 +3771,11 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_ice_microphysics_wyser_mass_geometry_evidence": v1_ice_microphysics_wyser_mass_geometry_evidence,
         "v1_ice_microphysics_wyser_mass_geometry_gate": v1_ice_microphysics_wyser_mass_geometry_gate,
         "ice_microphysics_wyser_mass_geometry_contract": ice_microphysics_wyser_mass_geometry_contract,
+        "v1_ice_microphysics_wyser_primary_numeric_recovery_evidence": v1_ice_microphysics_wyser_primary_numeric_recovery_evidence,
+        "v1_ice_microphysics_wyser_primary_numeric_recovery_gate": v1_ice_microphysics_wyser_primary_numeric_recovery_gate,
+        "ice_microphysics_wyser_primary_numeric_recovery_contract": ice_microphysics_wyser_primary_numeric_recovery_contract,
         "ice_microphysics_wyser_mass_geometry_required": True,
+        "ice_microphysics_wyser_primary_numeric_recovery_required": True,
         "native_cloud_voxel_matrix": native_cloud_voxel_matrix,
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
         "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),
@@ -3873,6 +3907,9 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_ice_microphysics_wyser_mass_geometry_evidence": v1_ice_microphysics_wyser_mass_geometry_evidence,
         "v1_ice_microphysics_wyser_mass_geometry_gate": v1_ice_microphysics_wyser_mass_geometry_gate,
         "ice_microphysics_wyser_mass_geometry_contract": ice_microphysics_wyser_mass_geometry_contract,
+        "v1_ice_microphysics_wyser_primary_numeric_recovery_evidence": v1_ice_microphysics_wyser_primary_numeric_recovery_evidence,
+        "v1_ice_microphysics_wyser_primary_numeric_recovery_gate": v1_ice_microphysics_wyser_primary_numeric_recovery_gate,
+        "ice_microphysics_wyser_primary_numeric_recovery_contract": ice_microphysics_wyser_primary_numeric_recovery_contract,
         "cams_request_audit": _cams_audit_df,
         "cams_tile_audit": _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_tile_audit", []) or [])]) if details else pd.DataFrame(),
         "gas_profile_route_snapshots": gas_profile_route_snapshots,

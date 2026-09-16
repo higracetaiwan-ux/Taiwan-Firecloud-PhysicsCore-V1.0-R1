@@ -1,6 +1,15 @@
-> Current release: **V1.0-R5.7.41.3.4.10.19** — Step 3F Exact Wyser Eq.(5)/(6) Geometry + Mass-Size / PSD Mass-Closure Qualification; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.20** — Step 3G Primary Wyser Eq.(5)/(6) Numeric Recovery Audit + Synthetic Closure Harness Readiness; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.19
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.20
+
+
+## R5.7.41.3.4.10.20 Step 3G — Primary Wyser Numeric Recovery Audit + Synthetic Closure Harness
+
+- Wyser Eq.(5)/(6) primary semantic/units remain pinned, but machine-readable numeric equations are **not** promoted.
+- `D=2.5L^0.6` remains corroborated non-primary lineage only.
+- Corrupt Eq.(6) flat/OCR extraction is explicitly rejected as a coefficient source.
+- A synthetic-only diagnostic mass-closure harness is ready; it can validate the normalization algorithm but can never set scientific mass closure PASS.
+- Absolute PSD reconstruction, Wyser L→Yang/Bi Dmax, habit/roughness selection, bulk Ice tau and production promotion remain blocked.
 
 
 ## R5.7.41.3.4.10.19 Step 3F — Exact Wyser Eq.(5)/(6) Geometry + Mass-Size / PSD Mass-Closure Qualification

@@ -162,6 +162,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_wyser_mass_geometry_gate = _df(result.get("v1_ice_microphysics_wyser_mass_geometry_gate"))
     ice_microphysics_wyser_mass_geometry_contract = result.get("ice_microphysics_wyser_mass_geometry_contract", {}) or {}
     ice_microphysics_wyser_mass_geometry_required = bool(result.get("ice_microphysics_wyser_mass_geometry_required", False))
+    ice_microphysics_wyser_primary_numeric_recovery_evidence = _df(result.get("v1_ice_microphysics_wyser_primary_numeric_recovery_evidence"))
+    ice_microphysics_wyser_primary_numeric_recovery_gate = _df(result.get("v1_ice_microphysics_wyser_primary_numeric_recovery_gate"))
+    ice_microphysics_wyser_primary_numeric_recovery_contract = result.get("ice_microphysics_wyser_primary_numeric_recovery_contract", {}) or {}
+    ice_microphysics_wyser_primary_numeric_recovery_required = bool(result.get("ice_microphysics_wyser_primary_numeric_recovery_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1152,6 +1156,80 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY",
             _step3f_gate_detail,
             "Secondary geometry lineage may be recorded while exact primary mass-size, mass closure, coordinate mapping and promotion remain blocked",
+        )
+
+    if ice_microphysics_wyser_primary_numeric_recovery_required:
+        _step3g_present = bool(
+            not ice_microphysics_wyser_primary_numeric_recovery_evidence.empty
+            and not ice_microphysics_wyser_primary_numeric_recovery_gate.empty
+            and isinstance(ice_microphysics_wyser_primary_numeric_recovery_contract, Mapping)
+            and bool(ice_microphysics_wyser_primary_numeric_recovery_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY_EVIDENCE_PRESENT",
+            PASS if _step3g_present else FAIL,
+            "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY",
+            f"evidence_rows={len(ice_microphysics_wyser_primary_numeric_recovery_evidence)};gate_rows={len(ice_microphysics_wyser_primary_numeric_recovery_gate)};contract_present={bool(ice_microphysics_wyser_primary_numeric_recovery_contract)}",
+            "Step 3G primary numeric recovery evidence/gate/contract must be present",
+        )
+        _step3g_forbidden = {str(x) for x in ice_microphysics_wyser_primary_numeric_recovery_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_wyser_primary_numeric_recovery_contract, Mapping) else set()
+        _step3g_required_forbidden = {
+            "secondary_D_2p5_L_0p6_promoted_as_primary_Wyser_equation_5",
+            "corrupt_equation_6_flat_extraction_parsed_into_coefficients",
+            "unrelated_mass_size_law_substituted_for_Wyser_equation_6",
+            "synthetic_harness_pass_treated_as_scientific_Wyser_mass_closure",
+        }
+        _step3g_contract_ok = bool(
+            isinstance(ice_microphysics_wyser_primary_numeric_recovery_contract, Mapping)
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("contract_version") == "FIRECLOUD_ICE_WYSER_PRIMARY_NUMERIC_RECOVERY_V1"
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("mode") == "WYSER_PRIMARY_NUMERIC_RECOVERY_AND_SYNTHETIC_CLOSURE_HARNESS_ONLY"
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("wyser_eq5_primary_machine_numeric_recovered") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("wyser_eq6_primary_machine_numeric_recovered") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("diagnostic_mass_closure_harness_ready") is True
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("scientific_mass_closure_executed") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("absolute_psd_reconstruction_executable") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("frozen_science_unchanged") is True
+            and _step3g_required_forbidden.issubset(_step3g_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY_CONTRACT_FREEZE",
+            PASS if _step3g_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY",
+            f"contract={ice_microphysics_wyser_primary_numeric_recovery_contract.get('contract_version') if isinstance(ice_microphysics_wyser_primary_numeric_recovery_contract, Mapping) else None};forbidden_shortcuts={len(_step3g_forbidden)}",
+            "Synthetic closure readiness must not promote unresolved primary Eq.5/Eq.6 numerics or scientific mass closure",
+        )
+        _step3g_gate_ok = False
+        _step3g_gate_detail = "Step 3G primary numeric recovery gate missing"
+        if not ice_microphysics_wyser_primary_numeric_recovery_gate.empty:
+            row = ice_microphysics_wyser_primary_numeric_recovery_gate.iloc[0]
+            _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+            _step3g_gate_ok = bool(
+                _b("WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERED", False)
+                and _b("WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERED", False)
+                and _b("INDEPENDENT_TRANSCRIPTION_REPRODUCTION_PASS", False)
+                and _b("EQ5_EQ6_UNIT_CONSISTENCY_PASS", False)
+                and _b("DIAGNOSTIC_MASS_CLOSURE_HARNESS_READY", True)
+                and _b("SCIENTIFIC_MASS_CLOSURE_EXECUTED", False)
+                and _b("ABSOLUTE_PSD_RECONSTRUCTION_EXECUTABLE", False)
+                and _b("PSD_MASS_CLOSURE_VALIDATION_PASS", False)
+                and _b("PRODUCTION_ICE_OPTICS_READY", False)
+                and _b("physics_promotion_allowed", False)
+                and str(row.get("qualification_state", "")) == "WYSER_PRIMARY_NUMERIC_RECOVERY_UNRESOLVED_CLOSURE_HARNESS_READY"
+            )
+            _step3g_gate_detail = (
+                f"state={row.get('qualification_state')};eq5_primary={row.get('WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERED')};"
+                f"eq6_primary={row.get('WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERED')};harness={row.get('DIAGNOSTIC_MASS_CLOSURE_HARNESS_READY')};"
+                f"scientific_closure={row.get('SCIENTIFIC_MASS_CLOSURE_EXECUTED')};promotion={row.get('physics_promotion_allowed')}"
+            )
+        add(
+            "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY_FAIL_CLOSED",
+            PASS if _step3g_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY",
+            _step3g_gate_detail,
+            "Primary numeric recovery may remain unresolved while a synthetic-only harness is ready; scientific closure and promotion remain blocked",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2997,6 +3075,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_wyser_mass_geometry_evidence.csv",
         "ice_microphysics_wyser_mass_geometry_gate.csv",
         "ice_microphysics_wyser_mass_geometry_contract.json",
+        "ice_microphysics_wyser_primary_numeric_recovery_evidence.csv",
+        "ice_microphysics_wyser_primary_numeric_recovery_gate.csv",
+        "ice_microphysics_wyser_primary_numeric_recovery_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -3212,6 +3293,40 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "component":"CASE_ARCHIVE", "observed":int(_step3f_contract_bytes),
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3F CASE evidence.",
+        })
+
+    # R5.7.41.3.4.10.20 Step 3G serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _step3g_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _step3g_evidence_rows = _step3g_manifest_metric("ice_microphysics_wyser_primary_numeric_recovery_evidence.csv", "row_count", 0.0)
+        _step3g_gate_rows = _step3g_manifest_metric("ice_microphysics_wyser_primary_numeric_recovery_gate.csv", "row_count", 0.0)
+        _step3g_contract_bytes = _step3g_manifest_metric("ice_microphysics_wyser_primary_numeric_recovery_contract.json", "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY_EVIDENCE_NONEMPTY",
+            "status":PASS if _step3g_evidence_rows >= 12 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3g_evidence_rows),
+            "expected":">=12 serialized evidence rows",
+            "detail":"Step 3G primary numeric recovery evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY_GATE_NONEMPTY",
+            "status":PASS if _step3g_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3g_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3G primary numeric recovery gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY_CONTRACT_NONEMPTY",
+            "status":PASS if _step3g_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3g_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3G CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:
