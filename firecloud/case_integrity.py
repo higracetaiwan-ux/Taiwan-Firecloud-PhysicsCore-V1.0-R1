@@ -2685,6 +2685,51 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "detail": "Required evidence member",
         })
 
+    # R5.7.41.3.4.10.15.1 FIELD hotfix:
+    # file presence is not sufficient for Step 3B release evidence.  The .10.15
+    # FIELD CASE contained these three filenames but serialized 0-row CSVs and
+    # an empty {} JSON while the archive member checks still passed.  Bind the
+    # archive gate to the actual serialized manifest row/byte counts.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _evidence_name = "ice_microphysics_gfsv16_scheme_pin_evidence.csv"
+        _gate_name = "ice_microphysics_gfsv16_scheme_pin_gate.csv"
+        _contract_name = "ice_microphysics_gfsv16_scheme_pin_contract.json"
+        _evidence_rows = _manifest_metric(_evidence_name, "row_count", 0.0)
+        _gate_rows = _manifest_metric(_gate_name, "row_count", 0.0)
+        _contract_bytes = _manifest_metric(_contract_name, "byte_size", 0.0)
+
+        rows.append({
+            "check_id": "ARCHIVE_CONTENT::ICE_MICROPHYSICS_GFSV16_SCHEME_PIN_EVIDENCE_NONEMPTY",
+            "status": PASS if _evidence_rows >= 8 else FAIL,
+            "component": "CASE_ARCHIVE",
+            "observed": int(_evidence_rows),
+            "expected": ">=8 serialized evidence rows",
+            "detail": "Step 3B evidence must contain the release-static pinning evidence, not an empty CSV placeholder.",
+        })
+        rows.append({
+            "check_id": "ARCHIVE_CONTENT::ICE_MICROPHYSICS_GFSV16_SCHEME_PIN_GATE_NONEMPTY",
+            "status": PASS if _gate_rows >= 1 else FAIL,
+            "component": "CASE_ARCHIVE",
+            "observed": int(_gate_rows),
+            "expected": ">=1 serialized gate row",
+            "detail": "Step 3B qualification gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id": "ARCHIVE_CONTENT::ICE_MICROPHYSICS_GFSV16_SCHEME_PIN_CONTRACT_NONEMPTY",
+            "status": PASS if _contract_bytes > 2 else FAIL,
+            "component": "CASE_ARCHIVE",
+            "observed": int(_contract_bytes),
+            "expected": ">2 serialized JSON bytes",
+            "detail": "A bare {} contract is not valid Step 3B CASE evidence.",
+        })
+
     if not analysis_audit.empty and "status" in analysis_audit.columns:
         upstream_fail = int(analysis_audit["status"].astype(str).eq(FAIL).sum())
         rows.append({

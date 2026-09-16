@@ -1,6 +1,15 @@
-> Current release: **V1.0-R5.7.41.3.4.10.15** — Ice Optics Phase 2 Step 3B: GFS v16 Exact Scheme Pinning Evidence Gate; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.15.1** — Step 3B CASE Evidence Handoff Integrity Hotfix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.15
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.15.1
+
+
+## R5.7.41.3.4.10.15.1 Step 3B CASE Evidence Handoff Integrity Hotfix
+
+- 修正 `.10.15` FIELD CASE：model 內 Step 3B evidence 正常，但 CASE export 的三個 Step 3B artifacts 被寫成 0-row CSV / 空 `{}` JSON，而 presence-only archive gate 仍誤判 PASS。
+- CASE export 現在由當前 release 的 Step 3B builder 直接重建 release-static evidence。
+- CASE Archive Integrity 新增三個 content gate：evidence ≥8 rows、qualification gate ≥1 row、contract JSON >2 bytes；空 placeholder 會硬 FAIL。
+- 不更動 Formation / Viewing / Twilight Glow / 六波段 / Canvas / Corridor / REZ / Earth Shadow / Production-Shadow COT / Missing≠Clear≠Zero。
+- `effective radius ≠ Yang/Bi Dmax`；Dmax / PSD / habit / roughness / production promotion 仍 fail-close。
 
 ## R5.7.41.3.4.10.15 Ice Optics Phase 2 Step 3B — GFS v16 Exact Scheme Pinning Evidence Gate
 

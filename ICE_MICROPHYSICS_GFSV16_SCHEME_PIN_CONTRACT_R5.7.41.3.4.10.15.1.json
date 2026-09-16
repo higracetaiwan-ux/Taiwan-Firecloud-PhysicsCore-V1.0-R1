@@ -1,0 +1,37 @@
+{
+  "contract_version": "FIRECLOUD_ICE_GFSV16_SCHEME_PIN_V1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.15.1",
+  "step3b_version": "R5.7.41.3.4.10.15.1",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "GFSV16_EXACT_SCHEME_PINNING_EVIDENCE_ONLY",
+  "primary_model": "NOAA/NCEP GFS v16",
+  "microphysics_family": "GFDL Cloud Microphysics",
+  "public_reproduction_path": "physics/MP/GFDL/v1_2019",
+  "emulation_namelist_reiflag": 2,
+  "pinned_size_semantic": "cloud_ice_effective_radius",
+  "authoritative_runtime_size_axis": "maximum_dimension_um",
+  "effective_radius_is_dmax": false,
+  "production_binary_exact_commit_pinned": false,
+  "dmax_mapping_eligible": false,
+  "psd_reconstruction_eligible": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "forbidden_shortcuts": [
+    "CCPP_GFSv16_emulation_claimed_byte_identical_to_NCEP_production_binary",
+    "GFDL_v1_effective_radius_treated_as_Yang_Bi_Dmax",
+    "GFDL_MPv3_PSD_parameters_substituted_for_GFSv16_v1",
+    "reiflag2_effective_radius_bounds_used_as_Dmax_bounds",
+    "effective_radius_to_Dmax_without_habit_PSD_mass_size_contract",
+    "fixed_habit_default",
+    "fixed_surface_roughness_default"
+  ],
+  "promotion_requirements": [
+    "exact_operational_source_revision_or_equivalent_authoritative_provenance",
+    "scheme_specific_particle_size_semantic_proof",
+    "Yang_Bi_Dmax_bridge_with_habit_PSD_mass_size_compatibility",
+    "uncertainty_domain_and_fail_close_boundaries",
+    "independent_validation",
+    "separate_production_promotion_gate"
+  ],
+  "frozen_science_unchanged": true
+}

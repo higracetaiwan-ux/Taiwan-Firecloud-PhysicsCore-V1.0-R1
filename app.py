@@ -98,6 +98,11 @@ from firecloud.timezone_contract import AUTO_COORDINATE, USER_OVERRIDE, resolve_
 from firecloud.hitran_readiness import hitran_backend_status, resolve_hitran_db_path, resolve_hitran_lut_path
 from firecloud.ice_cloud_spectral_optics import load_ice_optics_lut
 from firecloud.ice_optics_portable import build_portable_package_zip_bytes
+from firecloud.ice_microphysics_gfsv16_scheme_pin import (
+    build_gfsv16_scheme_pin_evidence,
+    build_gfsv16_scheme_pin_gate,
+    gfsv16_scheme_pin_contract_payload,
+)
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -1173,7 +1178,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3B — GFS v16 Exact Scheme Pinning Evidence Gate"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3B — GFS v16 Scheme Pinning + CASE Evidence Handoff Integrity Hotfix"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1190,6 +1195,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.15.1**：Step 3B CASE Evidence Handoff Integrity Hotfix。CASE export 直接由當前 release builder 重建 GFS v16 scheme-pin 靜態 evidence，Archive Integrity 新增內容非空 gate；修正 `.10.15` FIELD CASE 中「Analysis Integrity PASS 但實際 CASE 只寫出 0-row/空 `{}` evidence」的證據鏈漏洞，不改 Frozen Science。
 - **R5.7.41.3.4.10.15**：Ice Optics Phase 2 Step 3B — GFS v16 Exact Scheme Pinning Evidence Gate。公開重現路徑釘至 GFDL v1/2019、GFS_v16 emulation namelist `reiflag=2` 與 cloud-ice effective-radius semantic；NCEP production binary exact commit 與 Yang/Bi Dmax bridge 仍 unresolved，因此 Dmax/PSD/production promotion 維持 fail-close。
 - **R5.7.41.3.4.10.14**：Ice Optics Phase 2 Step 3 — Global Mapping Candidate Intake + Scheme Contract Qualification。全球 forecast coverage 優先；GFS v16 為現行第一調查候選，GFS v17 Thompson 為未來候選；未釘死 exact scheme revision / operational config / Yang-Bi Dmax semantic bridge 前一律 fail-close。
 - **R5.7.41.3.4.10.13**：Ice Optics Phase 2 Step 2 — Authoritative Size/PSD Source Capability Registry + Eligibility Gate。建立全球來源能力分類與 source-selection fail-close。
@@ -2531,6 +2537,19 @@ if run or st.session_state.analysis_result is not None:
         _t0 = perf_counter()
         _pre_export_t0 = _t0
         _mem = io.BytesIO()
+
+        # R5.7.41.3.4.10.15.1: Step 3B evidence is release-static, not event-derived.
+        # Rebuild it from the exact running release at CASE export time instead of
+        # trusting the UI/session result handoff. The .10.15 FIELD case proved that
+        # model pre-integrity evidence could be present while these result keys were
+        # absent at archive time, creating empty CSV/JSON members.
+        _case_gfsv16_scheme_pin_evidence = build_gfsv16_scheme_pin_evidence()
+        _case_gfsv16_scheme_pin_gate = build_gfsv16_scheme_pin_gate(
+            _case_gfsv16_scheme_pin_evidence
+        )
+        _case_gfsv16_scheme_pin_contract = gfsv16_scheme_pin_contract_payload(
+            physicscore_version=__version__
+        )
         _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
         _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
         _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
@@ -2605,8 +2624,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_source_eligibility_gate.csv", result.get("v1_ice_microphysics_source_eligibility_gate", pd.DataFrame())),
             ("ice_microphysics_global_mapping_candidate_registry.csv", result.get("v1_ice_microphysics_global_mapping_candidate_registry", pd.DataFrame())),
             ("ice_microphysics_global_mapping_qualification_gate.csv", result.get("v1_ice_microphysics_global_mapping_qualification_gate", pd.DataFrame())),
-            ("ice_microphysics_gfsv16_scheme_pin_evidence.csv", result.get("v1_ice_microphysics_gfsv16_scheme_pin_evidence", pd.DataFrame())),
-            ("ice_microphysics_gfsv16_scheme_pin_gate.csv", result.get("v1_ice_microphysics_gfsv16_scheme_pin_gate", pd.DataFrame())),
+            ("ice_microphysics_gfsv16_scheme_pin_evidence.csv", _case_gfsv16_scheme_pin_evidence),
+            ("ice_microphysics_gfsv16_scheme_pin_gate.csv", _case_gfsv16_scheme_pin_gate),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2691,7 +2710,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_phase2_contract.json", result.get("ice_microphysics_phase2_contract", {})),
             ("ice_microphysics_source_registry_contract.json", result.get("ice_microphysics_source_registry_contract", {})),
             ("ice_microphysics_global_mapping_candidate_contract.json", result.get("ice_microphysics_global_mapping_candidate_contract", {})),
-            ("ice_microphysics_gfsv16_scheme_pin_contract.json", result.get("ice_microphysics_gfsv16_scheme_pin_contract", {})),
+            ("ice_microphysics_gfsv16_scheme_pin_contract.json", _case_gfsv16_scheme_pin_contract),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

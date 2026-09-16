@@ -1,6 +1,6 @@
 """Ice Optics Phase 2 Step 3B — GFS v16 exact-scheme pinning evidence.
 
-R5.7.41.3.4.10.15 is evidence/qualification only.  It pins the strongest
+R5.7.41.3.4.10.15.1 preserves the Step 3B evidence/qualification-only contract.  It pins the strongest
 publicly reproducible GFS v16 GFDL-MP facts without claiming that a public
 CCPP emulation source tree is byte-identical to the NCEP production binary.
 No Dmax/PSD mapping is executed and no Ice Optics production promotion is
@@ -11,7 +11,7 @@ from typing import Any
 import pandas as pd
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3B_VERSION = "R5.7.41.3.4.10.15"
+STEP3B_VERSION = "R5.7.41.3.4.10.15.1"
 STEP3B_MODE = "GFSV16_EXACT_SCHEME_PINNING_EVIDENCE_ONLY"
 PHYSICS_PROMOTION_ALLOWED = False
 EVIDENCE_AS_OF = "2026-09-16"
