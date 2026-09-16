@@ -28,7 +28,7 @@ def main() -> int:
     p.add_argument("--non-strict", action="store_true", help="Diagnostic only: build any available groups; release_ready will remain false if source is incomplete")
     p.add_argument("--emit-failed-lut", action="store_true", help="Diagnostic only: write partial LUT even when QA fails")
     p.add_argument("--portable-zip", help="If QA passes, also write standalone WINDY portable package ZIP here")
-    p.add_argument("--physicscore-version", default="1.0.0-R5.7.41.3.4.10.13")
+    p.add_argument("--physicscore-version", default="1.0.0-R5.7.41.3.4.10.14")
     p.add_argument("--science-baseline", default="R5.7.41.2_SHADOW_COT_AB_FROZEN")
     args = p.parse_args()
 

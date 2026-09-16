@@ -1,0 +1,39 @@
+{
+  "contract_version": "FIRECLOUD_ICE_GLOBAL_MAPPING_CANDIDATE_V1",
+  "step3_version": "R5.7.41.3.4.10.14",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.14",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "GLOBAL_MAPPING_CANDIDATE_QUALIFICATION_ONLY",
+  "evidence_as_of": "2026-09-16",
+  "global_coverage_preferred": true,
+  "physics_promotion_allowed": false,
+  "authoritative_runtime_size_axis": "maximum_dimension_um",
+  "primary_investigation_target": "NOAA_GFS_V16_GFDL_MP_CURRENT",
+  "global_candidate_requires": [
+    "global forecast coverage including Taiwan",
+    "current operational status for production selection; future systems remain candidates only",
+    "exact model and microphysics scheme identity including source revision/tag/commit where available",
+    "exact operational namelist/configuration affecting ice PSD/effective size",
+    "traceable provider run/cycle/valid-time/vertical-level provenance",
+    "hydrometeor population identity: cloud ice must be distinguished from snow/graupel/hail",
+    "scheme-native PSD equation and every required parameter from the same compatible scheme",
+    "scheme-native mass-size/density relation and units",
+    "proof that the scheme size variable is geometrically/semantically compatible with Yang/Bi maximum_dimension_um or a separately validated bridge",
+    "authorized input domain, uncertainty, fail-close behavior, QA and independent validation",
+    "habit and surface roughness mapping resolved by evidence rather than defaults before production promotion"
+  ],
+  "forbidden_shortcuts": [
+    "GFDL_MPv3_parameters_assumed_identical_to_GFSv16_without_version_proof",
+    "GFSv17_Thompson_assumed_operational_before_implementation",
+    "ICON_double_moment_assumed_for_global_operational_grid",
+    "effective_radius_or_effective_diameter_treated_as_Dmax",
+    "mass_only_treated_as_PSD_without_exact_scheme_contract",
+    "mass_plus_number_treated_as_Dmax_without_distribution_and_mass_size_contract",
+    "scheme_particle_diameter_treated_as_Yang_Bi_Dmax_without_semantic_validation",
+    "fixed_habit_default",
+    "fixed_surface_roughness_default",
+    "research_reference_promoted_as_operational_provider"
+  ],
+  "current_state": "GLOBAL_CANDIDATES_IDENTIFIED_QUALIFICATION_NOT_COMPLETE",
+  "frozen_science_unchanged": true
+}

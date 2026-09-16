@@ -138,6 +138,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_source_gate = _df(result.get("v1_ice_microphysics_source_eligibility_gate"))
     ice_microphysics_source_contract = result.get("ice_microphysics_source_registry_contract", {}) or {}
     ice_microphysics_source_registry_required = bool(result.get("ice_microphysics_source_registry_required", False))
+    ice_microphysics_mapping_candidates = _df(result.get("v1_ice_microphysics_global_mapping_candidate_registry"))
+    ice_microphysics_mapping_gate = _df(result.get("v1_ice_microphysics_global_mapping_qualification_gate"))
+    ice_microphysics_mapping_contract = result.get("ice_microphysics_global_mapping_candidate_contract", {}) or {}
+    ice_microphysics_mapping_candidate_required = bool(result.get("ice_microphysics_mapping_candidate_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -655,6 +659,86 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             _src_gate_detail,
             "no authoritative Taiwan Dmax/PSD source => no source selection, no production readiness, no promotion",
             "Mass-only/effective-size/reference-only sources remain evidence categories, never implicit Dmax/PSD providers.",
+        )
+
+    # R5.7.41.3.4.10.14 Phase 2 Step 3 global mapping-candidate qualification gate.
+    # Global coverage is preferred, but provider/model identity alone never authorizes mapping.
+    if ice_microphysics_mapping_candidate_required:
+        _cand_present_ok = bool(
+            not ice_microphysics_mapping_candidates.empty
+            and not ice_microphysics_mapping_gate.empty
+            and isinstance(ice_microphysics_mapping_contract, Mapping)
+            and bool(ice_microphysics_mapping_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_GLOBAL_CANDIDATE_EVIDENCE_PRESENT",
+            PASS if _cand_present_ok else FAIL,
+            "ICE_MICROPHYSICS_GLOBAL_MAPPING_CANDIDATE",
+            f"candidate_rows={len(ice_microphysics_mapping_candidates)};gate_rows={len(ice_microphysics_mapping_gate)};contract_present={bool(ice_microphysics_mapping_contract)}",
+            "global mapping candidate registry + qualification gate + machine-readable contract all present",
+            "Qualification/evidence only; no scheme equation or Dmax mapping is executed.",
+        )
+
+        _cand_forbidden = {str(x) for x in ice_microphysics_mapping_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_mapping_contract, Mapping) else set()
+        _cand_required_forbidden = {
+            "GFDL_MPv3_parameters_assumed_identical_to_GFSv16_without_version_proof",
+            "GFSv17_Thompson_assumed_operational_before_implementation",
+            "ICON_double_moment_assumed_for_global_operational_grid",
+            "effective_radius_or_effective_diameter_treated_as_Dmax",
+            "mass_only_treated_as_PSD_without_exact_scheme_contract",
+            "mass_plus_number_treated_as_Dmax_without_distribution_and_mass_size_contract",
+            "scheme_particle_diameter_treated_as_Yang_Bi_Dmax_without_semantic_validation",
+            "fixed_habit_default",
+            "fixed_surface_roughness_default",
+            "research_reference_promoted_as_operational_provider",
+        }
+        _cand_contract_ok = bool(
+            isinstance(ice_microphysics_mapping_contract, Mapping)
+            and ice_microphysics_mapping_contract.get("contract_version") == "FIRECLOUD_ICE_GLOBAL_MAPPING_CANDIDATE_V1"
+            and ice_microphysics_mapping_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_mapping_contract.get("mode") == "GLOBAL_MAPPING_CANDIDATE_QUALIFICATION_ONLY"
+            and ice_microphysics_mapping_contract.get("global_coverage_preferred") is True
+            and ice_microphysics_mapping_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_mapping_contract.get("authoritative_runtime_size_axis") == "maximum_dimension_um"
+            and ice_microphysics_mapping_contract.get("primary_investigation_target") == "NOAA_GFS_V16_GFDL_MP_CURRENT"
+            and ice_microphysics_mapping_contract.get("frozen_science_unchanged") is True
+            and _cand_required_forbidden.issubset(_cand_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_GLOBAL_CANDIDATE_CONTRACT_FREEZE",
+            PASS if _cand_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_GLOBAL_MAPPING_CANDIDATE",
+            f"contract={ice_microphysics_mapping_contract.get('contract_version') if isinstance(ice_microphysics_mapping_contract, Mapping) else None};global_preferred={ice_microphysics_mapping_contract.get('global_coverage_preferred') if isinstance(ice_microphysics_mapping_contract, Mapping) else None};forbidden_shortcuts={len(_cand_forbidden)}",
+            "global-first + exact-scheme/version provenance + Yang/Bi Dmax semantic proof + no cross-version shortcuts",
+        )
+
+        _cand_gate_ok = False
+        _cand_gate_detail = "global candidate qualification gate missing"
+        if not ice_microphysics_mapping_gate.empty:
+            row = ice_microphysics_mapping_gate.iloc[0]
+            _cand_gate_ok = bool(
+                str(row.get("qualification_state", "")) == "GLOBAL_CANDIDATES_IDENTIFIED_QUALIFICATION_NOT_COMPLETE"
+                and str(row.get("global_coverage_preferred", "false")).strip().lower() in {"true", "1", "1.0"}
+                and str(row.get("CURRENT_GLOBAL_DIRECT_DMAX_ELIGIBLE", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("CURRENT_GLOBAL_SCHEME_PSD_RECONSTRUCTION_ELIGIBLE", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("MAPPING_CANDIDATE_ELIGIBLE", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("PRODUCTION_ICE_OPTICS_READY", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("physics_promotion_allowed", "false")).strip().lower() in {"false", "0", "0.0"}
+                and str(row.get("primary_investigation_target", "")) == "NOAA_GFS_V16_GFDL_MP_CURRENT"
+            )
+            _cand_gate_detail = (
+                f"state={row.get('qualification_state')};primary={row.get('primary_investigation_target')};"
+                f"direct_dmax={row.get('CURRENT_GLOBAL_DIRECT_DMAX_ELIGIBLE')};"
+                f"scheme_psd={row.get('CURRENT_GLOBAL_SCHEME_PSD_RECONSTRUCTION_ELIGIBLE')};"
+                f"promotion={row.get('physics_promotion_allowed')}"
+            )
+        add(
+            "ICE_MICROPHYSICS_GLOBAL_CANDIDATE_FAIL_CLOSED",
+            PASS if _cand_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_GLOBAL_MAPPING_CANDIDATE",
+            _cand_gate_detail,
+            "global candidates may be prioritized for investigation but remain ineligible until exact scheme/version/size semantics and validation are complete",
+            "GFS v16 current, GFS v17 future, ICON global, SHiELD MPv3 reference, IFS effective size and GEOS-FP remain separated by contract.",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2482,6 +2566,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_source_capability_registry.csv",
         "ice_microphysics_source_eligibility_gate.csv",
         "ice_microphysics_source_registry_contract.json",
+        "ice_microphysics_global_mapping_candidate_registry.csv",
+        "ice_microphysics_global_mapping_qualification_gate.csv",
+        "ice_microphysics_global_mapping_candidate_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
