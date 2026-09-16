@@ -19,33 +19,35 @@ CONTRACT = "ice_microphysics_wyser_primary_numeric_recovery_contract.json"
 
 
 def test_release_identity_and_frozen_mode():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.20"
-    assert STEP3G_VERSION == "R5.7.41.3.4.10.20"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.20.1"
+    assert STEP3G_VERSION == "R5.7.41.3.4.10.20.1"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
 
 
 def test_primary_numeric_recovery_is_not_overclaimed():
     ev = build_wyser_primary_numeric_recovery_evidence().set_index("evidence_id")
-    assert ev.loc["WYSER_EQ5_MULTI_SOURCE_NUMERIC_LINEAGE", "pin_status"] == "CORROBORATED_NONPRIMARY_NUMERIC_LINEAGE"
-    assert "D=2.5*L^0.6" in ev.loc["WYSER_EQ5_MULTI_SOURCE_NUMERIC_LINEAGE", "value"]
-    assert ev.loc["WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERY", "pin_status"] == "UNRESOLVED_PRIMARY_EQUATION_IMAGE"
-    assert ev.loc["WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERY", "pin_status"] == "UNRESOLVED_CORRUPT_MACHINE_EXTRACTION"
-    assert ev.loc["WYSER_EQ6_CORRUPT_FLAT_EXTRACTION", "authoritative_for_runtime_mapping"] is False or bool(ev.loc["WYSER_EQ6_CORRUPT_FLAT_EXTRACTION", "authoritative_for_runtime_mapping"]) is False
+    assert ev.loc["WYSER_YANG_1998_GEOMETRY_LINEAGE", "pin_status"] == "SEPARATE_REFERENCE_NOT_WYSER_1998_EQ5"
+    assert "D=2.5*L^0.6" in ev.loc["WYSER_YANG_1998_GEOMETRY_LINEAGE", "value"]
+    assert ev.loc["WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERY", "pin_status"] == "PINNED_PRIMARY_NUMERIC_WITH_INDEPENDENT_TRANSCRIPTION"
+    assert ev.loc["WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERY", "pin_status"] == "PINNED_PRIMARY_NUMERIC_INDEX_RECOVERY"
+    assert bool(ev.loc["WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERY", "authoritative_for_runtime_mapping"]) is False
 
 
 def test_dual_source_gate_keeps_scientific_mass_closure_fail_closed():
     g = build_wyser_primary_numeric_recovery_gate().iloc[0]
-    assert bool(g["WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERED"]) is False
-    assert bool(g["WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERED"]) is False
+    assert bool(g["WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERED"]) is True
+    assert bool(g["WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERED"]) is True
+    assert bool(g["INDEPENDENT_EQ5_TRANSCRIPTION_PASS"]) is True
+    assert bool(g["INDEPENDENT_EQ6_EXTERNAL_NUMERIC_CORROBORATION_PASS"]) is False
     assert bool(g["INDEPENDENT_TRANSCRIPTION_REPRODUCTION_PASS"]) is False
-    assert bool(g["EQ5_EQ6_UNIT_CONSISTENCY_PASS"]) is False
+    assert bool(g["EQ5_EQ6_UNIT_CONSISTENCY_PASS"]) is True
     assert bool(g["DIAGNOSTIC_MASS_CLOSURE_HARNESS_READY"]) is True
     assert bool(g["SCIENTIFIC_MASS_CLOSURE_EXECUTED"]) is False
     assert bool(g["ABSOLUTE_PSD_RECONSTRUCTION_EXECUTABLE"]) is False
     assert bool(g["PSD_MASS_CLOSURE_VALIDATION_PASS"]) is False
     assert bool(g["PRODUCTION_ICE_OPTICS_READY"]) is False
     assert bool(g["physics_promotion_allowed"]) is False
-    assert g["qualification_state"] == "WYSER_PRIMARY_NUMERIC_RECOVERY_UNRESOLVED_CLOSURE_HARNESS_READY"
+    assert g["qualification_state"] == "WYSER_PRIMARY_EQ5_EQ6_NUMERIC_RECOVERED_DIAGNOSTIC_MASS_CLOSURE_PASS_EXTERNAL_EQ6_CORROBORATION_BLOCKED"
 
 
 def test_diagnostic_mass_closure_harness_closes_only_synthetic_inputs():
@@ -66,15 +68,17 @@ def test_diagnostic_mass_closure_harness_closes_only_synthetic_inputs():
 
 def test_contract_requires_dual_source_promotion_and_forbids_ocr_or_substitution_shortcuts():
     c = wyser_primary_numeric_recovery_contract_payload(physicscore_version=firecloud.__version__)
-    assert c["contract_version"] == "FIRECLOUD_ICE_WYSER_PRIMARY_NUMERIC_RECOVERY_V1"
-    assert c["wyser_eq5_primary_machine_numeric_recovered"] is False
-    assert c["wyser_eq6_primary_machine_numeric_recovered"] is False
+    assert c["contract_version"] == "FIRECLOUD_ICE_WYSER_PRIMARY_NUMERIC_RECOVERY_V3"
+    assert c["wyser_eq5_primary_machine_numeric_recovered"] is True
+    assert c["wyser_eq6_primary_machine_numeric_recovered"] is True
+    assert c["independent_eq5_transcription_pass"] is True
+    assert c["independent_eq6_external_numeric_corroboration_pass"] is False
     assert c["diagnostic_mass_closure_harness_ready"] is True
     assert c["scientific_mass_closure_executed"] is False
     assert c["absolute_psd_reconstruction_executable"] is False
     forbidden = set(c["forbidden_shortcuts"])
-    assert "secondary_D_2p5_L_0p6_promoted_as_primary_Wyser_equation_5" in forbidden
-    assert "corrupt_equation_6_flat_extraction_parsed_into_coefficients" in forbidden
+    assert "Wyser_Yang_1998_D_2p5_L_0p6_substituted_for_single_author_Wyser_1998_equation_5" in forbidden
+    assert "indexed_equation_6_parse_treated_as_independent_external_corroboration" in forbidden
     assert "unrelated_mass_size_law_substituted_for_Wyser_equation_6" in forbidden
     assert "synthetic_harness_pass_treated_as_scientific_Wyser_mass_closure" in forbidden
 

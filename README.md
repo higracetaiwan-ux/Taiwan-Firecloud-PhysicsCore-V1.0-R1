@@ -1,16 +1,16 @@
-> Current release: **V1.0-R5.7.41.3.4.10.20** — Step 3G Primary Wyser Eq.(5)/(6) Numeric Recovery Audit + Synthetic Closure Harness Readiness; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.20.1** — Step 3G Primary Wyser Eq.(5)/(6) Numeric Recovery + Diagnostic Mass-Closure Preflight; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.20
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.20.1
 
+## R5.7.41.3.4.10.20.1 Step 3G — Primary Numeric Recovery + Diagnostic Mass-Closure Preflight
 
-## R5.7.41.3.4.10.20 Step 3G — Primary Wyser Numeric Recovery Audit + Synthetic Closure Harness
-
-- Wyser Eq.(5)/(6) primary semantic/units remain pinned, but machine-readable numeric equations are **not** promoted.
-- `D=2.5L^0.6` remains corroborated non-primary lineage only.
-- Corrupt Eq.(6) flat/OCR extraction is explicitly rejected as a coefficient source.
-- A synthetic-only diagnostic mass-closure harness is ready; it can validate the normalization algorithm but can never set scientific mass closure PASS.
-- Absolute PSD reconstruction, Wyser L→Yang/Bi Dmax, habit/roughness selection, bulk Ice tau and production promotion remain blocked.
-
+- **Wyser (1998) Eq.(5)** 已恢復為 hexagonal solid-column 的分段 `L/D` 關係：`L/D=1`（`L<30 µm`）；`L/D=1+0.003(L-30)`（`L>=30 µm`）。
+- `D=2.5 L^0.6` 已移出 single-author Wyser Eq.(5) 身分，保留為 **Wyser & Yang (1998) separate geometry lineage**，不得代替 Eq.(5)。
+- **Wyser (1998) Eq.(6)** primary indexed numeric 已恢復：`m_g(L_um)=2.311e-2*(L_um/1e4)^2.7625`；g/µm 與 SI 形式的內部換算重現一致。
+- Eq.(6) 目前仍缺第二份真正獨立、可追溯的 external numeric corroboration，因此 `INDEPENDENT_EQ6_EXTERNAL_NUMERIC_CORROBORATION_PASS=false`。
+- 已以 recovered primary Eq.(6) + pinned mixed PSD + Eq.(7)/(8) normalization 做 **18-case diagnostic IWC mass-closure preflight**；此結果只驗證數值鏈，不定義 operational validity domain。
+- Scientific mass-closure、absolute PSD reconstruction、Wyser `L → Yang/Bi maximum_dimension_um`、habit/roughness、bulk Ice tau 與 production promotion 全部維持 fail-close。
+- 本版狀態：**QA PASS / FIELD validation pending**；最新正式 FIELD baseline 仍為 `V1.0-R5.7.41.3.4.10.19 FIELD PASS`。
 
 ## R5.7.41.3.4.10.19 Step 3F — Exact Wyser Eq.(5)/(6) Geometry + Mass-Size / PSD Mass-Closure Qualification
 

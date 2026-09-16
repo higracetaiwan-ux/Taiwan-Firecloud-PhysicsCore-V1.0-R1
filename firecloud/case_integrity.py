@@ -1174,19 +1174,27 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         )
         _step3g_forbidden = {str(x) for x in ice_microphysics_wyser_primary_numeric_recovery_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_wyser_primary_numeric_recovery_contract, Mapping) else set()
         _step3g_required_forbidden = {
-            "secondary_D_2p5_L_0p6_promoted_as_primary_Wyser_equation_5",
-            "corrupt_equation_6_flat_extraction_parsed_into_coefficients",
+            "Wyser_Yang_1998_D_2p5_L_0p6_substituted_for_single_author_Wyser_1998_equation_5",
+            "indexed_equation_6_parse_treated_as_independent_external_corroboration",
             "unrelated_mass_size_law_substituted_for_Wyser_equation_6",
             "synthetic_harness_pass_treated_as_scientific_Wyser_mass_closure",
+            "diagnostic_primary_eq6_mass_closure_pass_promoted_as_scientific_validation",
         }
         _step3g_contract_ok = bool(
             isinstance(ice_microphysics_wyser_primary_numeric_recovery_contract, Mapping)
-            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("contract_version") == "FIRECLOUD_ICE_WYSER_PRIMARY_NUMERIC_RECOVERY_V1"
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("contract_version") == "FIRECLOUD_ICE_WYSER_PRIMARY_NUMERIC_RECOVERY_V3"
             and ice_microphysics_wyser_primary_numeric_recovery_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("mode") == "WYSER_PRIMARY_NUMERIC_RECOVERY_AND_SYNTHETIC_CLOSURE_HARNESS_ONLY"
-            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("wyser_eq5_primary_machine_numeric_recovered") is False
-            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("wyser_eq6_primary_machine_numeric_recovered") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("mode") == "WYSER_PRIMARY_EQ5_EQ6_NUMERIC_RECOVERY_DIAGNOSTIC_MASS_CLOSURE_EXTERNAL_EQ6_CORROBORATION_PENDING"
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("wyser_eq5_primary_machine_numeric_recovered") is True
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("wyser_eq6_primary_machine_numeric_recovered") is True
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("independent_eq5_transcription_pass") is True
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("independent_eq6_external_numeric_corroboration_pass") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("independent_transcription_reproduction_pass") is False
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("eq5_eq6_unit_consistency_pass") is True
             and ice_microphysics_wyser_primary_numeric_recovery_contract.get("diagnostic_mass_closure_harness_ready") is True
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("diagnostic_primary_eq6_psd_mass_closure_executed") is True
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("diagnostic_primary_eq6_psd_mass_closure_numeric_pass") is True
+            and ice_microphysics_wyser_primary_numeric_recovery_contract.get("diagnostic_primary_eq6_psd_convergence_pass") is True
             and ice_microphysics_wyser_primary_numeric_recovery_contract.get("scientific_mass_closure_executed") is False
             and ice_microphysics_wyser_primary_numeric_recovery_contract.get("absolute_psd_reconstruction_executable") is False
             and ice_microphysics_wyser_primary_numeric_recovery_contract.get("production_ice_optics_ready") is False
@@ -1199,7 +1207,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             PASS if _step3g_contract_ok else FAIL,
             "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY",
             f"contract={ice_microphysics_wyser_primary_numeric_recovery_contract.get('contract_version') if isinstance(ice_microphysics_wyser_primary_numeric_recovery_contract, Mapping) else None};forbidden_shortcuts={len(_step3g_forbidden)}",
-            "Synthetic closure readiness must not promote unresolved primary Eq.5/Eq.6 numerics or scientific mass closure",
+            "Recovered primary Eq.5/Eq.6 numerics must remain diagnostic-only until independent Eq.6 corroboration and later promotion gates pass",
         )
         _step3g_gate_ok = False
         _step3g_gate_detail = "Step 3G primary numeric recovery gate missing"
@@ -1207,21 +1215,27 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             row = ice_microphysics_wyser_primary_numeric_recovery_gate.iloc[0]
             _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
             _step3g_gate_ok = bool(
-                _b("WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERED", False)
-                and _b("WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERED", False)
+                _b("WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERED", True)
+                and _b("WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERED", True)
+                and _b("INDEPENDENT_EQ5_TRANSCRIPTION_PASS", True)
+                and _b("INDEPENDENT_EQ6_EXTERNAL_NUMERIC_CORROBORATION_PASS", False)
                 and _b("INDEPENDENT_TRANSCRIPTION_REPRODUCTION_PASS", False)
-                and _b("EQ5_EQ6_UNIT_CONSISTENCY_PASS", False)
+                and _b("EQ5_EQ6_UNIT_CONSISTENCY_PASS", True)
                 and _b("DIAGNOSTIC_MASS_CLOSURE_HARNESS_READY", True)
+                and _b("DIAGNOSTIC_PRIMARY_EQ6_PSD_MASS_CLOSURE_EXECUTED", True)
+                and _b("DIAGNOSTIC_PRIMARY_EQ6_PSD_MASS_CLOSURE_NUMERIC_PASS", True)
+                and _b("DIAGNOSTIC_PRIMARY_EQ6_PSD_CONVERGENCE_PASS", True)
                 and _b("SCIENTIFIC_MASS_CLOSURE_EXECUTED", False)
                 and _b("ABSOLUTE_PSD_RECONSTRUCTION_EXECUTABLE", False)
                 and _b("PSD_MASS_CLOSURE_VALIDATION_PASS", False)
                 and _b("PRODUCTION_ICE_OPTICS_READY", False)
                 and _b("physics_promotion_allowed", False)
-                and str(row.get("qualification_state", "")) == "WYSER_PRIMARY_NUMERIC_RECOVERY_UNRESOLVED_CLOSURE_HARNESS_READY"
+                and str(row.get("qualification_state", "")) == "WYSER_PRIMARY_EQ5_EQ6_NUMERIC_RECOVERED_DIAGNOSTIC_MASS_CLOSURE_PASS_EXTERNAL_EQ6_CORROBORATION_BLOCKED"
             )
             _step3g_gate_detail = (
                 f"state={row.get('qualification_state')};eq5_primary={row.get('WYSER_EQ5_PRIMARY_MACHINE_NUMERIC_RECOVERED')};"
                 f"eq6_primary={row.get('WYSER_EQ6_PRIMARY_MACHINE_NUMERIC_RECOVERED')};harness={row.get('DIAGNOSTIC_MASS_CLOSURE_HARNESS_READY')};"
+                f"diagnostic_primary_closure={row.get('DIAGNOSTIC_PRIMARY_EQ6_PSD_MASS_CLOSURE_NUMERIC_PASS')};"
                 f"scientific_closure={row.get('SCIENTIFIC_MASS_CLOSURE_EXECUTED')};promotion={row.get('physics_promotion_allowed')}"
             )
         add(
@@ -1229,7 +1243,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             PASS if _step3g_gate_ok else FAIL,
             "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY",
             _step3g_gate_detail,
-            "Primary numeric recovery may remain unresolved while a synthetic-only harness is ready; scientific closure and promotion remain blocked",
+            "Primary Eq.5/Eq.6 numeric recovery may advance while independent Eq.6 corroboration, scientific closure and production promotion remain blocked",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:

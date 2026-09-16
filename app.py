@@ -1203,7 +1203,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3G — Primary Wyser Eq.(5)/(6) Numeric Recovery + Synthetic Closure Harness"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3G — Primary Wyser Eq.(5)/(6) Numeric Recovery + Diagnostic Mass-Closure Preflight"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1220,8 +1220,9 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
-- **R5.7.41.3.4.10.19**：Step 3F Exact Wyser Eq.(5)/(6) Geometry + Mass-Size / PSD Mass-Closure Qualification。`D=2.5·L^0.6` 已由後續文獻強力 corroborate 為 Wyser/Wyser–Yang column-geometry lineage，但 primary Eq.(5) numeric image 與 Eq.(6) mass-size numeric contract 尚未以可機器驗證的 primary-quality 形式釘死；absolute PSD reconstruction、mass closure、L→Yang/Bi Dmax 與 production Ice Optics 持續 fail-close。
+- **R5.7.41.3.4.10.20.1**：Step 3G Primary Numeric Recovery + Diagnostic Mass-Closure Preflight。修正 single-author Wyser (1998) Eq.(5) 與 Wyser & Yang (1998) `D=2.5·L^0.6` 的 provenance 混淆；Eq.(5) 已恢復為 30 µm 分段 `L/D` 關係，Eq.(6) 已由 primary indexed text 恢復為 `m_g=2.311e-2·(L_um/1e4)^2.7625`。primary Eq.(6)+pinned mixed PSD 在 18 組 T/IWC/resolution diagnostic grid 完成 IWC mass-closure preflight，但 independent external Eq.(6) numeric corroboration 尚未取得，因此 scientific mass closure / absolute PSD / L→Yang-Bi Dmax / production Ice Optics 仍 fail-close。
 - **R5.7.41.3.4.10.20**：Step 3G Primary Wyser Numeric Recovery Audit。primary Eq.(5)/(6) machine-readable numerics 仍未達 promotion gate；新增 dual-source numeric promotion policy 與 synthetic-only diagnostic mass-closure harness。synthetic harness PASS 不得視為 Wyser scientific mass-closure PASS，absolute PSD / Dmax / production Ice Optics 仍 fail-close。
+- **R5.7.41.3.4.10.19**：Step 3F Exact Wyser Eq.(5)/(6) Geometry + Mass-Size / PSD Mass-Closure Qualification。`D=2.5·L^0.6` 已由後續文獻強力 corroborate 為 Wyser/Wyser–Yang column-geometry lineage，但 primary Eq.(5) numeric image 與 Eq.(6) mass-size numeric contract 尚未以可機器驗證的 primary-quality 形式釘死；absolute PSD reconstruction、mass closure、L→Yang/Bi Dmax 與 production Ice Optics 持續 fail-close。
 - **R5.7.41.3.4.10.17**：Step 3D Wyser PSD + Yang/Bi Habit Bulk-Integration Contract Qualification。釘住 mixed PSD 核心結構、10–1000 µm 積分域、GFS-v16 公開 B(T,IWC) 公式與六波段 bulk normalization；solid-column/roughness 僅候選，完整 PSD normalization、幾何/Dmax 座標與 independent validation 未完成，production 仍 fail-close。
 - **R5.7.41.3.4.10.16**：Step 3C GFS v16 Effective-Radius ↔ Yang/Bi Dmax Bridge Feasibility Audit。直接 rei→Dmax 語義橋接判定不合格；識別 Wyser PSD/hex-column population 積分 Yang/Bi Dmax 單粒子光學的 bulk 路徑，但仍 fail-close、不得 production promotion。
 - **R5.7.41.3.4.10.15.1**：Step 3B CASE Evidence Handoff Integrity Hotfix。CASE export 直接由當前 release builder 重建 GFS v16 scheme-pin 靜態 evidence，Archive Integrity 新增內容非空 gate；修正 `.10.15` FIELD CASE 中「Analysis Integrity PASS 但實際 CASE 只寫出 0-row/空 `{}` evidence」的證據鏈漏洞，不改 Frozen Science。

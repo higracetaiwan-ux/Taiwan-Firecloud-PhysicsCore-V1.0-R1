@@ -1,0 +1,127 @@
+{
+  "contract_version": "FIRECLOUD_ICE_WYSER_PRIMARY_NUMERIC_RECOVERY_V3",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.20.1",
+  "step3g_version": "R5.7.41.3.4.10.20.1",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "WYSER_PRIMARY_EQ5_EQ6_NUMERIC_RECOVERY_DIAGNOSTIC_MASS_CLOSURE_EXTERNAL_EQ6_CORROBORATION_PENDING",
+  "wavelengths_nm": [
+    550,
+    575,
+    600,
+    650,
+    700,
+    750
+  ],
+  "wyser_eq5_primary_machine_numeric_recovered": true,
+  "wyser_eq5_primary_numeric": {
+    "coordinate": "L_um_to_width_D_um",
+    "definition": "L is length/maximum dimension; D is width/minimum dimension",
+    "transition_length_um": 30.0,
+    "small_branch": "L/D=1 for L<30 um",
+    "large_branch": "L/D=1+0.003*(L-30 um) for L>=30 um",
+    "aspect_slope_per_um": 0.003
+  },
+  "wyser_eq6_primary_machine_numeric_recovered": true,
+  "wyser_eq6_primary_numeric": {
+    "formula": "m_g=2.311e-2*(L_um/1e4)^2.7625",
+    "coefficient_g": 0.02311,
+    "reference_length_um": 10000.0,
+    "exponent": 2.7625,
+    "mass_unit": "g",
+    "length_unit": "um",
+    "primary_regime_note": "parameters chosen for cold solid columns with L/D>2"
+  },
+  "separate_wyser_yang_1998_geometry_lineage": "D=2.5*L^0.6",
+  "separate_wyser_yang_lineage_is_wyser_1998_eq5": false,
+  "independent_eq5_transcription_pass": true,
+  "independent_eq6_external_numeric_corroboration_pass": false,
+  "independent_transcription_reproduction_pass": false,
+  "eq5_eq6_unit_consistency_pass": true,
+  "unit_consistency_diagnostic": {
+    "diagnostic_only": true,
+    "eq5_continuity_error_um": 1.909999269855689e-09,
+    "eq6_max_relative_error": 3.836634075592087e-16,
+    "benchmark_lengths_um": [
+      10.0,
+      30.0,
+      100.0,
+      1000.0
+    ],
+    "unit_consistency_pass": true
+  },
+  "diagnostic_mass_closure_harness_ready": true,
+  "diagnostic_harness_scope": "SYNTHETIC_GENERIC_ONLY_NOT_WYSER_SCIENTIFIC_VALIDATION",
+  "diagnostic_primary_eq6_psd_mass_closure_executed": true,
+  "diagnostic_primary_eq6_psd_mass_closure_numeric_pass": true,
+  "diagnostic_primary_eq6_psd_convergence_pass": true,
+  "diagnostic_primary_eq6_psd_mass_closure": {
+    "diagnostic_only": true,
+    "grid_scope": "NUMERICAL_PREFLIGHT_NOT_OPERATIONAL_VALIDITY_DOMAIN",
+    "temperatures_k": [
+      233.16,
+      253.16,
+      273.16
+    ],
+    "iwc_values_g_m3": [
+      0.001,
+      0.1,
+      10.0
+    ],
+    "grid_points": [
+      1025,
+      4097
+    ],
+    "reference_grid_points": 32769,
+    "case_count": 18,
+    "all_numeric_mass_closure_pass": true,
+    "max_mass_closure_relative_error": 3.552713678800501e-16,
+    "max_branch_continuity_relative_error": 1.2541086189306697e-15,
+    "max_normalization_convergence_relative_error": 8.203438213303476e-07,
+    "scientific_mass_closure_pass": false,
+    "absolute_psd_reconstruction_executable": false,
+    "production_ice_optics_ready": false
+  },
+  "scientific_mass_closure_executed": false,
+  "absolute_psd_reconstruction_executable": false,
+  "psd_mass_closure_validation_pass": false,
+  "wyser_L_to_yang_dmax_coordinate_validated": false,
+  "yang_bi_habit_bridge_validated": false,
+  "yang_bi_roughness_bridge_validated": false,
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "gfsv16_dmax_mapping_eligible": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "numeric_promotion_policy": {
+    "requires_primary_eq5_machine_numeric": true,
+    "requires_primary_eq6_machine_numeric": true,
+    "requires_independent_external_numeric_corroboration": true,
+    "requires_unit_consistency": true,
+    "internal_unit_reproduction_does_not_replace_external_corroboration": true,
+    "synthetic_harness_cannot_satisfy_scientific_gate": true,
+    "diagnostic_primary_eq6_mass_closure_cannot_replace_external_corroboration": true
+  },
+  "forbidden_shortcuts": [
+    "Wyser_Yang_1998_D_2p5_L_0p6_substituted_for_single_author_Wyser_1998_equation_5",
+    "indexed_equation_6_parse_treated_as_independent_external_corroboration",
+    "unrelated_mass_size_law_substituted_for_Wyser_equation_6",
+    "synthetic_harness_pass_treated_as_scientific_Wyser_mass_closure",
+    "scientific_mass_closure_claimed_before_independent_eq6_numeric_corroboration",
+    "diagnostic_primary_eq6_mass_closure_pass_promoted_as_scientific_validation",
+    "absolute_PSD_reconstruction_before_dual_source_numeric_promotion",
+    "Wyser_L_silently_equal_to_Yang_Bi_Dmax",
+    "Yang_Bi_habit_selected_before_geometry_coordinate_validation",
+    "single_roughness_state_silently_selected",
+    "bulk_tau_synthesized_before_independent_validation",
+    "production_promotion_before_step3g_and_later_gates_pass"
+  ],
+  "qualification_requirements": [
+    "obtain_independent_external_numeric_corroboration_for_Wyser_equation_6",
+    "execute_scientific_IWC_mass_closure_grid_over_supported_domain_after_dual_source_gate",
+    "validate_Wyser_L_to_Yang_Bi_maximum_dimension_coordinate",
+    "validate_Yang_Bi_habit_geometry_bridge",
+    "validate_roughness_uncertainty_policy",
+    "independent_bulk_shortwave_optics_validation",
+    "separate_production_promotion_gate"
+  ],
+  "frozen_science_unchanged": true
+}
