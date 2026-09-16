@@ -1,0 +1,62 @@
+{
+  "contract_version": "FIRECLOUD_ICE_WYSER_MASS_GEOMETRY_CLOSURE_QUALIFICATION_V1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.19",
+  "step3f_version": "R5.7.41.3.4.10.19",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "WYSER_EQ5_EQ6_MASS_GEOMETRY_CLOSURE_QUALIFICATION_ONLY",
+  "wavelengths_nm": [
+    550,
+    575,
+    600,
+    650,
+    700,
+    750
+  ],
+  "wyser_eq5_geometry_lineage_corroborated": true,
+  "wyser_eq5_geometry_lineage_candidate": "D=2.5*L^0.6",
+  "wyser_eq5_primary_numeric_equation_pinned": false,
+  "wyser_eq6_mass_size_primary_numeric_pinned": false,
+  "absolute_psd_reconstruction_executable": false,
+  "psd_mass_closure_validation_pass": false,
+  "wyser_L_to_yang_dmax_coordinate_validated": false,
+  "yang_bi_habit_bridge_validated": false,
+  "yang_bi_roughness_bridge_validated": false,
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "gfsv16_dmax_mapping_eligible": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "mass_closure_contract": {
+    "required_identity": "integral[m(L)*n(L)dL]=IWC",
+    "amplitude_rule": "A=IWC/integral[m(L)*phi(L)dL]",
+    "execution_status": "BLOCKED_UNTIL_EXACT_PRIMARY_NUMERIC_M_OF_L_AND_UNITS_PINNED"
+  },
+  "geometry_lineage": {
+    "candidate": "D=2.5*L^0.6",
+    "evidence_level": "CORROBORATED_SECONDARY_LINEAGE",
+    "primary_numeric_equation_status": "UNRESOLVED_EQUATION_IMAGE",
+    "runtime_authoritative": false
+  },
+  "forbidden_shortcuts": [
+    "secondary_D_2p5_L_0p6_promoted_as_primary_Wyser_equation_5",
+    "corrupt_equation_6_OCR_used_as_numeric_mass_size_contract",
+    "mass_closure_claimed_without_exact_primary_m_of_L",
+    "Wyser_L_silently_equal_to_Yang_Bi_Dmax",
+    "absolute_PSD_reconstruction_before_exact_primary_mass_size_contract",
+    "Yang_Bi_habit_selected_before_geometry_coordinate_validation",
+    "single_roughness_state_silently_selected",
+    "bulk_tau_synthesized_before_independent_validation",
+    "production_promotion_before_step3f_and_later_gates_pass"
+  ],
+  "qualification_requirements": [
+    "obtain_machine_verifiable_primary_quality_Wyser_equation_5",
+    "obtain_machine_verifiable_primary_quality_Wyser_equation_6_mass_size_coefficients_exponents_units",
+    "independently_reproduce_m_of_L_and_unit_conversions",
+    "run_IWC_mass_closure_grid_over_supported_T_IWC_domain",
+    "validate_Wyser_L_to_Yang_Bi_maximum_dimension_coordinate",
+    "validate_Yang_Bi_habit_geometry_bridge",
+    "validate_roughness_uncertainty_policy",
+    "independent_bulk_shortwave_optics_validation",
+    "separate_production_promotion_gate"
+  ],
+  "frozen_science_unchanged": true
+}

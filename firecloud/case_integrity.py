@@ -158,6 +158,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_wyser_psd_geometry_gate = _df(result.get("v1_ice_microphysics_wyser_psd_geometry_gate"))
     ice_microphysics_wyser_psd_geometry_contract = result.get("ice_microphysics_wyser_psd_geometry_contract", {}) or {}
     ice_microphysics_wyser_psd_geometry_required = bool(result.get("ice_microphysics_wyser_psd_geometry_required", False))
+    ice_microphysics_wyser_mass_geometry_evidence = _df(result.get("v1_ice_microphysics_wyser_mass_geometry_evidence"))
+    ice_microphysics_wyser_mass_geometry_gate = _df(result.get("v1_ice_microphysics_wyser_mass_geometry_gate"))
+    ice_microphysics_wyser_mass_geometry_contract = result.get("ice_microphysics_wyser_mass_geometry_contract", {}) or {}
+    ice_microphysics_wyser_mass_geometry_required = bool(result.get("ice_microphysics_wyser_mass_geometry_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1073,6 +1077,81 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_WYSER_PSD_GEOMETRY",
             _step3e_gate_detail,
             "Normalization rule may be pinned while numerical PSD, exact geometry and production promotion remain blocked",
+        )
+
+
+    # R5.7.41.3.4.10.19 Step 3F — exact Wyser Eq.(5)/(6) mass/geometry qualification.
+    if ice_microphysics_wyser_mass_geometry_required:
+        _step3f_present = bool(
+            not ice_microphysics_wyser_mass_geometry_evidence.empty
+            and not ice_microphysics_wyser_mass_geometry_gate.empty
+            and isinstance(ice_microphysics_wyser_mass_geometry_contract, Mapping)
+            and bool(ice_microphysics_wyser_mass_geometry_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY_EVIDENCE_PRESENT",
+            PASS if _step3f_present else FAIL,
+            "ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY",
+            f"evidence_rows={len(ice_microphysics_wyser_mass_geometry_evidence)};gate_rows={len(ice_microphysics_wyser_mass_geometry_gate)};contract_present={bool(ice_microphysics_wyser_mass_geometry_contract)}",
+            "Step 3F geometry-lineage/mass-size evidence, gate and contract must all be present",
+        )
+        _step3f_forbidden = {str(x) for x in ice_microphysics_wyser_mass_geometry_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_wyser_mass_geometry_contract, Mapping) else set()
+        _step3f_required_forbidden = {
+            "secondary_D_2p5_L_0p6_promoted_as_primary_Wyser_equation_5",
+            "corrupt_equation_6_OCR_used_as_numeric_mass_size_contract",
+            "mass_closure_claimed_without_exact_primary_m_of_L",
+        }
+        _step3f_contract_ok = bool(
+            isinstance(ice_microphysics_wyser_mass_geometry_contract, Mapping)
+            and ice_microphysics_wyser_mass_geometry_contract.get("contract_version") == "FIRECLOUD_ICE_WYSER_MASS_GEOMETRY_CLOSURE_QUALIFICATION_V1"
+            and ice_microphysics_wyser_mass_geometry_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_wyser_mass_geometry_contract.get("mode") == "WYSER_EQ5_EQ6_MASS_GEOMETRY_CLOSURE_QUALIFICATION_ONLY"
+            and ice_microphysics_wyser_mass_geometry_contract.get("wyser_eq5_geometry_lineage_corroborated") is True
+            and ice_microphysics_wyser_mass_geometry_contract.get("wyser_eq5_primary_numeric_equation_pinned") is False
+            and ice_microphysics_wyser_mass_geometry_contract.get("wyser_eq6_mass_size_primary_numeric_pinned") is False
+            and ice_microphysics_wyser_mass_geometry_contract.get("absolute_psd_reconstruction_executable") is False
+            and ice_microphysics_wyser_mass_geometry_contract.get("psd_mass_closure_validation_pass") is False
+            and ice_microphysics_wyser_mass_geometry_contract.get("wyser_L_to_yang_dmax_coordinate_validated") is False
+            and ice_microphysics_wyser_mass_geometry_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_wyser_mass_geometry_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_wyser_mass_geometry_contract.get("frozen_science_unchanged") is True
+            and _step3f_required_forbidden.issubset(_step3f_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY_CONTRACT_FREEZE",
+            PASS if _step3f_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY",
+            f"contract={ice_microphysics_wyser_mass_geometry_contract.get('contract_version') if isinstance(ice_microphysics_wyser_mass_geometry_contract, Mapping) else None};forbidden_shortcuts={len(_step3f_forbidden)}",
+            "Corroborated geometry lineage must not be promoted to exact primary Eq.5/Eq.6 or executable PSD/mass closure",
+        )
+        _step3f_gate_ok = False
+        _step3f_gate_detail = "Step 3F mass/geometry gate missing"
+        if not ice_microphysics_wyser_mass_geometry_gate.empty:
+            row = ice_microphysics_wyser_mass_geometry_gate.iloc[0]
+            _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+            _step3f_gate_ok = bool(
+                _b("WYSER_EQ5_GEOMETRY_LINEAGE_CORROBORATED", True)
+                and _b("WYSER_EQ5_PRIMARY_NUMERIC_EQUATION_PINNED", False)
+                and _b("WYSER_EQ6_MASS_SIZE_PRIMARY_NUMERIC_PINNED", False)
+                and _b("ABSOLUTE_PSD_RECONSTRUCTION_EXECUTABLE", False)
+                and _b("PSD_MASS_CLOSURE_VALIDATION_PASS", False)
+                and _b("WYSER_L_TO_YANG_DMAX_COORDINATE_VALIDATED", False)
+                and _b("PRODUCTION_ICE_OPTICS_READY", False)
+                and _b("physics_promotion_allowed", False)
+                and str(row.get("qualification_state", "")) == "WYSER_GEOMETRY_LINEAGE_CORROBORATED_PRIMARY_MASS_SIZE_CLOSURE_BLOCKED"
+            )
+            _step3f_gate_detail = (
+                f"state={row.get('qualification_state')};lineage={row.get('WYSER_EQ5_GEOMETRY_LINEAGE_CORROBORATED')};"
+                f"eq5_primary={row.get('WYSER_EQ5_PRIMARY_NUMERIC_EQUATION_PINNED')};eq6_primary={row.get('WYSER_EQ6_MASS_SIZE_PRIMARY_NUMERIC_PINNED')};"
+                f"psd_exec={row.get('ABSOLUTE_PSD_RECONSTRUCTION_EXECUTABLE')};mass_closure={row.get('PSD_MASS_CLOSURE_VALIDATION_PASS')};"
+                f"L_to_Dmax={row.get('WYSER_L_TO_YANG_DMAX_COORDINATE_VALIDATED')};promotion={row.get('physics_promotion_allowed')}"
+            )
+        add(
+            "ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY_FAIL_CLOSED",
+            PASS if _step3f_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY",
+            _step3f_gate_detail,
+            "Secondary geometry lineage may be recorded while exact primary mass-size, mass closure, coordinate mapping and promotion remain blocked",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -2915,6 +2994,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_wyser_psd_geometry_evidence.csv",
         "ice_microphysics_wyser_psd_geometry_gate.csv",
         "ice_microphysics_wyser_psd_geometry_contract.json",
+        "ice_microphysics_wyser_mass_geometry_evidence.csv",
+        "ice_microphysics_wyser_mass_geometry_gate.csv",
+        "ice_microphysics_wyser_mass_geometry_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -3095,6 +3177,41 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "component":"CASE_ARCHIVE", "observed":int(_step3e_contract_bytes),
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3E CASE evidence.",
+        })
+
+
+    # R5.7.41.3.4.10.19 Step 3F serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _step3f_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _step3f_evidence_rows = _step3f_manifest_metric("ice_microphysics_wyser_mass_geometry_evidence.csv", "row_count", 0.0)
+        _step3f_gate_rows = _step3f_manifest_metric("ice_microphysics_wyser_mass_geometry_gate.csv", "row_count", 0.0)
+        _step3f_contract_bytes = _step3f_manifest_metric("ice_microphysics_wyser_mass_geometry_contract.json", "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY_EVIDENCE_NONEMPTY",
+            "status":PASS if _step3f_evidence_rows >= 10 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3f_evidence_rows),
+            "expected":">=10 serialized evidence rows",
+            "detail":"Step 3F mass/geometry evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY_GATE_NONEMPTY",
+            "status":PASS if _step3f_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3f_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3F mass/geometry qualification gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_MASS_GEOMETRY_CONTRACT_NONEMPTY",
+            "status":PASS if _step3f_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3f_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3F CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:

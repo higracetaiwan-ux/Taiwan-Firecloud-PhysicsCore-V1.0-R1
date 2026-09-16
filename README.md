@@ -1,9 +1,9 @@
-> Current release: **V1.0-R5.7.41.3.4.10.18** — Step 3E Wyser PSD Normalization + Hex-Column Geometry / L→Dmax Coordinate Qualification; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.19** — Step 3F Exact Wyser Eq.(5)/(6) Geometry + Mass-Size / PSD Mass-Closure Qualification; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.18
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.19
 
 
-## R5.7.41.3.4.10.18 Step 3E — Wyser PSD Normalization + Hex-Column Geometry / L→Dmax Coordinate Qualification
+## R5.7.41.3.4.10.19 Step 3F — Exact Wyser Eq.(5)/(6) Geometry + Mass-Size / PSD Mass-Closure Qualification
 
 - Primary-source Wyser normalization rule is pinned: `n(L)=A·phi(L)` and `A=IWC/∫m(L)phi(L)dL`.
 - Mixed PSD shape remains Gamma (≤20 µm) + power law (>20 µm), with continuity at 20 µm.
