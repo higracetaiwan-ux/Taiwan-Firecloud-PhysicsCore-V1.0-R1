@@ -1218,7 +1218,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3J — Diagnostic Wyser PSD × Yang/Bi Cext Bulk Integration (β_ext/k_ext, Fail-Closed)"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3J.1 — CAMS Terminal Checkpoint Reconciliation + Stable Diagnostic Evidence Serialization"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1235,6 +1235,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.23.1**：Step 3J.1 CAMS Terminal Checkpoint Reconciliation + Stable Diagnostic Evidence Serialization。修正 CAMS child 已回傳 `TIMEOUT_DEFERRED` 時 durable worker checkpoint 仍可能停在 `STARTED/RUNNING` 的 archive telemetry 不一致；現在會明確寫入 terminal `TIMEOUT_DEFERRED`，保留 exit code/error/worker paths。Step 3J evidence-only 浮點序列化固定為 16 significant digits，消除跨平台 1-ULP byte drift。Step 3J 數值計算、Frozen Science、habit/roughness/τ/production gates 全部不變。
 - **R5.7.41.3.4.10.23**：Step 3J Diagnostic PSD × Yang/Bi `C_ext` Bulk Integration。使用 Wyser Eq.(6) 正規化 number population 與 Step 3I Yang/Bi `single_column/Rough000` diagnostic `C_ext(Dmax,λ)` reference kernel，首次計算六波段 `β_ext(λ)` 與 `k_ext(λ)`；使用 source-knot-preserving log(D)-log(Cext) interpolation、1025/4097 對 16385 reference grid 做 numerical convergence。此結果僅為 diagnostic preflight，不計算 `τ_ice`、不選 runtime habit/roughness、不寫入 ice runtime，也不允許 production promotion；Frozen Science 不變。
 - **R5.7.41.3.4.10.22**：Step 3I Wyser Population ↔ Yang/Bi Optical-Kernel Bridge。沿已驗證 `L=Dmax` 共同座標建立 diagnostic-only hybrid bridge：Wyser Eq.(6) mass 僅供 PSD/IWC population normalization，Yang/Bi `ρV` mass 僅供由 compact LUT `k_ext` 反解單粒子 `C_ext`；109 個 Dmax × 六波段共 654 rows 的 `single_column/Rough000` reference kernel 可數值重建，但它不是 runtime habit/roughness default。Shape / projected-area / volume-mass equivalence、Eq.(6) external corroboration、scientific closure、habit、roughness、bulk optics 與 production 全部仍 fail-close；Frozen Science 不變。
 - **R5.7.41.3.4.10.21**：Step 3H Wyser→Yang/Bi Maximum-Dimension Coordinate Qualification。正式拆分「size coordinate identity」與「solid-column shape equivalence」：Wyser `L` 與 Yang/Bi `maximum_dimension_um` 的座標語意通過；Yang/Bi V2 `single_column` 幾何另以 189 個 source-derived `De=1.5V/A` rows 重現並釘定 `a=0.35L` / `a=3.48√L`，同時確認它與 Wyser Eq.(5) shape law 不等價。因此 projected-area / volume-mass / habit / roughness / bulk optics / production 全部維持 fail-close；Frozen Science 不變。

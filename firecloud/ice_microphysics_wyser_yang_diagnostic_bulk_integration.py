@@ -330,6 +330,14 @@ def run_diagnostic_bulk_extinction_grid(
     }
 
 
+STABLE_EVIDENCE_SIGNIFICANT_DIGITS = 16
+
+
+def stable_evidence_float(value: float) -> str:
+    """Serialize diagnostic evidence floats without platform-specific 1-ULP noise."""
+    return format(float(value), f".{STABLE_EVIDENCE_SIGNIFICANT_DIGITS}g")
+
+
 EVIDENCE_COLUMNS = [
     "step3j_version",
     "science_baseline",
@@ -356,7 +364,7 @@ def build_wyser_yang_diagnostic_bulk_evidence() -> pd.DataFrame:
         reference_grid_points=16385,
     )
     kext_summary = "|".join(
-        f"{r['wavelength_nm']}:{r['k_ext_m2_kg']:.17g}" for r in sample["bands"]
+        f"{r['wavelength_nm']}:{stable_evidence_float(r['k_ext_m2_kg'])}" for r in sample["bands"]
     )
     rows = [
         {
@@ -411,7 +419,7 @@ def build_wyser_yang_diagnostic_bulk_evidence() -> pd.DataFrame:
             "evidence_id": "DIAGNOSTIC_BULK_GRID_CONVERGENCE",
             "evidence_type": "NUMERICAL_CONVERGENCE_GATE",
             "pin_status": "PASS_DIAGNOSTIC_GRID_CONVERGENCE" if grid["all_grid_convergence_pass"] else "BLOCKED_GRID_CONVERGENCE_FAILED",
-            "value": f"max_relative_error={grid['max_bulk_convergence_relative_error']:.17g};tolerance={BULK_CONVERGENCE_TOLERANCE:.17g}",
+            "value": f"max_relative_error={stable_evidence_float(grid['max_bulk_convergence_relative_error'])};tolerance={stable_evidence_float(BULK_CONVERGENCE_TOLERANCE)}",
             "semantic_role": "NUMERICAL_STABILITY_NOT_SCIENTIFIC_VALIDATION",
             "authoritative_for_runtime_mapping": False,
             "source_reference": "1025/4097 point grids vs 16385 point reference",
@@ -423,7 +431,7 @@ def build_wyser_yang_diagnostic_bulk_evidence() -> pd.DataFrame:
             "evidence_id": "DIAGNOSTIC_PSD_MASS_CLOSURE",
             "evidence_type": "NUMERICAL_MASS_CLOSURE_GATE",
             "pin_status": "PASS_DIAGNOSTIC_MASS_CLOSURE" if grid["max_mass_closure_relative_error"] <= MASS_CLOSURE_TOLERANCE else "BLOCKED_MASS_CLOSURE_FAILED",
-            "value": f"max_relative_error={grid['max_mass_closure_relative_error']:.17g}",
+            "value": f"max_relative_error={stable_evidence_float(grid['max_mass_closure_relative_error'])}",
             "semantic_role": "WYSER_EQ6_POPULATION_NORMALIZATION_DIAGNOSTIC_ONLY",
             "authoritative_for_runtime_mapping": False,
             "source_reference": "R5.7.41.3.4.10.20.1 Step 3G",

@@ -23,7 +23,7 @@ def _analysis_result():
         "v1_ice_microphysics_wyser_yang_diagnostic_bulk_evidence": evidence,
         "v1_ice_microphysics_wyser_yang_diagnostic_bulk_gate": gate,
         "ice_microphysics_wyser_yang_diagnostic_bulk_contract": wyser_yang_diagnostic_bulk_contract_payload(
-            physicscore_version="1.0.0-R5.7.41.3.4.10.23"
+            physicscore_version="1.0.0-R5.7.41.3.4.10.23.1"
         ),
     }
 

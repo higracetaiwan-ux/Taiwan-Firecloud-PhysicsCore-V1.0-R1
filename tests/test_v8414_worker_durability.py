@@ -21,7 +21,8 @@ def test_cams_checkpoint_is_durable_and_result_status_is_recorded():
     assert '"stderr_tail"' in src
     assert '"stderr_path"' in src
     assert 'state_root / "cams_workers"' in src
-    assert 'result_status not in {"TIMEOUT_DEFERRED"}' in src
+    assert 'result_status == "TIMEOUT_DEFERRED"' in src
+    assert 'role, "TIMEOUT_DEFERRED"' in src
     assert "exit_code=observed_returncode" in src
     assert 'return 0 if status in {"OK", "CACHE_HIT"} else 1' in worker
 

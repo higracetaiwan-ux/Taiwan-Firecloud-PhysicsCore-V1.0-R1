@@ -1560,7 +1560,19 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
                             pid=proc.pid, exit_code=observed_returncode,
                             request_path=request_path, result_path=result_path,
                             stdout_path=stdout_path, stderr_path=stderr_path)
-                    elif result_status not in {"TIMEOUT_DEFERRED"}:
+                    elif result_status == "TIMEOUT_DEFERRED":
+                        # Stateful ADS queue/running deadlines can return a valid
+                        # TIMEOUT_DEFERRED envelope before the parent wall-clock
+                        # watchdog fires.  Reconcile the durable checkpoint with
+                        # that terminal result so CASE evidence never preserves a
+                        # stale STARTED/RUNNING heartbeat after fallback succeeds.
+                        _write_cams_worker_checkpoint(
+                            role, "TIMEOUT_DEFERRED", elapsed_seconds=result_elapsed,
+                            pid=proc.pid, exit_code=observed_returncode,
+                            error=str(res.get("error", "") or result_status),
+                            request_path=request_path, result_path=result_path,
+                            stdout_path=stdout_path, stderr_path=stderr_path)
+                    else:
                         # A child can return a valid result envelope whose status
                         # is FAILED/INCOMPLETE/MISSING (for example preflight or
                         # a GRIB missing the requested field).  Keep the durable

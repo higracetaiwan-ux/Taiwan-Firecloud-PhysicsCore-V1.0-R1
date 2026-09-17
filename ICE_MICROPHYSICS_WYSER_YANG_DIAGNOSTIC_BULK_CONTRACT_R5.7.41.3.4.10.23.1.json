@@ -1,0 +1,64 @@
+{
+  "contract_version": "FIRECLOUD_ICE_WYSER_YANG_DIAGNOSTIC_BULK_V1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.23.1",
+  "step3j_version": "R5.7.41.3.4.10.23",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "WYSER_PSD_YANG_CEXT_DIAGNOSTIC_BULK_INTEGRATION_FAIL_CLOSED",
+  "diagnostic_only": true,
+  "population_mass_semantic": "WYSER_EQ6_EMPIRICAL_PARTICLE_MASS",
+  "optical_kernel_mass_semantic": "YANG_GEOMETRIC_RHO_ICE_TIMES_VOLUME",
+  "mass_semantics_interchangeable": false,
+  "beta_ext_definition": "integral[n_wyser(D)*Cext_yang(D,lambda)dD]",
+  "k_ext_definition": "beta_ext/IWC_kg_m3",
+  "diagnostic_reference_habit": "single_column",
+  "diagnostic_reference_roughness": "Rough000",
+  "runtime_habit_roughness_selected": false,
+  "interpolation_contract": "LOG_D_LOG_CEXT_PIECEWISE_LINEAR_WITH_SOURCE_KNOTS_NO_EXTRAPOLATION",
+  "wavelengths_nm": [
+    550,
+    575,
+    600,
+    650,
+    700,
+    750
+  ],
+  "dmax_domain_um": [
+    10.0,
+    1000.0
+  ],
+  "diagnostic_matrix": {
+    "temperatures_k": [
+      233.16,
+      253.16,
+      273.16
+    ],
+    "iwc_values_g_m3": [
+      0.001,
+      0.1,
+      10.0
+    ],
+    "grid_points": [
+      1025,
+      4097
+    ],
+    "reference_grid_points": 16385,
+    "case_count": 18,
+    "all_numeric_bulk_extinction_pass": true,
+    "all_grid_convergence_pass": true,
+    "max_mass_closure_relative_error": 3.552713678800501e-16,
+    "max_bulk_convergence_relative_error": 2.8615945138814625e-06
+  },
+  "scientific_bulk_validation_pass": false,
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "tau_ice_computed": false,
+  "tau_ice_production_allowed": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "forbidden_shortcuts": [
+    "diagnostic_single_column_rough000_treated_as_runtime_habit_roughness_default",
+    "diagnostic_k_ext_written_into_runtime_ice_optics",
+    "tau_ice_synthesized_from_step3j_k_ext",
+    "numerical_grid_convergence_treated_as_independent_scientific_validation",
+    "yang_geometric_mass_used_to_normalize_wyser_psd"
+  ]
+}

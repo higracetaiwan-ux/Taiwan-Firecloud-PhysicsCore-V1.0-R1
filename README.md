@@ -1,6 +1,15 @@
-> Current release: **V1.0-R5.7.41.3.4.10.23** — Step 3J Diagnostic Wyser PSD × Yang/Bi Cext Bulk Integration (β_ext/k_ext, Fail-Closed); science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.23.1** — Step 3J.1 CAMS Terminal Checkpoint Reconciliation + Stable Diagnostic Evidence Serialization; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.23
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.23.1
+
+## R5.7.41.3.4.10.23.1 Step 3J.1 — CAMS Terminal Checkpoint Reconciliation + Stable Diagnostic Evidence Serialization
+
+- CAMS isolated child 若已回傳 `TIMEOUT_DEFERRED`，durable checkpoint 現在同步寫入 terminal `TIMEOUT_DEFERRED`，不再保留 `STARTED/RUNNING` stale state。
+- terminal checkpoint 保存 role、elapsed、PID、exit code、error、request/result/stdout/stderr paths，CASE telemetry 與 request audit 可一致對讀。
+- Step 3J evidence-only 浮點文字固定為 16 significant digits，吸收 IEEE-754 最後 1 ULP 的平台差異；不改任何 β_ext/k_ext 計算。
+- Step 3J science version 仍為 `.10.23`；本版只做 archive telemetry / reproducibility hotfix。
+- Frozen Science、Formation、Viewing、Twilight Glow、六波段、habit/roughness、`tau_ice` 與 production promotion gates 全部不變。
+- 本版狀態：**QA verification in progress**；最新正式 FIELD baseline 仍為 `V1.0-R5.7.41.3.4.10.22 FIELD PASS`，`.10.23` 為 FIELD SCIENCE PASS / archive telemetry hotfix required。
 
 ## R5.7.41.3.4.10.23 Step 3J — Diagnostic Wyser PSD × Yang/Bi Cext Bulk Integration
 

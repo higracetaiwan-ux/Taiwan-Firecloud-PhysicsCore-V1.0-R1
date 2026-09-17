@@ -33,8 +33,4 @@
 
 ### Validation
 
-- Working-tree full regression: **872 passed, 1 warning**.
-- Step 3G–3J + UI focused regression: **53 passed**.
-- Candidate clean fresh-extract full regression: **872 passed, 1 warning, exit code 0**.
-- Step 3J evidence/gate/contract deterministic regeneration: **exact match**.
 - FIELD validation pending.
