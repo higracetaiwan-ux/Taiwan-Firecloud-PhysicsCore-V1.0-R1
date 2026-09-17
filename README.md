@@ -1,6 +1,22 @@
-> Current release: **V1.0-R5.7.41.3.4.10.23.1** — Step 3J.1 CAMS Terminal Checkpoint Reconciliation + Stable Diagnostic Evidence Serialization; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.24.1** — Step 3K Stable Evidence Serialization Hotfix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.23.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.24.1
+
+## R5.7.41.3.4.10.24.1 Step 3K.1 — Stable Evidence Serialization Hotfix
+
+- Step 3K evidence / contract floating output canonicalized to 11 significant digits.
+- Directly covers the platform variants observed in `.10.24` TWS100 FIELD CASE.
+- Scientific calculations remain full double precision; only persisted evidence values are canonicalized.
+- Step 3K science remains `.10.24`; Frozen Science and all production gates remain unchanged.
+- Status: **QA PASS / FIELD validation pending**. Latest formal FIELD baseline: `V1.0-R5.7.41.3.4.10.23.1 FIELD PASS`.
+
+## R5.7.41.3.4.10.24 Step 3K — Fu96 Independent Bulk Extinction Cross-Check
+
+- Uses the same Wyser population but an independent Fu96/projected-area optical-kernel chain rather than Yang/Bi `C_ext`.
+- 18-case independent cross-check executed; Step 3J-vs-Fu difference characterized at about 26–31%.
+- Dge mass-area vs solid-hex semantics remain explicitly separated.
+- Scientific bulk validation / habit / roughness / `tau_ice` / production promotion remain blocked.
+- FIELD science PASS at TWS100; evidence reproducibility hotfix required, addressed by `.10.24.1`.
 
 ## R5.7.41.3.4.10.23.1 Step 3J.1 — CAMS Terminal Checkpoint Reconciliation + Stable Diagnostic Evidence Serialization
 

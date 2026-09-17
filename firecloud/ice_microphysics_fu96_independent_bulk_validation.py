@@ -31,7 +31,6 @@ from .ice_microphysics_wyser_primary_numeric_recovery import (
 )
 from .ice_microphysics_wyser_yang_diagnostic_bulk_integration import (
     diagnostic_bulk_extinction,
-    stable_evidence_float,
 )
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
@@ -46,6 +45,21 @@ FU96_PROJECTED_AREA_SECONDARY = "https://atmos.washington.edu/academic/grad/html
 FU96_ICE_DENSITY_KG_M3 = 917.0
 FU96_EXTINCTION_COEFFICIENT = 2.5184
 FU96_UNIT_CHAIN_TOLERANCE = 2.0e-5
+
+# Step 3K uses integrations whose last few floating-point digits can vary
+# across BLAS/libm/platform combinations.  Canonicalize *evidence output only*
+# to 11 significant digits; all scientific calculations above remain full
+# double precision.  This precision is far tighter than the Step 3K diagnostic
+# tolerances while collapsing the platform variants observed in FIELD CASEs.
+STABLE_STEP3K_EVIDENCE_SIGNIFICANT_DIGITS = 11
+
+
+def stable_step3k_evidence_float(value: float) -> str:
+    return format(float(value), f".{STABLE_STEP3K_EVIDENCE_SIGNIFICANT_DIGITS}g")
+
+
+def stable_step3k_evidence_number(value: float) -> float:
+    return float(stable_step3k_evidence_float(value))
 
 INDEPENDENT_OPTICAL_KERNEL = "FU96_GEOMETRIC_OPTICS_BETA_APPROX_2AC"
 PROJECTED_AREA_DEFINITION = "Pbar=(3/4)*(D*L+(sqrt(3)/4)*D^2)"
@@ -290,7 +304,7 @@ def build_fu96_independent_bulk_validation_evidence() -> pd.DataFrame:
             "evidence_id": "FU96_PROJECTED_AREA_EXTINCTION_CHAIN",
             "evidence_type": "INDEPENDENT_OPTICAL_CROSSCHECK",
             "pin_status": "PASS_INDEPENDENT_OPTICAL_CROSSCHECK_EXECUTED" if grid["all_fu96_extinction_chain_numeric_pass"] else "BLOCKED_NUMERIC_CHAIN_FAILED",
-            "value": f"beta_ext≈2Ac;all_18_cases_pass={grid['all_fu96_extinction_chain_numeric_pass']};max_unit_chain_relerr={stable_evidence_float(grid['max_fu96_unit_chain_relative_error'])}",
+            "value": f"beta_ext≈2Ac;all_18_cases_pass={grid['all_fu96_extinction_chain_numeric_pass']};max_unit_chain_relerr={stable_step3k_evidence_float(grid['max_fu96_unit_chain_relative_error'])}",
             "semantic_role": "REFERENCE_CHAIN_DOES_NOT_USE_YANG_BI_CEXT",
             "authoritative_for_runtime_mapping": False,
             "source_reference": f"{FU96_PRIMARY_DOI}|{FU96_NCEP_TECHNICAL_NOTE}|{FU96_PROJECTED_AREA_SECONDARY}",
@@ -314,7 +328,7 @@ def build_fu96_independent_bulk_validation_evidence() -> pd.DataFrame:
             "evidence_id": "FU96_DGE_DUAL_SEMANTICS",
             "evidence_type": "MASS_SEMANTICS_GUARD",
             "pin_status": "PASS_DGE_SEMANTICS_SEPARATED",
-            "value": f"sample_mass_area_Dge_um={stable_evidence_float(sample['mass_area_equivalent_dge_um'])};sample_solid_hex_Dge_um={stable_evidence_float(sample['solid_hex_geometry_dge_um'])}",
+            "value": f"sample_mass_area_Dge_um={stable_step3k_evidence_float(sample['mass_area_equivalent_dge_um'])};sample_solid_hex_Dge_um={stable_step3k_evidence_float(sample['solid_hex_geometry_dge_um'])}",
             "semantic_role": "WYser_EQ6_MASS_AREA_EQUIVALENT_DGE_NOT_SOLID_HEX_DGE",
             "authoritative_for_runtime_mapping": False,
             "source_reference": f"{FU96_PRIMARY_DOI}|R5.7.41.3.4.10.20.1 Wyser Eq.(6)",
@@ -326,7 +340,7 @@ def build_fu96_independent_bulk_validation_evidence() -> pd.DataFrame:
             "evidence_id": "FU96_STEP3J_BULK_DIFFERENCE_CHARACTERIZATION",
             "evidence_type": "INDEPENDENT_BULK_DIFFERENCE_CHARACTERIZATION",
             "pin_status": "PASS_DIFFERENCE_CHARACTERIZED_NO_PROMOTION",
-            "value": f"relative_difference_range={stable_evidence_float(grid['min_relative_difference_vs_fu96'])}..{stable_evidence_float(grid['max_relative_difference_vs_fu96'])}",
+            "value": f"relative_difference_range={stable_step3k_evidence_float(grid['min_relative_difference_vs_fu96'])}..{stable_step3k_evidence_float(grid['max_relative_difference_vs_fu96'])}",
             "semantic_role": "QUANTIFIED_CROSSCHECK_NOT_EQUIVALENCE_CLAIM",
             "authoritative_for_runtime_mapping": False,
             "source_reference": "Step 3J Yang/Bi Cext diagnostic vs Step 3K Fu projected-area chain",
@@ -469,9 +483,9 @@ def fu96_independent_bulk_validation_contract_payload(*, physicscore_version: st
             "case_count": grid["case_count"],
             "all_fu96_extinction_chain_numeric_pass": grid["all_fu96_extinction_chain_numeric_pass"],
             "all_projected_area_numeric_pass": grid["all_projected_area_numeric_pass"],
-            "max_fu96_unit_chain_relative_error": grid["max_fu96_unit_chain_relative_error"],
-            "min_relative_difference_vs_fu96": grid["min_relative_difference_vs_fu96"],
-            "max_relative_difference_vs_fu96": grid["max_relative_difference_vs_fu96"],
+            "max_fu96_unit_chain_relative_error": stable_step3k_evidence_number(grid["max_fu96_unit_chain_relative_error"]),
+            "min_relative_difference_vs_fu96": stable_step3k_evidence_number(grid["min_relative_difference_vs_fu96"]),
+            "max_relative_difference_vs_fu96": stable_step3k_evidence_number(grid["max_relative_difference_vs_fu96"]),
         },
         "scientific_bulk_validation_pass": False,
         "bulk_yang_bi_psd_integration_eligible": False,
