@@ -186,6 +186,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_yang_habit_roughness_qualification_gate = _df(result.get("v1_ice_microphysics_yang_habit_roughness_qualification_gate"))
     ice_microphysics_yang_habit_roughness_qualification_contract = result.get("ice_microphysics_yang_habit_roughness_qualification_contract", {}) or {}
     ice_microphysics_yang_habit_roughness_qualification_required = bool(result.get("ice_microphysics_yang_habit_roughness_qualification_required", False))
+    ice_microphysics_yang_matched_geometry_extinction_validation_evidence = _df(result.get("v1_ice_microphysics_yang_matched_geometry_extinction_validation_evidence"))
+    ice_microphysics_yang_matched_geometry_extinction_validation_gate = _df(result.get("v1_ice_microphysics_yang_matched_geometry_extinction_validation_gate"))
+    ice_microphysics_yang_matched_geometry_extinction_validation_contract = result.get("ice_microphysics_yang_matched_geometry_extinction_validation_contract", {}) or {}
+    ice_microphysics_yang_matched_geometry_extinction_validation_required = bool(result.get("ice_microphysics_yang_matched_geometry_extinction_validation_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1674,6 +1678,80 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION",
             _step3l_gate_detail,
             "Model-family bridge/uncertainty ensemble may advance while runtime default and tau/production promotion remain blocked",
+        )
+
+    # R5.7.41.3.4.10.26 Step 3M matched-geometry extinction validation.
+    if ice_microphysics_yang_matched_geometry_extinction_validation_required:
+        _step3m_present = bool(
+            not ice_microphysics_yang_matched_geometry_extinction_validation_evidence.empty
+            and not ice_microphysics_yang_matched_geometry_extinction_validation_gate.empty
+            and isinstance(ice_microphysics_yang_matched_geometry_extinction_validation_contract, Mapping)
+            and bool(ice_microphysics_yang_matched_geometry_extinction_validation_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_EVIDENCE_PRESENT",
+            PASS if _step3m_present else FAIL,
+            "ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_VALIDATION",
+            f"evidence_rows={len(ice_microphysics_yang_matched_geometry_extinction_validation_evidence)};gate_rows={len(ice_microphysics_yang_matched_geometry_extinction_validation_gate)};contract_present={bool(ice_microphysics_yang_matched_geometry_extinction_validation_contract)}",
+            "Step 3M evidence, gate and contract must all be present",
+        )
+        _step3m_forbidden = {str(x) for x in ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_yang_matched_geometry_extinction_validation_contract, Mapping) else set()
+        _step3m_required_forbidden = {
+            "Do not treat an extinction-only matched-geometry cross-check as SSA/g validation.",
+            "Do not infer runtime habit from the single_column model-family reference.",
+            "Do not select a hidden production roughness state from the diagnostic ensemble.",
+            "Do not treat the Step 3M regression characterization as a universal production tolerance.",
+            "Do not promote diagnostic k_ext to tau_ice production in Step 3M.",
+            "Do not alter Formation/Viewing/Twilight Glow from Step 3M evidence.",
+        }
+        _step3m_contract_ok = bool(
+            isinstance(ice_microphysics_yang_matched_geometry_extinction_validation_contract, Mapping)
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("contract_version") == "FIRECLOUD_ICE_YANG_MATCHED_GEOMETRY_EXTINCTION_VALIDATION_V1"
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("mode") == "YANG_MATCHED_GEOMETRY_FU96_EXTINCTION_VALIDATION_DIAGNOSTIC_FAIL_CLOSED"
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("same_yang_geometry_as_test_kernel") is True
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("uses_yang_bi_cext_in_reference_chain") is False
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("matched_geometry_extinction_reference_ready") is True
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("independent_ssa_validation_pass") is False
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("independent_asymmetry_validation_pass") is False
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("full_like_for_like_optical_validation_pass") is False
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("tau_ice_production_allowed") is False
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_yang_matched_geometry_extinction_validation_contract.get("physics_promotion_allowed") is False
+            and _step3m_required_forbidden.issubset(_step3m_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_CONTRACT_FREEZE",
+            PASS if _step3m_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_VALIDATION",
+            f"contract={ice_microphysics_yang_matched_geometry_extinction_validation_contract.get('contract_version') if isinstance(ice_microphysics_yang_matched_geometry_extinction_validation_contract, Mapping) else None};forbidden_shortcuts={len(_step3m_forbidden)}",
+            "Extinction-only matched-geometry reference may advance while SSA/g/full-optics/tau/production remain blocked",
+        )
+        _step3m_gate_ok = False
+        _step3m_gate_detail = "Step 3M gate missing"
+        if not ice_microphysics_yang_matched_geometry_extinction_validation_gate.empty:
+            row = ice_microphysics_yang_matched_geometry_extinction_validation_gate.iloc[0]
+            _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+            _step3m_gate_ok = bool(
+                _b("MATCHED_GEOMETRY_EXTINCTION_REFERENCE_READY", True)
+                and _b("GEOMETRIC_OPTICS_DOMAIN_PASS", True)
+                and _b("MATCHED_GEOMETRY_BULK_DIFFERENCE_CHARACTERIZED", True)
+                and _b("INDEPENDENT_SSA_VALIDATION_PASS", False)
+                and _b("INDEPENDENT_ASYMMETRY_VALIDATION_PASS", False)
+                and _b("FULL_LIKE_FOR_LIKE_OPTICAL_VALIDATION_PASS", False)
+                and _b("SCIENTIFIC_BULK_VALIDATION_PASS", False)
+                and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
+                and _b("PRODUCTION_ICE_OPTICS_READY", False)
+                and _b("physics_promotion_allowed", False)
+                and str(row.get("qualification_state", "")) == "MATCHED_GEOMETRY_EXTINCTION_REFERENCE_READY_FULL_OPTICS_AND_PRODUCTION_BLOCKED"
+            )
+            _step3m_gate_detail = f"state={row.get('qualification_state')};ext_ref={row.get('MATCHED_GEOMETRY_EXTINCTION_REFERENCE_READY')};ssa={row.get('INDEPENDENT_SSA_VALIDATION_PASS')};g={row.get('INDEPENDENT_ASYMMETRY_VALIDATION_PASS')};tau={row.get('TAU_ICE_PRODUCTION_ALLOWED')}"
+        add(
+            "ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_FAIL_CLOSED",
+            PASS if _step3m_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_VALIDATION",
+            _step3m_gate_detail,
+            "Matched-geometry extinction reference may advance while full optics and production remain fail-closed",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -3537,6 +3615,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_yang_habit_roughness_qualification_evidence.csv",
         "ice_microphysics_yang_habit_roughness_qualification_gate.csv",
         "ice_microphysics_yang_habit_roughness_qualification_contract.json",
+        "ice_microphysics_yang_matched_geometry_extinction_validation_evidence.csv",
+        "ice_microphysics_yang_matched_geometry_extinction_validation_gate.csv",
+        "ice_microphysics_yang_matched_geometry_extinction_validation_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -3956,6 +4037,40 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "component":"CASE_ARCHIVE", "observed":int(_step3l_contract_bytes),
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3L CASE evidence.",
+        })
+
+    # R5.7.41.3.4.10.26 Step 3M serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _step3m_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _step3m_evidence_rows = _step3m_manifest_metric("ice_microphysics_yang_matched_geometry_extinction_validation_evidence.csv", "row_count", 0.0)
+        _step3m_gate_rows = _step3m_manifest_metric("ice_microphysics_yang_matched_geometry_extinction_validation_gate.csv", "row_count", 0.0)
+        _step3m_contract_bytes = _step3m_manifest_metric("ice_microphysics_yang_matched_geometry_extinction_validation_contract.json", "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_EVIDENCE_NONEMPTY",
+            "status":PASS if _step3m_evidence_rows >= 12 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3m_evidence_rows),
+            "expected":">=12 serialized evidence rows",
+            "detail":"Step 3M matched-geometry extinction evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_GATE_NONEMPTY",
+            "status":PASS if _step3m_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3m_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3M matched-geometry extinction gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_MATCHED_GEOMETRY_EXTINCTION_CONTRACT_NONEMPTY",
+            "status":PASS if _step3m_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3m_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3M CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:

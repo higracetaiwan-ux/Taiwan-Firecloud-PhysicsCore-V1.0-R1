@@ -1,6 +1,13 @@
-> Current release: **V1.0-R5.7.41.3.4.10.25.1** — Step 3L.1 Stable Contract Sample Serialization Hotfix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.26** — Step 3M Yang/Bi Matched-Geometry Extinction Validation; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.25.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.26
+
+## R5.7.41.3.4.10.26 Step 3M — Yang/Bi Matched-Geometry Extinction Validation
+- 建立 same-Yang-geometry Fu96 `Cext≈2A` independent extinction reference；reference 不使用 Yang/Bi Cext/Qext。
+- 1,962 single-particle rows；minimum size parameter 58.64 (>15)。
+- 18-case / 324-row matched bulk matrix；max relative difference 約 2.878%，mean 約 0.593%。
+- 只解鎖 extinction-only diagnostic reference；SSA/g、runtime habit/roughness truth、`tau_ice`、production 與 Formation/Viewing/Twilight Glow 維持 fail-close。
+- `.10.26` working-tree regression：903/903 PASS；FIELD validation pending；latest formal FIELD baseline `.10.25.1 FIELD PASS`。
 
 ## R5.7.41.3.4.10.25.1 Step 3L.1 — Stable Contract Sample Serialization Hotfix
 

@@ -65,7 +65,7 @@ def test_model_family_bridge_can_pass_without_runtime_habit_inference():
 
 def test_contract_remains_fail_closed():
     contract = yang_habit_roughness_qualification_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.25.1"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.26"
     )
     assert contract["contract_version"] == "FIRECLOUD_ICE_YANG_HABIT_ROUGHNESS_QUALIFICATION_V1"
     assert contract["wyser_yang_solid_column_habit_family_bridge_pass"] is True

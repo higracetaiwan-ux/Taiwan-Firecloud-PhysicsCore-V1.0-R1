@@ -1,0 +1,61 @@
+{
+  "contract_version": "FIRECLOUD_ICE_YANG_MATCHED_GEOMETRY_EXTINCTION_VALIDATION_V1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.26",
+  "step3m_version": "R5.7.41.3.4.10.26",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "YANG_MATCHED_GEOMETRY_FU96_EXTINCTION_VALIDATION_DIAGNOSTIC_FAIL_CLOSED",
+  "reference_law": "Cext_reference_m2=2*Yang_single_column_mean_projected_area_m2",
+  "reference_source": "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2",
+  "geometric_optics_domain_support": [
+    "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2",
+    "https://doi.org/10.1364/JOSAA.14.002278"
+  ],
+  "reference_habit_family": "single_column",
+  "roughness_states": [
+    "Rough000",
+    "Rough003",
+    "Rough050"
+  ],
+  "dmax_domain_um": [
+    10.0,
+    1000.0
+  ],
+  "wavelengths_nm": [
+    550,
+    575,
+    600,
+    650,
+    700,
+    750
+  ],
+  "same_yang_geometry_as_test_kernel": true,
+  "uses_yang_bi_cext_in_reference_chain": false,
+  "minimum_size_parameter": "58.643063",
+  "geometric_optics_domain_pass": true,
+  "single_particle_row_count": 1962,
+  "matched_geometry_extinction_reference_ready": true,
+  "matched_geometry_bulk_difference_characterized": true,
+  "sample_numeric_characterization": {
+    "max_single_particle_relative_difference_vs_2A": "0.12319292",
+    "mean_single_particle_relative_difference_vs_2A": "0.0079473979",
+    "max_bulk_relative_difference_vs_matched_fu96": "0.028779758",
+    "mean_bulk_relative_difference_vs_matched_fu96": "0.0059333436",
+    "max_grid_convergence_relative_error": "2.8615945e-06"
+  },
+  "independent_ssa_validation_pass": false,
+  "independent_asymmetry_validation_pass": false,
+  "full_like_for_like_optical_validation_pass": false,
+  "scientific_bulk_validation_pass": false,
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "tau_ice_production_allowed": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "forbidden_shortcuts": [
+    "Do not treat an extinction-only matched-geometry cross-check as SSA/g validation.",
+    "Do not infer runtime habit from the single_column model-family reference.",
+    "Do not select a hidden production roughness state from the diagnostic ensemble.",
+    "Do not treat the Step 3M regression characterization as a universal production tolerance.",
+    "Do not promote diagnostic k_ext to tau_ice production in Step 3M.",
+    "Do not alter Formation/Viewing/Twilight Glow from Step 3M evidence."
+  ]
+}
