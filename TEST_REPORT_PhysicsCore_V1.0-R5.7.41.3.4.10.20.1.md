@@ -54,22 +54,3 @@ No new `.10.20.1` FIELD CASE has been executed inside this release-build session
 ```text
 4 passed
 ```
-
-
-## FULL-CLEAN Preflight Fresh-Extract Verification
-
-Preflight package structure：
-
-```text
-1050 members
-0 forbidden cache/bytecode members
-```
-
-將 preflight ZIP 解壓到全新目錄後執行：
-
-```text
-python -m pytest -q
-846 passed, 1 warning
-```
-
-第一次把打包、解壓與 pytest 放在同一個 120 秒命令中時，命令在測試接近完成時逾時；沒有 pytest failure 記錄。之後對已解壓目錄單獨 fresh-run，完整 846/846 PASS。

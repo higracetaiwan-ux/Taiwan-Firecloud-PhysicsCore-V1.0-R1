@@ -166,6 +166,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_wyser_primary_numeric_recovery_gate = _df(result.get("v1_ice_microphysics_wyser_primary_numeric_recovery_gate"))
     ice_microphysics_wyser_primary_numeric_recovery_contract = result.get("ice_microphysics_wyser_primary_numeric_recovery_contract", {}) or {}
     ice_microphysics_wyser_primary_numeric_recovery_required = bool(result.get("ice_microphysics_wyser_primary_numeric_recovery_required", False))
+    ice_microphysics_wyser_yang_coordinate_qualification_evidence = _df(result.get("v1_ice_microphysics_wyser_yang_coordinate_qualification_evidence"))
+    ice_microphysics_wyser_yang_coordinate_qualification_gate = _df(result.get("v1_ice_microphysics_wyser_yang_coordinate_qualification_gate"))
+    ice_microphysics_wyser_yang_coordinate_qualification_contract = result.get("ice_microphysics_wyser_yang_coordinate_qualification_contract", {}) or {}
+    ice_microphysics_wyser_yang_coordinate_qualification_required = bool(result.get("ice_microphysics_wyser_yang_coordinate_qualification_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1244,6 +1248,99 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_WYSER_PRIMARY_NUMERIC_RECOVERY",
             _step3g_gate_detail,
             "Primary Eq.5/Eq.6 numeric recovery may advance while independent Eq.6 corroboration, scientific closure and production promotion remain blocked",
+        )
+
+    # R5.7.41.3.4.10.21 Step 3H — Wyser↔Yang/Bi maximum-dimension coordinate qualification.
+    if ice_microphysics_wyser_yang_coordinate_qualification_required:
+        _step3h_present = bool(
+            not ice_microphysics_wyser_yang_coordinate_qualification_evidence.empty
+            and not ice_microphysics_wyser_yang_coordinate_qualification_gate.empty
+            and isinstance(ice_microphysics_wyser_yang_coordinate_qualification_contract, Mapping)
+            and bool(ice_microphysics_wyser_yang_coordinate_qualification_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION_EVIDENCE_PRESENT",
+            PASS if _step3h_present else FAIL,
+            "ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION",
+            f"evidence_rows={len(ice_microphysics_wyser_yang_coordinate_qualification_evidence)};gate_rows={len(ice_microphysics_wyser_yang_coordinate_qualification_gate)};contract_present={bool(ice_microphysics_wyser_yang_coordinate_qualification_contract)}",
+            "Step 3H coordinate evidence/gate/contract must be present",
+        )
+        _step3h_forbidden = {str(x) for x in ice_microphysics_wyser_yang_coordinate_qualification_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_wyser_yang_coordinate_qualification_contract, Mapping) else set()
+        _step3h_required_forbidden = {
+            "coordinate_identity_treated_as_shape_equivalence",
+            "coordinate_identity_treated_as_projected_area_equivalence",
+            "coordinate_identity_treated_as_volume_or_mass_equivalence",
+            "coordinate_identity_used_to_enable_bulk_optics_before_shape_habit_roughness_validation",
+            "coordinate_identity_used_to_enable_GFS_Dmax_mapping_without_source_microphysics_validation",
+            "fixed_Yang_Bi_habit_default",
+            "fixed_surface_roughness_default",
+            "scientific_mass_closure_claimed_before_independent_eq6_numeric_corroboration",
+        }
+        _step3h_contract_ok = bool(
+            isinstance(ice_microphysics_wyser_yang_coordinate_qualification_contract, Mapping)
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("contract_version") == "FIRECLOUD_ICE_WYSER_YANG_COORDINATE_QUALIFICATION_V1"
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("mode") == "WYSER_YANG_MAXIMUM_DIMENSION_COORDINATE_QUALIFICATION_SHAPE_COMPATIBILITY_FAIL_CLOSED"
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("coordinate_validation_scope") == "SIZE_COORDINATE_IDENTITY_ONLY_NOT_SHAPE_OR_OPTICAL_EQUIVALENCE"
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("wyser_L_is_maximum_dimension_pass") is True
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("yang_bi_size_coordinate_is_maximum_dimension_pass") is True
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("wyser_L_to_yang_dmax_coordinate_validated") is True
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("coordinate_authoritative_for_runtime_mapping") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("wyser_to_yang_solid_column_shape_compatibility_pass") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("wyser_to_yang_projected_area_compatibility_pass") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("wyser_to_yang_volume_mass_compatibility_pass") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("independent_eq6_external_numeric_corroboration_pass") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("scientific_mass_closure_executed") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("yang_bi_habit_bridge_validated") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("yang_bi_roughness_bridge_validated") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("bulk_yang_bi_psd_integration_eligible") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("gfsv16_dmax_mapping_eligible") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("physics_promotion_allowed") is False
+            and ice_microphysics_wyser_yang_coordinate_qualification_contract.get("frozen_science_unchanged") is True
+            and _step3h_required_forbidden.issubset(_step3h_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION_CONTRACT_FREEZE",
+            PASS if _step3h_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION",
+            f"contract={ice_microphysics_wyser_yang_coordinate_qualification_contract.get('contract_version') if isinstance(ice_microphysics_wyser_yang_coordinate_qualification_contract, Mapping) else None};forbidden_shortcuts={len(_step3h_forbidden)}",
+            "Size-coordinate identity may pass without shape/area/volume/habit/roughness/production promotion",
+        )
+        _step3h_gate_ok = False
+        _step3h_gate_detail = "Step 3H coordinate qualification gate missing"
+        if not ice_microphysics_wyser_yang_coordinate_qualification_gate.empty:
+            row = ice_microphysics_wyser_yang_coordinate_qualification_gate.iloc[0]
+            _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+            _step3h_gate_ok = bool(
+                _b("WYSER_L_IS_MAXIMUM_DIMENSION_PASS", True)
+                and _b("YANG_BI_SIZE_COORDINATE_IS_MAXIMUM_DIMENSION_PASS", True)
+                and _b("WYSER_L_TO_YANG_DMAX_COORDINATE_VALIDATED", True)
+                and _b("WYSER_TO_YANG_SOLID_COLUMN_SHAPE_COMPATIBILITY_PASS", False)
+                and _b("WYSER_TO_YANG_PROJECTED_AREA_COMPATIBILITY_PASS", False)
+                and _b("WYSER_TO_YANG_VOLUME_MASS_COMPATIBILITY_PASS", False)
+                and _b("INDEPENDENT_EQ6_EXTERNAL_NUMERIC_CORROBORATION_PASS", False)
+                and _b("SCIENTIFIC_MASS_CLOSURE_EXECUTED", False)
+                and _b("YANG_BI_HABIT_BRIDGE_VALIDATED", False)
+                and _b("YANG_BI_ROUGHNESS_BRIDGE_VALIDATED", False)
+                and _b("BULK_YANG_BI_PSD_INTEGRATION_ELIGIBLE", False)
+                and _b("GFSV16_DMAX_MAPPING_ELIGIBLE", False)
+                and _b("PRODUCTION_ICE_OPTICS_READY", False)
+                and _b("physics_promotion_allowed", False)
+                and str(row.get("qualification_state", "")) == "WYSER_YANG_DMAX_COORDINATE_VALIDATED_SHAPE_COMPATIBILITY_BLOCKED"
+            )
+            _step3h_gate_detail = (
+                f"state={row.get('qualification_state')};coordinate={row.get('WYSER_L_TO_YANG_DMAX_COORDINATE_VALIDATED')};"
+                f"shape={row.get('WYSER_TO_YANG_SOLID_COLUMN_SHAPE_COMPATIBILITY_PASS')};habit={row.get('YANG_BI_HABIT_BRIDGE_VALIDATED')};"
+                f"roughness={row.get('YANG_BI_ROUGHNESS_BRIDGE_VALIDATED')};bulk={row.get('BULK_YANG_BI_PSD_INTEGRATION_ELIGIBLE')};"
+                f"promotion={row.get('physics_promotion_allowed')}"
+            )
+        add(
+            "ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION_FAIL_CLOSED",
+            PASS if _step3h_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION",
+            _step3h_gate_detail,
+            "Coordinate identity may advance while shape/area/volume, Eq.6 scientific closure, habit, roughness, bulk optics and production remain blocked",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -3092,6 +3189,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_wyser_primary_numeric_recovery_evidence.csv",
         "ice_microphysics_wyser_primary_numeric_recovery_gate.csv",
         "ice_microphysics_wyser_primary_numeric_recovery_contract.json",
+        "ice_microphysics_wyser_yang_coordinate_qualification_evidence.csv",
+        "ice_microphysics_wyser_yang_coordinate_qualification_gate.csv",
+        "ice_microphysics_wyser_yang_coordinate_qualification_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -3341,6 +3441,40 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "component":"CASE_ARCHIVE", "observed":int(_step3g_contract_bytes),
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3G CASE evidence.",
+        })
+
+    # R5.7.41.3.4.10.21 Step 3H serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _step3h_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _step3h_evidence_rows = _step3h_manifest_metric("ice_microphysics_wyser_yang_coordinate_qualification_evidence.csv", "row_count", 0.0)
+        _step3h_gate_rows = _step3h_manifest_metric("ice_microphysics_wyser_yang_coordinate_qualification_gate.csv", "row_count", 0.0)
+        _step3h_contract_bytes = _step3h_manifest_metric("ice_microphysics_wyser_yang_coordinate_qualification_contract.json", "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION_EVIDENCE_NONEMPTY",
+            "status":PASS if _step3h_evidence_rows >= 10 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3h_evidence_rows),
+            "expected":">=10 serialized evidence rows",
+            "detail":"Step 3H coordinate qualification evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION_GATE_NONEMPTY",
+            "status":PASS if _step3h_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3h_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3H coordinate qualification gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_WYSER_YANG_COORDINATE_QUALIFICATION_CONTRACT_NONEMPTY",
+            "status":PASS if _step3h_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3h_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3H CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:

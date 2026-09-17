@@ -128,6 +128,11 @@ from firecloud.ice_microphysics_wyser_primary_numeric_recovery import (
     build_wyser_primary_numeric_recovery_gate,
     wyser_primary_numeric_recovery_contract_payload,
 )
+from firecloud.ice_microphysics_wyser_yang_coordinate_qualification import (
+    build_wyser_yang_coordinate_qualification_evidence,
+    build_wyser_yang_coordinate_qualification_gate,
+    wyser_yang_coordinate_qualification_contract_payload,
+)
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -1203,7 +1208,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3G — Primary Wyser Eq.(5)/(6) Numeric Recovery + Diagnostic Mass-Closure Preflight"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3H — Wyser→Yang/Bi Dmax Coordinate Qualification + Shape Compatibility Gate"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1220,6 +1225,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.21**：Step 3H Wyser→Yang/Bi Maximum-Dimension Coordinate Qualification。正式拆分「size coordinate identity」與「solid-column shape equivalence」：Wyser `L` 與 Yang/Bi `maximum_dimension_um` 的座標語意通過；Yang/Bi V2 `single_column` 幾何另以 189 個 source-derived `De=1.5V/A` rows 重現並釘定 `a=0.35L` / `a=3.48√L`，同時確認它與 Wyser Eq.(5) shape law 不等價。因此 projected-area / volume-mass / habit / roughness / bulk optics / production 全部維持 fail-close；Frozen Science 不變。
 - **R5.7.41.3.4.10.20.1**：Step 3G Primary Numeric Recovery + Diagnostic Mass-Closure Preflight。修正 single-author Wyser (1998) Eq.(5) 與 Wyser & Yang (1998) `D=2.5·L^0.6` 的 provenance 混淆；Eq.(5) 已恢復為 30 µm 分段 `L/D` 關係，Eq.(6) 已由 primary indexed text 恢復為 `m_g=2.311e-2·(L_um/1e4)^2.7625`。primary Eq.(6)+pinned mixed PSD 在 18 組 T/IWC/resolution diagnostic grid 完成 IWC mass-closure preflight，但 independent external Eq.(6) numeric corroboration 尚未取得，因此 scientific mass closure / absolute PSD / L→Yang-Bi Dmax / production Ice Optics 仍 fail-close。
 - **R5.7.41.3.4.10.20**：Step 3G Primary Wyser Numeric Recovery Audit。primary Eq.(5)/(6) machine-readable numerics 仍未達 promotion gate；新增 dual-source numeric promotion policy 與 synthetic-only diagnostic mass-closure harness。synthetic harness PASS 不得視為 Wyser scientific mass-closure PASS，absolute PSD / Dmax / production Ice Optics 仍 fail-close。
 - **R5.7.41.3.4.10.19**：Step 3F Exact Wyser Eq.(5)/(6) Geometry + Mass-Size / PSD Mass-Closure Qualification。`D=2.5·L^0.6` 已由後續文獻強力 corroborate 為 Wyser/Wyser–Yang column-geometry lineage，但 primary Eq.(5) numeric image 與 Eq.(6) mass-size numeric contract 尚未以可機器驗證的 primary-quality 形式釘死；absolute PSD reconstruction、mass closure、L→Yang/Bi Dmax 與 production Ice Optics 持續 fail-close。
@@ -2615,6 +2621,13 @@ if run or st.session_state.analysis_result is not None:
         _case_wyser_primary_numeric_recovery_contract = wyser_primary_numeric_recovery_contract_payload(
             physicscore_version=__version__
         )
+        _case_wyser_yang_coordinate_qualification_evidence = build_wyser_yang_coordinate_qualification_evidence()
+        _case_wyser_yang_coordinate_qualification_gate = build_wyser_yang_coordinate_qualification_gate(
+            _case_wyser_yang_coordinate_qualification_evidence
+        )
+        _case_wyser_yang_coordinate_qualification_contract = wyser_yang_coordinate_qualification_contract_payload(
+            physicscore_version=__version__
+        )
         _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
         _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
         _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
@@ -2701,6 +2714,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_wyser_mass_geometry_gate.csv", _case_wyser_mass_geometry_gate),
             ("ice_microphysics_wyser_primary_numeric_recovery_evidence.csv", _case_wyser_primary_numeric_recovery_evidence),
             ("ice_microphysics_wyser_primary_numeric_recovery_gate.csv", _case_wyser_primary_numeric_recovery_gate),
+            ("ice_microphysics_wyser_yang_coordinate_qualification_evidence.csv", _case_wyser_yang_coordinate_qualification_evidence),
+            ("ice_microphysics_wyser_yang_coordinate_qualification_gate.csv", _case_wyser_yang_coordinate_qualification_gate),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2791,6 +2806,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_wyser_psd_geometry_contract.json", _case_wyser_psd_geometry_contract),
             ("ice_microphysics_wyser_mass_geometry_contract.json", _case_wyser_mass_geometry_contract),
             ("ice_microphysics_wyser_primary_numeric_recovery_contract.json", _case_wyser_primary_numeric_recovery_contract),
+            ("ice_microphysics_wyser_yang_coordinate_qualification_contract.json", _case_wyser_yang_coordinate_qualification_contract),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

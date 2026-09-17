@@ -1,6 +1,16 @@
-> Current release: **V1.0-R5.7.41.3.4.10.20.1** — Step 3G Primary Wyser Eq.(5)/(6) Numeric Recovery + Diagnostic Mass-Closure Preflight; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.21** — Step 3H Wyser→Yang/Bi Maximum-Dimension Coordinate Qualification + Shape Compatibility Gate; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.20.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.21
+
+## R5.7.41.3.4.10.21 Step 3H — Wyser→Yang/Bi Dmax Coordinate Qualification + Shape Compatibility Gate
+
+- Wyser `L` 與 Yang/Bi `maximum_dimension_um` 已通過 **maximum-dimension size-coordinate identity** qualification。
+- Yang/Bi V2 `single_column` 幾何不再只依賴文獻文字轉錄；以 bundled authoritative-source-derived `De=1.5V/A` rows 做 189-size machine reproduction。
+- `a=0.35L`（`L<100 µm`）與 `a=3.48√L`（`L>=100 µm`）對 source-derived `De` 的最大相對誤差約 `5.84e-7`；alternative `0.348√L` 最大誤差約 `0.8973`，因此不得用來取代 actual V2 source geometry。
+- **Coordinate identity 不等於 shape identity**：Wyser Eq.(5) 與 Yang/Bi V2 single-column geometry 仍不等價；shape / projected-area / volume-mass 全部 fail-close。
+- Eq.(6) independent external numeric corroboration、scientific mass closure、habit、roughness、bulk optics、GFS Dmax mapping、Production Ice Optics 全部仍為 false。
+- Step 3H evidence / gate / contract 已納入 model、Analysis Integrity、CASE required members 與 archive content gate。
+- 本版狀態：**QA PASS / FIELD validation pending**；最新正式 FIELD baseline 為 `V1.0-R5.7.41.3.4.10.20.1 FIELD PASS`。
 
 ## R5.7.41.3.4.10.20.1 Step 3G — Primary Numeric Recovery + Diagnostic Mass-Closure Preflight
 
