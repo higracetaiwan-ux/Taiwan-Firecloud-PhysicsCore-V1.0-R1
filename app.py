@@ -148,6 +148,11 @@ from firecloud.ice_microphysics_fu96_independent_bulk_validation import (
     build_fu96_independent_bulk_validation_gate,
     fu96_independent_bulk_validation_contract_payload,
 )
+from firecloud.ice_microphysics_yang_habit_roughness_qualification import (
+    build_yang_habit_roughness_qualification_evidence,
+    build_yang_habit_roughness_qualification_gate,
+    yang_habit_roughness_qualification_contract_payload,
+)
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -1223,7 +1228,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3K — Fu96 Independent Bulk Extinction Cross-Check"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3L — Yang/Bi Habit + Roughness Qualification"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1240,6 +1245,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.25**：Step 3L Yang/Bi Habit + Roughness Qualification。正式分離「model-family habit bridge」與「runtime habit inference」：Wyser solid-column lineage 可對應 Yang/Bi `single_column` family，但不代表 exact geometry equivalence，也不代表 GFS 真實 habit。TAMU V2 的 `Rough000/Rough003/Rough050` 三態以 uncertainty ensemble 處理，不選 hidden roughness default；六波段 source-row 與 single-column bulk sensitivity 均量化保存。`tau_ice`、runtime habit/roughness defaults、production promotion 全部維持 fail-close；Frozen Science 不變。
 - **R5.7.41.3.4.10.24.1**：Step 3K Stable Evidence Serialization Hotfix。延續 `.10.24` Fu96 independent bulk cross-check，不改任何 Step 3K 計算；只將 Step 3K evidence / contract 的浮點輸出 canonicalize 為 11 significant digits，消除 FIELD CASE 與 release 間約 1e-16 等級的跨平台 byte drift。Fu96 / Wyser / Step 3J 數值、Frozen Science、habit/roughness、`τ_ice` 與 production gates 全部不變。
 - **R5.7.41.3.4.10.24**：Step 3K Fu96 Independent Bulk Extinction Cross-Check。保留 Wyser Eq.(6) number population，改用 Wyser Eq.(5) 隨機取向 projected area 與 Fu (1996) geometric-optics `β≈2A_c` 作為不使用 Yang/Bi `C_ext` 的獨立 optical-kernel cross-check；18-case matrix 量化 Step 3J 六波段 `k_ext` 相對差異，同時分離 mass-area-equivalent `Dge` 與 solid-hex geometry `Dge`，禁止互換。此步僅完成 cross-check，不構成 like-for-like production validation；habit、roughness、scientific bulk validation、`τ_ice` 與 production promotion 全部維持 fail-close；Frozen Science 不變。
 - **R5.7.41.3.4.10.23.1**：Step 3J.1 CAMS Terminal Checkpoint Reconciliation + Stable Diagnostic Evidence Serialization。修正 CAMS child 已回傳 `TIMEOUT_DEFERRED` 時 durable worker checkpoint 仍可能停在 `STARTED/RUNNING` 的 archive telemetry 不一致；現在會明確寫入 terminal `TIMEOUT_DEFERRED`，保留 exit code/error/worker paths。Step 3J evidence-only 浮點序列化固定為 16 significant digits，消除跨平台 1-ULP byte drift。Step 3J 數值計算、Frozen Science、habit/roughness/τ/production gates 全部不變。
@@ -2669,6 +2675,13 @@ if run or st.session_state.analysis_result is not None:
         _case_fu96_independent_bulk_validation_contract = fu96_independent_bulk_validation_contract_payload(
             physicscore_version=__version__
         )
+        _case_yang_habit_roughness_qualification_evidence = build_yang_habit_roughness_qualification_evidence()
+        _case_yang_habit_roughness_qualification_gate = build_yang_habit_roughness_qualification_gate(
+            _case_yang_habit_roughness_qualification_evidence
+        )
+        _case_yang_habit_roughness_qualification_contract = yang_habit_roughness_qualification_contract_payload(
+            physicscore_version=__version__
+        )
         _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
         _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
         _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
@@ -2763,6 +2776,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_wyser_yang_diagnostic_bulk_gate.csv", _case_wyser_yang_diagnostic_bulk_gate),
             ("ice_microphysics_fu96_independent_bulk_validation_evidence.csv", _case_fu96_independent_bulk_validation_evidence),
             ("ice_microphysics_fu96_independent_bulk_validation_gate.csv", _case_fu96_independent_bulk_validation_gate),
+            ("ice_microphysics_yang_habit_roughness_qualification_evidence.csv", _case_yang_habit_roughness_qualification_evidence),
+            ("ice_microphysics_yang_habit_roughness_qualification_gate.csv", _case_yang_habit_roughness_qualification_gate),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2857,6 +2872,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_wyser_yang_population_bridge_contract.json", _case_wyser_yang_population_bridge_contract),
             ("ice_microphysics_wyser_yang_diagnostic_bulk_contract.json", _case_wyser_yang_diagnostic_bulk_contract),
             ("ice_microphysics_fu96_independent_bulk_validation_contract.json", _case_fu96_independent_bulk_validation_contract),
+            ("ice_microphysics_yang_habit_roughness_qualification_contract.json", _case_yang_habit_roughness_qualification_contract),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

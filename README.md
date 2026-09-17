@@ -1,6 +1,15 @@
-> Current release: **V1.0-R5.7.41.3.4.10.24.1** — Step 3K Stable Evidence Serialization Hotfix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.25** — Step 3L Yang/Bi Habit + Roughness Qualification; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.24.1
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.25
+
+## R5.7.41.3.4.10.25 Step 3L — Yang/Bi Habit + Roughness Qualification
+
+- Qualifies a **model-family** bridge from the Wyser solid-column lineage to Yang/Bi `single_column`; this is not an exact geometry equivalence and not a GFS habit inference.
+- Pins the authoritative V2 inventory at 9 habits × 3 roughness states × 189 Dmax × 6 Firecloud bands.
+- Treats `Rough000 / Rough003 / Rough050` as a diagnostic uncertainty ensemble; no hidden roughness default is allowed.
+- Quantifies source-row habit/roughness sensitivity and a PSD-weighted single-column three-roughness bulk ensemble (`k_ext`, `ω0`, `g`).
+- Runtime habit default, runtime roughness default, `tau_ice`, production Ice Optics, and physics promotion remain fail-closed.
+- Latest formal FIELD baseline: `V1.0-R5.7.41.3.4.10.24.1 FIELD PASS`.
 
 ## R5.7.41.3.4.10.24.1 Step 3K.1 — Stable Evidence Serialization Hotfix
 
@@ -8,7 +17,7 @@
 - Directly covers the platform variants observed in `.10.24` TWS100 FIELD CASE.
 - Scientific calculations remain full double precision; only persisted evidence values are canonicalized.
 - Step 3K science remains `.10.24`; Frozen Science and all production gates remain unchanged.
-- Status: **QA PASS / FIELD validation pending**. Latest formal FIELD baseline: `V1.0-R5.7.41.3.4.10.23.1 FIELD PASS`.
+- Status: **FIELD PASS**. This release became the formal FIELD baseline before Step 3L.
 
 ## R5.7.41.3.4.10.24 Step 3K — Fu96 Independent Bulk Extinction Cross-Check
 
@@ -25,7 +34,7 @@
 - Step 3J evidence-only 浮點文字固定為 16 significant digits，吸收 IEEE-754 最後 1 ULP 的平台差異；不改任何 β_ext/k_ext 計算。
 - Step 3J science version 仍為 `.10.23`；本版只做 archive telemetry / reproducibility hotfix。
 - Frozen Science、Formation、Viewing、Twilight Glow、六波段、habit/roughness、`tau_ice` 與 production promotion gates 全部不變。
-- 本版狀態：**QA verification in progress**；最新正式 FIELD baseline 仍為 `V1.0-R5.7.41.3.4.10.22 FIELD PASS`，`.10.23` 為 FIELD SCIENCE PASS / archive telemetry hotfix required。
+- 本版狀態：**FIELD PASS**；其 CAMS terminal checkpoint / stable evidence hotfix 已完成 FIELD 驗證。
 
 ## R5.7.41.3.4.10.23 Step 3J — Diagnostic Wyser PSD × Yang/Bi Cext Bulk Integration
 

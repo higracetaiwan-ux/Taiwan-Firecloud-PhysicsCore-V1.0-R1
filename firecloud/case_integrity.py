@@ -182,6 +182,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_fu96_independent_bulk_validation_gate = _df(result.get("v1_ice_microphysics_fu96_independent_bulk_validation_gate"))
     ice_microphysics_fu96_independent_bulk_validation_contract = result.get("ice_microphysics_fu96_independent_bulk_validation_contract", {}) or {}
     ice_microphysics_fu96_independent_bulk_validation_required = bool(result.get("ice_microphysics_fu96_independent_bulk_validation_required", False))
+    ice_microphysics_yang_habit_roughness_qualification_evidence = _df(result.get("v1_ice_microphysics_yang_habit_roughness_qualification_evidence"))
+    ice_microphysics_yang_habit_roughness_qualification_gate = _df(result.get("v1_ice_microphysics_yang_habit_roughness_qualification_gate"))
+    ice_microphysics_yang_habit_roughness_qualification_contract = result.get("ice_microphysics_yang_habit_roughness_qualification_contract", {}) or {}
+    ice_microphysics_yang_habit_roughness_qualification_required = bool(result.get("ice_microphysics_yang_habit_roughness_qualification_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1596,6 +1600,80 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION",
             _step3k_gate_detail,
             "Independent optical cross-check may advance while scientific and tau/production promotion remain blocked",
+        )
+
+    # R5.7.41.3.4.10.25 Step 3L Yang/Bi habit + roughness qualification.
+    if ice_microphysics_yang_habit_roughness_qualification_required:
+        _step3l_present = bool(
+            not ice_microphysics_yang_habit_roughness_qualification_evidence.empty
+            and not ice_microphysics_yang_habit_roughness_qualification_gate.empty
+            and isinstance(ice_microphysics_yang_habit_roughness_qualification_contract, Mapping)
+            and bool(ice_microphysics_yang_habit_roughness_qualification_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION_EVIDENCE_PRESENT",
+            PASS if _step3l_present else FAIL,
+            "ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION",
+            f"evidence_rows={len(ice_microphysics_yang_habit_roughness_qualification_evidence)};gate_rows={len(ice_microphysics_yang_habit_roughness_qualification_gate)};contract_present={bool(ice_microphysics_yang_habit_roughness_qualification_contract)}",
+            "Step 3L evidence, gate and contract must all be present",
+        )
+        _step3l_forbidden = {str(x) for x in ice_microphysics_yang_habit_roughness_qualification_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_yang_habit_roughness_qualification_contract, Mapping) else set()
+        _step3l_required_forbidden = {
+            "Do not infer habit from IWP/IWC/T/RH/cloud fraction.",
+            "Do not silently default to single_column in production runtime.",
+            "Do not silently default to Rough000, Rough003 or Rough050.",
+            "Do not interpolate across habit or roughness states.",
+            "Do not promote diagnostic k_ext to tau_ice production in Step 3L.",
+        }
+        _step3l_contract_ok = bool(
+            isinstance(ice_microphysics_yang_habit_roughness_qualification_contract, Mapping)
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("contract_version") == "FIRECLOUD_ICE_YANG_HABIT_ROUGHNESS_QUALIFICATION_V1"
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("mode") == "YANG_HABIT_ROUGHNESS_MODEL_FAMILY_QUALIFICATION_ENSEMBLE_FAIL_CLOSED"
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("source_inventory", {}).get("coverage_complete") is True
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("wyser_yang_solid_column_habit_family_bridge_pass") is True
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("exact_geometry_equivalence_pass") is False
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("gfs_native_habit_inference_pass") is False
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("roughness_ensemble_diagnostic_ready") is True
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("runtime_habit_default_allowed") is False
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("runtime_roughness_default_allowed") is False
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("tau_ice_production_allowed") is False
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_yang_habit_roughness_qualification_contract.get("physics_promotion_allowed") is False
+            and _step3l_required_forbidden.issubset(_step3l_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION_CONTRACT_FREEZE",
+            PASS if _step3l_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION",
+            f"contract={ice_microphysics_yang_habit_roughness_qualification_contract.get('contract_version') if isinstance(ice_microphysics_yang_habit_roughness_qualification_contract, Mapping) else None};forbidden_shortcuts={len(_step3l_forbidden)}",
+            "Model-family habit semantics and roughness uncertainty may advance while runtime defaults and tau/production remain blocked",
+        )
+        _step3l_gate_ok = False
+        _step3l_gate_detail = "Step 3L gate missing"
+        if not ice_microphysics_yang_habit_roughness_qualification_gate.empty:
+            row = ice_microphysics_yang_habit_roughness_qualification_gate.iloc[0]
+            _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+            _step3l_gate_ok = bool(
+                _b("YANG_V2_SOURCE_INVENTORY_PASS", True)
+                and _b("WYSER_YANG_SOLID_COLUMN_HABIT_FAMILY_BRIDGE_PASS", True)
+                and _b("EXACT_GEOMETRY_EQUIVALENCE_PASS", False)
+                and _b("GFS_NATIVE_HABIT_INFERENCE_PASS", False)
+                and _b("ROUGHNESS_ENSEMBLE_DIAGNOSTIC_READY", True)
+                and _b("RUNTIME_HABIT_DEFAULT_ALLOWED", False)
+                and _b("RUNTIME_ROUGHNESS_DEFAULT_ALLOWED", False)
+                and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
+                and _b("PRODUCTION_ICE_OPTICS_READY", False)
+                and _b("physics_promotion_allowed", False)
+                and str(row.get("qualification_state", "")) == "HABIT_FAMILY_BRIDGE_AND_ROUGHNESS_ENSEMBLE_READY_RUNTIME_DEFAULTS_BLOCKED"
+            )
+            _step3l_gate_detail = f"state={row.get('qualification_state')};family={row.get('WYSER_YANG_SOLID_COLUMN_HABIT_FAMILY_BRIDGE_PASS')};ensemble={row.get('ROUGHNESS_ENSEMBLE_DIAGNOSTIC_READY')};habit_default={row.get('RUNTIME_HABIT_DEFAULT_ALLOWED')};roughness_default={row.get('RUNTIME_ROUGHNESS_DEFAULT_ALLOWED')};tau={row.get('TAU_ICE_PRODUCTION_ALLOWED')}"
+        add(
+            "ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION_FAIL_CLOSED",
+            PASS if _step3l_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION",
+            _step3l_gate_detail,
+            "Model-family bridge/uncertainty ensemble may advance while runtime default and tau/production promotion remain blocked",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -3456,6 +3534,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_fu96_independent_bulk_validation_evidence.csv",
         "ice_microphysics_fu96_independent_bulk_validation_gate.csv",
         "ice_microphysics_fu96_independent_bulk_validation_contract.json",
+        "ice_microphysics_yang_habit_roughness_qualification_evidence.csv",
+        "ice_microphysics_yang_habit_roughness_qualification_gate.csv",
+        "ice_microphysics_yang_habit_roughness_qualification_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -3841,6 +3922,40 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "component":"CASE_ARCHIVE", "observed":int(_step3k_contract_bytes),
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3K CASE evidence.",
+        })
+
+    # R5.7.41.3.4.10.25 Step 3L serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _step3l_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _step3l_evidence_rows = _step3l_manifest_metric("ice_microphysics_yang_habit_roughness_qualification_evidence.csv", "row_count", 0.0)
+        _step3l_gate_rows = _step3l_manifest_metric("ice_microphysics_yang_habit_roughness_qualification_gate.csv", "row_count", 0.0)
+        _step3l_contract_bytes = _step3l_manifest_metric("ice_microphysics_yang_habit_roughness_qualification_contract.json", "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION_EVIDENCE_NONEMPTY",
+            "status":PASS if _step3l_evidence_rows >= 12 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3l_evidence_rows),
+            "expected":">=12 serialized evidence rows",
+            "detail":"Step 3L habit/roughness qualification evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION_GATE_NONEMPTY",
+            "status":PASS if _step3l_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3l_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3L habit/roughness qualification gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_HABIT_ROUGHNESS_QUALIFICATION_CONTRACT_NONEMPTY",
+            "status":PASS if _step3l_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3l_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3L CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:
