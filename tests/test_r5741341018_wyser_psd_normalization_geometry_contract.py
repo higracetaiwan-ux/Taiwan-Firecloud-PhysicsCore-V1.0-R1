@@ -17,7 +17,7 @@ CONTRACT = "ice_microphysics_wyser_psd_geometry_contract.json"
 
 
 def test_release_identity_and_frozen_mode():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.22"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.23"
     assert STEP3E_VERSION == "R5.7.41.3.4.10.18"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
 

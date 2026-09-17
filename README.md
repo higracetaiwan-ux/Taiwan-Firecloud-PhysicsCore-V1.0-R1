@@ -1,6 +1,17 @@
-> Current release: **V1.0-R5.7.41.3.4.10.22** — Step 3I Wyser Population + Yang/Bi Optical-Kernel Bridge (Diagnostic, Fail-Closed); science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.23** — Step 3J Diagnostic Wyser PSD × Yang/Bi Cext Bulk Integration (β_ext/k_ext, Fail-Closed); science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.22
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.23
+
+## R5.7.41.3.4.10.23 Step 3J — Diagnostic Wyser PSD × Yang/Bi Cext Bulk Integration
+
+- 以 Wyser Eq.(6) normalized PSD 作 number population，Yang/Bi V2 `single_column/Rough000` 作 diagnostic `C_ext(Dmax,λ)` reference kernel。
+- 首次完整計算六波段 `β_ext(λ)=∫nC_ext dD` 與 `k_ext(λ)=β_ext/IWC_kg_m3`。
+- interpolation 使用 source-knot-preserving log(D)-log(Cext)，禁止 extrapolation。
+- 233.16/253.16/273.16 K × IWC 0.001/0.1/10 g m⁻³ × 1025/4097 grid，共 18 cases，對 16385 reference grid 做 convergence。
+- max mass-closure relative error `3.55e-16`；max bulk convergence relative error `2.86e-6`。
+- `single_column/Rough000` 仍只是 diagnostic reference；不選 runtime habit/roughness、不合成 production `tau_ice`、不允許 production promotion。
+- Step 3J evidence/gate/contract 納入 model、Analysis Integrity、CASE required members 與 archive content gate。
+- 本版狀態：**QA PASS / FIELD validation pending**；最新正式 FIELD baseline 為 `V1.0-R5.7.41.3.4.10.22 FIELD PASS`。
 
 ## R5.7.41.3.4.10.22 Step 3I — Wyser Population + Yang/Bi Optical-Kernel Bridge
 

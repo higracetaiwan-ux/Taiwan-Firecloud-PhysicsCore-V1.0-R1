@@ -138,6 +138,11 @@ from firecloud.ice_microphysics_wyser_yang_population_bridge import (
     build_wyser_yang_population_bridge_gate,
     wyser_yang_population_bridge_contract_payload,
 )
+from firecloud.ice_microphysics_wyser_yang_diagnostic_bulk_integration import (
+    build_wyser_yang_diagnostic_bulk_evidence,
+    build_wyser_yang_diagnostic_bulk_gate,
+    wyser_yang_diagnostic_bulk_contract_payload,
+)
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -1213,7 +1218,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3I — Wyser Population + Yang/Bi Optical-Kernel Bridge (Diagnostic, Fail-Closed)"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3J — Diagnostic Wyser PSD × Yang/Bi Cext Bulk Integration (β_ext/k_ext, Fail-Closed)"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1230,6 +1235,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.23**：Step 3J Diagnostic PSD × Yang/Bi `C_ext` Bulk Integration。使用 Wyser Eq.(6) 正規化 number population 與 Step 3I Yang/Bi `single_column/Rough000` diagnostic `C_ext(Dmax,λ)` reference kernel，首次計算六波段 `β_ext(λ)` 與 `k_ext(λ)`；使用 source-knot-preserving log(D)-log(Cext) interpolation、1025/4097 對 16385 reference grid 做 numerical convergence。此結果僅為 diagnostic preflight，不計算 `τ_ice`、不選 runtime habit/roughness、不寫入 ice runtime，也不允許 production promotion；Frozen Science 不變。
 - **R5.7.41.3.4.10.22**：Step 3I Wyser Population ↔ Yang/Bi Optical-Kernel Bridge。沿已驗證 `L=Dmax` 共同座標建立 diagnostic-only hybrid bridge：Wyser Eq.(6) mass 僅供 PSD/IWC population normalization，Yang/Bi `ρV` mass 僅供由 compact LUT `k_ext` 反解單粒子 `C_ext`；109 個 Dmax × 六波段共 654 rows 的 `single_column/Rough000` reference kernel 可數值重建，但它不是 runtime habit/roughness default。Shape / projected-area / volume-mass equivalence、Eq.(6) external corroboration、scientific closure、habit、roughness、bulk optics 與 production 全部仍 fail-close；Frozen Science 不變。
 - **R5.7.41.3.4.10.21**：Step 3H Wyser→Yang/Bi Maximum-Dimension Coordinate Qualification。正式拆分「size coordinate identity」與「solid-column shape equivalence」：Wyser `L` 與 Yang/Bi `maximum_dimension_um` 的座標語意通過；Yang/Bi V2 `single_column` 幾何另以 189 個 source-derived `De=1.5V/A` rows 重現並釘定 `a=0.35L` / `a=3.48√L`，同時確認它與 Wyser Eq.(5) shape law 不等價。因此 projected-area / volume-mass / habit / roughness / bulk optics / production 全部維持 fail-close；Frozen Science 不變。
 - **R5.7.41.3.4.10.20.1**：Step 3G Primary Numeric Recovery + Diagnostic Mass-Closure Preflight。修正 single-author Wyser (1998) Eq.(5) 與 Wyser & Yang (1998) `D=2.5·L^0.6` 的 provenance 混淆；Eq.(5) 已恢復為 30 µm 分段 `L/D` 關係，Eq.(6) 已由 primary indexed text 恢復為 `m_g=2.311e-2·(L_um/1e4)^2.7625`。primary Eq.(6)+pinned mixed PSD 在 18 組 T/IWC/resolution diagnostic grid 完成 IWC mass-closure preflight，但 independent external Eq.(6) numeric corroboration 尚未取得，因此 scientific mass closure / absolute PSD / L→Yang-Bi Dmax / production Ice Optics 仍 fail-close。
@@ -2641,6 +2647,13 @@ if run or st.session_state.analysis_result is not None:
         _case_wyser_yang_population_bridge_contract = wyser_yang_population_bridge_contract_payload(
             physicscore_version=__version__
         )
+        _case_wyser_yang_diagnostic_bulk_evidence = build_wyser_yang_diagnostic_bulk_evidence()
+        _case_wyser_yang_diagnostic_bulk_gate = build_wyser_yang_diagnostic_bulk_gate(
+            _case_wyser_yang_diagnostic_bulk_evidence
+        )
+        _case_wyser_yang_diagnostic_bulk_contract = wyser_yang_diagnostic_bulk_contract_payload(
+            physicscore_version=__version__
+        )
         _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
         _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
         _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
@@ -2731,6 +2744,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_wyser_yang_coordinate_qualification_gate.csv", _case_wyser_yang_coordinate_qualification_gate),
             ("ice_microphysics_wyser_yang_population_bridge_evidence.csv", _case_wyser_yang_population_bridge_evidence),
             ("ice_microphysics_wyser_yang_population_bridge_gate.csv", _case_wyser_yang_population_bridge_gate),
+            ("ice_microphysics_wyser_yang_diagnostic_bulk_evidence.csv", _case_wyser_yang_diagnostic_bulk_evidence),
+            ("ice_microphysics_wyser_yang_diagnostic_bulk_gate.csv", _case_wyser_yang_diagnostic_bulk_gate),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2823,6 +2838,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_wyser_primary_numeric_recovery_contract.json", _case_wyser_primary_numeric_recovery_contract),
             ("ice_microphysics_wyser_yang_coordinate_qualification_contract.json", _case_wyser_yang_coordinate_qualification_contract),
             ("ice_microphysics_wyser_yang_population_bridge_contract.json", _case_wyser_yang_population_bridge_contract),
+            ("ice_microphysics_wyser_yang_diagnostic_bulk_contract.json", _case_wyser_yang_diagnostic_bulk_contract),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),
