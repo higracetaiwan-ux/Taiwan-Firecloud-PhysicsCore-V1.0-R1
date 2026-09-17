@@ -1,0 +1,82 @@
+{
+  "bridge_scope": "WYSER_PSD_NUMBER_POPULATION_PLUS_YANG_SINGLE_COLUMN_ROUGH000_REFERENCE_OPTICAL_KERNEL",
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "contract_version": "FIRECLOUD_ICE_WYSER_YANG_POPULATION_BRIDGE_V1",
+  "diagnostic_reference_habit": "single_column",
+  "diagnostic_reference_roughness": "Rough000",
+  "direct_projected_area_equivalence_pass": false,
+  "direct_shape_compatibility_pass": false,
+  "direct_volume_mass_equivalence_pass": false,
+  "evidence_as_of": "2026-09-17",
+  "forbidden_shortcuts": [
+    "yang_geometric_mass_used_to_normalize_wyser_psd",
+    "wyser_eq6_mass_used_to_invert_yang_mass_extinction_coefficient",
+    "diagnostic_single_column_rough000_kernel_treated_as_runtime_habit_roughness_default",
+    "shared_dmax_coordinate_treated_as_shape_equivalence",
+    "projected_area_ratio_used_as_hidden_optical_correction",
+    "volume_mass_ratio_used_as_hidden_psd_correction",
+    "diagnostic_numeric_bridge_treated_as_scientific_bulk_optics_validation",
+    "diagnostic_numeric_bridge_used_to_enable_tau_or_formation_promotion"
+  ],
+  "frozen_science_unchanged": true,
+  "geometry_mass_summary": {
+    "max_relative_projected_area_difference": 0.36345559064291233,
+    "max_relative_volume_difference": 0.5100000000000001,
+    "max_relative_wyser_geometric_mass_vs_eq6_difference": 5.546001248572008,
+    "max_relative_yang_mass_vs_wyser_eq6_difference": 3.2048059833442544,
+    "tested_domain_um": [
+      10.0,
+      1000.0
+    ],
+    "tested_lengths_count": 109
+  },
+  "gfsv16_dmax_mapping_eligible": false,
+  "independent_eq6_external_numeric_corroboration_pass": false,
+  "kernel_reconstruction": {
+    "cext_reconstruction_pass": true,
+    "diagnostic_only": true,
+    "dmax_count": 109,
+    "dmax_domain_um": [
+      10.0,
+      1000.0
+    ],
+    "effective_diameter_reproduction_pass": true,
+    "ice_habit": "single_column",
+    "max_effective_diameter_relative_error": 5.837278235773654e-07,
+    "max_reconstructed_cext_m2": 3.6398479083664506e-07,
+    "max_reconstructed_qext": 2.2463858368089986,
+    "min_reconstructed_cext_m2": 1.327259991657057e-10,
+    "min_reconstructed_qext": 1.93436908448489,
+    "missing_reason": "",
+    "row_count": 654,
+    "runtime_default_selected": false,
+    "six_band_coverage_pass": true,
+    "source_path": "firecloud/data/ice_optics/portable_ice_optics_lut_v1.csv",
+    "surface_roughness": "Rough000",
+    "wavelengths_nm": [
+      550,
+      575,
+      600,
+      650,
+      700,
+      750
+    ]
+  },
+  "mass_semantics_interchangeable": false,
+  "mode": "WYSER_POPULATION_YANG_OPTICAL_KERNEL_BRIDGE_DIAGNOSTIC_ONLY_FAIL_CLOSED",
+  "optical_kernel_mass_semantic": "YANG_GEOMETRIC_RHO_ICE_TIMES_VOLUME",
+  "physics_promotion_allowed": false,
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.22",
+  "population_mass_semantic": "WYSER_EQ6_EMPIRICAL_PARTICLE_MASS",
+  "production_ice_optics_ready": false,
+  "runtime_habit_roughness_selected": false,
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "scientific_mass_closure_executed": false,
+  "step3i_version": "R5.7.41.3.4.10.22",
+  "wyser_L_to_yang_dmax_coordinate_validated": true,
+  "wyser_yang_dual_mass_semantics_separated_pass": true,
+  "wyser_yang_hybrid_population_bridge_numeric_executable": true,
+  "yang_bi_habit_bridge_validated": false,
+  "yang_bi_roughness_bridge_validated": false,
+  "yang_bi_single_column_kernel_cext_reconstruction_pass": true
+}

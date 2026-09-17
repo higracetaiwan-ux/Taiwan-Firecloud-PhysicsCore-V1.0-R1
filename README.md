@@ -1,6 +1,16 @@
-> Current release: **V1.0-R5.7.41.3.4.10.21** — Step 3H Wyser→Yang/Bi Maximum-Dimension Coordinate Qualification + Shape Compatibility Gate; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.22** — Step 3I Wyser Population + Yang/Bi Optical-Kernel Bridge (Diagnostic, Fail-Closed); science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.21
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.22
+
+## R5.7.41.3.4.10.22 Step 3I — Wyser Population + Yang/Bi Optical-Kernel Bridge
+
+- 沿 Step 3H 已驗證的共同 `maximum_dimension_um` 座標，建立 diagnostic-only hybrid population/kernel bridge。
+- **Wyser Eq.(6) mass** 僅作 PSD/IWC population normalization；**Yang/Bi `rho_ice*V` mass** 僅用於由 mass-extinction coefficient 反解單粒子 `C_ext`，兩種 mass semantics 明確不可互換。
+- bundled Yang/Bi V2 `single_column/Rough000` reference kernel 在 Wyser 10–1000 µm overlap domain 重建 **109 Dmax × 6 bands = 654 rows**；此 habit/roughness 僅供診斷，不是 runtime default。
+- Wyser↔Yang shape、projected-area、volume/mass equivalence 仍為 false；不建立 hidden area/mass correction。
+- Eq.(6) independent external numeric corroboration、scientific mass closure、habit bridge、roughness bridge、bulk PSD integration、GFS Dmax mapping、Production Ice Optics 全部仍 fail-close。
+- Step 3I evidence/gate/contract 納入 model、Analysis Integrity、CASE required members 與 archive content gate。
+- 本版狀態：**QA PASS / FIELD validation pending**；最新正式 FIELD baseline 為 `V1.0-R5.7.41.3.4.10.21 FIELD PASS`。
 
 ## R5.7.41.3.4.10.21 Step 3H — Wyser→Yang/Bi Dmax Coordinate Qualification + Shape Compatibility Gate
 

@@ -4,13 +4,13 @@ import firecloud
 
 
 def test_release_version_matches_current_release():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.21"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.22"
 
 
 def test_main_ui_exposes_current_state_without_wall_of_history():
     src = Path("app.py").read_text(encoding="utf-8")
     assert 'SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"' in src
-    assert 'CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3H — Wyser→Yang/Bi Dmax Coordinate Qualification + Shape Compatibility Gate"' in src
+    assert 'CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3I — Wyser Population + Yang/Bi Optical-Kernel Bridge (Diagnostic, Fail-Closed)"' in src
     assert 'with st.expander("本版更新與版本歷史", expanded=False)' in src
     assert 'with st.expander("現行 Science Baseline（Frozen）", expanded=False)' in src
     assert 'with st.expander("歷史科學改版", expanded=False)' in src
