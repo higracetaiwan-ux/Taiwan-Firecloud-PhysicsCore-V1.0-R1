@@ -31,7 +31,7 @@ from .ice_microphysics_wyser_yang_population_bridge import _regular_hexagonal_co
 from .ice_microphysics_wyser_yang_diagnostic_bulk_integration import _integration_grid, _loglog_interp_positive
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3L_VERSION = "R5.7.41.3.4.10.25"
+STEP3L_VERSION = "R5.7.41.3.4.10.25.1"
 STEP3L_MODE = "YANG_HABIT_ROUGHNESS_MODEL_FAMILY_QUALIFICATION_ENSEMBLE_FAIL_CLOSED"
 PHYSICS_PROMOTION_ALLOWED = False
 EVIDENCE_AS_OF = "2026-09-18"
@@ -47,10 +47,15 @@ EXPECTED_HABITS = ["10_plates", "5_plates", "8_columns", "HBR", "HC", "SBR", "dr
 EXPECTED_ROUGHNESS = ["Rough000", "Rough003", "Rough050"]
 MODEL_FAMILY_HABIT = "single_column"
 STABLE_EVIDENCE_SIGNIFICANT_DIGITS = 11
+STABLE_CONTRACT_SAMPLE_SIGNIFICANT_DIGITS = 8
 
 
 def _stable(value: float) -> str:
     return format(float(value), f".{STABLE_EVIDENCE_SIGNIFICANT_DIGITS}g")
+
+
+def _stable_contract_sample(value: float) -> str:
+    return format(float(value), f".{STABLE_CONTRACT_SAMPLE_SIGNIFICANT_DIGITS}g")
 
 
 def _lut() -> pd.DataFrame:
@@ -322,10 +327,10 @@ def yang_habit_roughness_qualification_contract_payload(*, physicscore_version: 
         "source_row_uncertainty": {k: ([_stable(x) for x in v] if isinstance(v, list) else _stable(v) if isinstance(v, float) else v) for k, v in unc.items()},
         "sample_roughness_bulk_ensemble": {
             "temperature_k": ens["temperature_k"], "iwc_g_m3": ens["iwc_g_m3"],
-            "max_bulk_k_ext_spread_m2_kg": _stable(ens["max_bulk_k_ext_spread_m2_kg"]),
-            "max_bulk_ssa_spread": _stable(ens["max_bulk_ssa_spread"]),
-            "max_bulk_g_spread": _stable(ens["max_bulk_g_spread"]),
-            "max_grid_convergence_relative_error": _stable(ens["max_grid_convergence_relative_error"]),
+            "max_bulk_k_ext_spread_m2_kg": _stable_contract_sample(ens["max_bulk_k_ext_spread_m2_kg"]),
+            "max_bulk_ssa_spread": _stable_contract_sample(ens["max_bulk_ssa_spread"]),
+            "max_bulk_g_spread": _stable_contract_sample(ens["max_bulk_g_spread"]),
+            "max_grid_convergence_relative_error": _stable_contract_sample(ens["max_grid_convergence_relative_error"]),
         },
         "bulk_yang_bi_psd_integration_eligible": False,
         "tau_ice_production_allowed": False,

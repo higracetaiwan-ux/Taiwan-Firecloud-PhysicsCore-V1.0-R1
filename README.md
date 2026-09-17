@@ -1,6 +1,17 @@
-> Current release: **V1.0-R5.7.41.3.4.10.25** — Step 3L Yang/Bi Habit + Roughness Qualification; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.25.1** — Step 3L.1 Stable Contract Sample Serialization Hotfix; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
-# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.25
+# Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.25.1
+
+## R5.7.41.3.4.10.25.1 Step 3L.1 — Stable Contract Sample Serialization Hotfix
+
+- 修正 `.10.25` TWS091 FIELD CASE 與 release 在 Step 3L contract 的兩個 diagnostic sample 浮點字串出現跨平台尾數 drift。
+- `max_bulk_ssa_spread` 與 `max_grid_convergence_relative_error` 的 FIELD 實例證明 11 significant digits 仍不足以保證 deterministic contract bytes。
+- 新增專用 `STABLE_CONTRACT_SAMPLE_SIGNIFICANT_DIGITS=8`；只套用在 contract 的 `sample_roughness_bulk_ensemble` 四個 diagnostic sample 欄位。
+- 原 Step 3L evidence/source-row serialization 仍維持 11 significant digits；habit/roughness sensitivity、ensemble 計算本身保持 full double precision。
+- Runtime habit/roughness default、`tau_ice`、Production Ice Optics、Formation/Viewing/Twilight Glow 全部不變並維持 fail-close。
+- `.10.25` release closure：892/892 PASS；FIELD candidate 因 contract reproducibility blocker 未通過。
+- `.10.25.1` working-tree regression：894/894 PASS；FIELD validation pending。
+- Latest formal FIELD baseline 仍為 `V1.0-R5.7.41.3.4.10.24.1 FIELD PASS`。
 
 ## R5.7.41.3.4.10.25 Step 3L — Yang/Bi Habit + Roughness Qualification
 

@@ -1228,7 +1228,7 @@ _persisted_job = _reconcile_persisted_analysis_job(_load_analysis_job_state())
 st.set_page_config(page_title="Taiwan Firecloud PhysicsCore V1.0", layout="wide")
 
 SCIENCE_BASELINE_FROZEN = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3L — Yang/Bi Habit + Roughness Qualification"
+CURRENT_MILESTONE = "Ice Optics Phase 2 Step 3L.1 — Stable Contract Sample Serialization Hotfix"
 SIX_BAND_LABEL = "550 / 575 / 600 / 650 / 700 / 750 nm"
 
 st.title("Taiwan Firecloud — PhysicsCore V1.0")
@@ -1245,6 +1245,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.25.1**：Step 3L.1 Stable Contract Sample Serialization Hotfix。修正 `.10.25` TWS091 FIELD CASE 中 Step 3L contract 的跨平台浮點尾數 drift；新增只作用於 `sample_roughness_bulk_ensemble` 的 8 significant digits canonicalization。原 evidence/source-row 11-digit serialization 與所有 full-double scientific calculations 不變；runtime habit/roughness default、`tau_ice`、Production Ice Optics、Formation/Viewing/Twilight Glow 全部維持 fail-close。`.10.25` 因 contract reproducibility blocker 不列 FIELD PASS；正式 FIELD baseline 仍為 `.10.24.1`。
 - **R5.7.41.3.4.10.25**：Step 3L Yang/Bi Habit + Roughness Qualification。正式分離「model-family habit bridge」與「runtime habit inference」：Wyser solid-column lineage 可對應 Yang/Bi `single_column` family，但不代表 exact geometry equivalence，也不代表 GFS 真實 habit。TAMU V2 的 `Rough000/Rough003/Rough050` 三態以 uncertainty ensemble 處理，不選 hidden roughness default；六波段 source-row 與 single-column bulk sensitivity 均量化保存。`tau_ice`、runtime habit/roughness defaults、production promotion 全部維持 fail-close；Frozen Science 不變。
 - **R5.7.41.3.4.10.24.1**：Step 3K Stable Evidence Serialization Hotfix。延續 `.10.24` Fu96 independent bulk cross-check，不改任何 Step 3K 計算；只將 Step 3K evidence / contract 的浮點輸出 canonicalize 為 11 significant digits，消除 FIELD CASE 與 release 間約 1e-16 等級的跨平台 byte drift。Fu96 / Wyser / Step 3J 數值、Frozen Science、habit/roughness、`τ_ice` 與 production gates 全部不變。
 - **R5.7.41.3.4.10.24**：Step 3K Fu96 Independent Bulk Extinction Cross-Check。保留 Wyser Eq.(6) number population，改用 Wyser Eq.(5) 隨機取向 projected area 與 Fu (1996) geometric-optics `β≈2A_c` 作為不使用 Yang/Bi `C_ext` 的獨立 optical-kernel cross-check；18-case matrix 量化 Step 3J 六波段 `k_ext` 相對差異，同時分離 mass-area-equivalent `Dge` 與 solid-hex geometry `Dge`，禁止互換。此步僅完成 cross-check，不構成 like-for-like production validation；habit、roughness、scientific bulk validation、`τ_ice` 與 production promotion 全部維持 fail-close；Frozen Science 不變。

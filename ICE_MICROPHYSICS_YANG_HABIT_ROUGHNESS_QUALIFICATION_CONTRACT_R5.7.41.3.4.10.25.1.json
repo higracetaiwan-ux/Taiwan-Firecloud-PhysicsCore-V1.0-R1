@@ -1,0 +1,94 @@
+{
+  "contract_version": "FIRECLOUD_ICE_YANG_HABIT_ROUGHNESS_QUALIFICATION_V1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.25.1",
+  "step3l_version": "R5.7.41.3.4.10.25.1",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "YANG_HABIT_ROUGHNESS_MODEL_FAMILY_QUALIFICATION_ENSEMBLE_FAIL_CLOSED",
+  "source_dataset": "TAMU_ICE_SINGLE_SCATTERING_V2",
+  "source_version": "Yang2013_Bi2017_V2",
+  "source_inventory": {
+    "source_dataset": "TAMU_ICE_SINGLE_SCATTERING_V2",
+    "source_version": "Yang2013_Bi2017_V2",
+    "habit_count": 9,
+    "habits": [
+      "10_plates",
+      "5_plates",
+      "8_columns",
+      "HBR",
+      "HC",
+      "SBR",
+      "droxtal",
+      "plate",
+      "single_column"
+    ],
+    "roughness_count": 3,
+    "roughness_states": [
+      "Rough000",
+      "Rough003",
+      "Rough050"
+    ],
+    "wavelength_count": 6,
+    "wavelengths_nm": [
+      550,
+      575,
+      600,
+      650,
+      700,
+      750
+    ],
+    "particle_size_count": 189,
+    "particle_size_range_um": [
+      2.0,
+      10000.0
+    ],
+    "row_count": 30618,
+    "coverage_complete": true
+  },
+  "model_family_habit": "single_column",
+  "wyser_yang_solid_column_habit_family_bridge_pass": true,
+  "exact_geometry_equivalence_pass": false,
+  "gfs_native_habit_inference_pass": false,
+  "roughness_states": [
+    "Rough000",
+    "Rough003",
+    "Rough050"
+  ],
+  "roughness_ensemble_diagnostic_ready": true,
+  "runtime_habit_default_allowed": false,
+  "runtime_roughness_default_allowed": false,
+  "source_row_uncertainty": {
+    "domain_um": [
+      "10",
+      "1000"
+    ],
+    "habit_mass_extinction_max_relative_spread": "3.4915863464",
+    "habit_mass_extinction_max_absolute_spread": "3376.6028505",
+    "habit_asymmetry_max_relative_spread": "0.23187523478",
+    "habit_asymmetry_max_absolute_spread": "0.1989",
+    "single_column_roughness_mass_extinction_max_relative_spread": "0.055665051279",
+    "single_column_roughness_mass_extinction_max_absolute_spread": "27.048139261",
+    "single_column_roughness_asymmetry_max_relative_spread": "0.038259299953",
+    "single_column_roughness_asymmetry_max_absolute_spread": "0.0325",
+    "single_column_roughness_ssa_max_relative_spread": "9.9786685708e-05",
+    "single_column_roughness_ssa_max_absolute_spread": "9.978e-05"
+  },
+  "sample_roughness_bulk_ensemble": {
+    "temperature_k": 253.16,
+    "iwc_g_m3": 0.1,
+    "max_bulk_k_ext_spread_m2_kg": "0.29651019",
+    "max_bulk_ssa_spread": "2.1492854e-06",
+    "max_bulk_g_spread": "0.016970706",
+    "max_grid_convergence_relative_error": "5.2712977e-07"
+  },
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "tau_ice_production_allowed": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "forbidden_shortcuts": [
+    "Do not infer habit from IWP/IWC/T/RH/cloud fraction.",
+    "Do not silently default to single_column in production runtime.",
+    "Do not silently default to Rough000, Rough003 or Rough050.",
+    "Do not interpolate across habit or roughness states.",
+    "Do not promote diagnostic k_ext to tau_ice production in Step 3L."
+  ]
+}
