@@ -186,6 +186,11 @@ from .ice_microphysics_wyser_yang_diagnostic_bulk_integration import (
     build_wyser_yang_diagnostic_bulk_gate as build_ice_microphysics_wyser_yang_diagnostic_bulk_gate,
     wyser_yang_diagnostic_bulk_contract_payload as ice_microphysics_wyser_yang_diagnostic_bulk_contract_payload,
 )
+from .ice_microphysics_fu96_independent_bulk_validation import (
+    build_fu96_independent_bulk_validation_evidence as build_ice_microphysics_fu96_independent_bulk_validation_evidence,
+    build_fu96_independent_bulk_validation_gate as build_ice_microphysics_fu96_independent_bulk_validation_gate,
+    fu96_independent_bulk_validation_contract_payload as ice_microphysics_fu96_independent_bulk_validation_contract_payload,
+)
 from .shadow_validation_collection import SCIENCE_BASELINE_ID
 from . import __version__ as PHYSICSCORE_VERSION
 from .viewing_spectral import (
@@ -3682,6 +3687,31 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         ),
     })
 
+    # R5.7.41.3.4.10.24 Ice Optics Phase 2 Step 3K:
+    # Fu (1996) projected-area geometric-optics independent bulk cross-check; no tau/production promotion.
+    _ice_fu96_independent_bulk_t0 = perf_counter()
+    v1_ice_microphysics_fu96_independent_bulk_validation_evidence = build_ice_microphysics_fu96_independent_bulk_validation_evidence()
+    v1_ice_microphysics_fu96_independent_bulk_validation_gate = build_ice_microphysics_fu96_independent_bulk_validation_gate(
+        v1_ice_microphysics_fu96_independent_bulk_validation_evidence
+    )
+    ice_microphysics_fu96_independent_bulk_validation_contract = ice_microphysics_fu96_independent_bulk_validation_contract_payload(
+        physicscore_version=PHYSICSCORE_VERSION
+    )
+    _ice_fu96_independent_bulk_state = (
+        str(v1_ice_microphysics_fu96_independent_bulk_validation_gate.iloc[0].get("qualification_state", "UNKNOWN"))
+        if not v1_ice_microphysics_fu96_independent_bulk_validation_gate.empty else "UNKNOWN"
+    )
+    performance_rows.append({
+        "stage": "ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION_AUDIT",
+        "elapsed_seconds": max(0.0, perf_counter() - _ice_fu96_independent_bulk_t0),
+        "cache_status": "STATIC_FU96_INDEPENDENT_OPTICAL_CROSSCHECK_NO_TAU_NO_PHYSICS_PROMOTION",
+        "detail": (
+            f"evidence_rows={len(v1_ice_microphysics_fu96_independent_bulk_validation_evidence)};"
+            f"state={_ice_fu96_independent_bulk_state};"
+            "FU96_CROSSCHECK=EXECUTED;SCIENTIFIC_VALIDATION=BLOCKED;TAU=BLOCKED;PRODUCTION=BLOCKED"
+        ),
+    })
+
     # R5.7.5: compact provider-I/O efficiency audit.  This is operational
     # diagnostics only; it does not participate in any physical gate.
     _cams_audit_df = _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_request_audit", []) or [])]) if details else pd.DataFrame()
@@ -3878,6 +3908,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "ice_microphysics_wyser_yang_coordinate_qualification_required": True,
         "ice_microphysics_wyser_yang_population_bridge_required": True,
         "ice_microphysics_wyser_yang_diagnostic_bulk_required": True,
+        "v1_ice_microphysics_fu96_independent_bulk_validation_evidence": v1_ice_microphysics_fu96_independent_bulk_validation_evidence,
+        "v1_ice_microphysics_fu96_independent_bulk_validation_gate": v1_ice_microphysics_fu96_independent_bulk_validation_gate,
+        "ice_microphysics_fu96_independent_bulk_validation_contract": ice_microphysics_fu96_independent_bulk_validation_contract,
+        "ice_microphysics_fu96_independent_bulk_validation_required": True,
         "native_cloud_voxel_matrix": native_cloud_voxel_matrix,
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
         "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),

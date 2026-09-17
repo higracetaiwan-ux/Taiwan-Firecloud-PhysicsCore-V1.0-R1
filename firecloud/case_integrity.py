@@ -178,6 +178,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_wyser_yang_diagnostic_bulk_gate = _df(result.get("v1_ice_microphysics_wyser_yang_diagnostic_bulk_gate"))
     ice_microphysics_wyser_yang_diagnostic_bulk_contract = result.get("ice_microphysics_wyser_yang_diagnostic_bulk_contract", {}) or {}
     ice_microphysics_wyser_yang_diagnostic_bulk_required = bool(result.get("ice_microphysics_wyser_yang_diagnostic_bulk_required", False))
+    ice_microphysics_fu96_independent_bulk_validation_evidence = _df(result.get("v1_ice_microphysics_fu96_independent_bulk_validation_evidence"))
+    ice_microphysics_fu96_independent_bulk_validation_gate = _df(result.get("v1_ice_microphysics_fu96_independent_bulk_validation_gate"))
+    ice_microphysics_fu96_independent_bulk_validation_contract = result.get("ice_microphysics_fu96_independent_bulk_validation_contract", {}) or {}
+    ice_microphysics_fu96_independent_bulk_validation_required = bool(result.get("ice_microphysics_fu96_independent_bulk_validation_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1522,6 +1526,76 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_WYSER_YANG_DIAGNOSTIC_BULK",
             _step3j_gate_detail,
             "Diagnostic beta/k_ext numerical readiness may advance while scientific validation and tau/production promotion remain blocked",
+        )
+
+    # R5.7.41.3.4.10.24 Step 3K Fu96 independent bulk validation.
+    if ice_microphysics_fu96_independent_bulk_validation_required:
+        _step3k_present = bool(
+            not ice_microphysics_fu96_independent_bulk_validation_evidence.empty
+            and not ice_microphysics_fu96_independent_bulk_validation_gate.empty
+            and isinstance(ice_microphysics_fu96_independent_bulk_validation_contract, Mapping)
+            and bool(ice_microphysics_fu96_independent_bulk_validation_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION_EVIDENCE_PRESENT",
+            PASS if _step3k_present else FAIL,
+            "ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION",
+            f"evidence_rows={len(ice_microphysics_fu96_independent_bulk_validation_evidence)};gate_rows={len(ice_microphysics_fu96_independent_bulk_validation_gate)};contract_present={bool(ice_microphysics_fu96_independent_bulk_validation_contract)}",
+            "Step 3K evidence, gate and contract must all be present",
+        )
+        _step3k_forbidden = {str(x) for x in ice_microphysics_fu96_independent_bulk_validation_contract.get("forbidden_shortcuts", [])} if isinstance(ice_microphysics_fu96_independent_bulk_validation_contract, Mapping) else set()
+        _step3k_required_forbidden = {
+            "Fu_mass_area_equivalent_Dge_treated_as_solid_hex_geometry_Dge",
+            "Fu_geometric_optics_crosscheck_treated_as_like_for_like_production_validation",
+            "diagnostic_k_ext_written_into_runtime_ice_optics",
+            "tau_ice_synthesized_from_step3k_reference_chain",
+        }
+        _step3k_contract_ok = bool(
+            isinstance(ice_microphysics_fu96_independent_bulk_validation_contract, Mapping)
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("contract_version") == "FIRECLOUD_ICE_FU96_INDEPENDENT_BULK_VALIDATION_V1"
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("mode") == "FU96_PROJECTED_AREA_INDEPENDENT_BULK_EXTINCTION_CROSSCHECK_FAIL_CLOSED"
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("uses_yang_bi_cext_in_reference_chain") is False
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("dge_semantics_interchangeable") is False
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("diagnostic_matrix", {}).get("all_fu96_extinction_chain_numeric_pass") is True
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("scientific_bulk_validation_pass") is False
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("bulk_yang_bi_psd_integration_eligible") is False
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("tau_ice_production_allowed") is False
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_fu96_independent_bulk_validation_contract.get("physics_promotion_allowed") is False
+            and _step3k_required_forbidden.issubset(_step3k_forbidden)
+        )
+        add(
+            "ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION_CONTRACT_FREEZE",
+            PASS if _step3k_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION",
+            f"contract={ice_microphysics_fu96_independent_bulk_validation_contract.get('contract_version') if isinstance(ice_microphysics_fu96_independent_bulk_validation_contract, Mapping) else None};forbidden_shortcuts={len(_step3k_forbidden)}",
+            "Fu96 cross-check may execute while scientific/tau/production promotion remains blocked",
+        )
+        _step3k_gate_ok = False
+        _step3k_gate_detail = "Step 3K gate missing"
+        if not ice_microphysics_fu96_independent_bulk_validation_gate.empty:
+            row = ice_microphysics_fu96_independent_bulk_validation_gate.iloc[0]
+            _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+            _step3k_gate_ok = bool(
+                _b("FU96_INDEPENDENT_OPTICAL_CROSSCHECK_EXECUTED", True)
+                and _b("FU96_PROJECTED_AREA_CHAIN_NUMERIC_PASS", True)
+                and _b("FU96_DGE_DUAL_SEMANTICS_SEPARATED_PASS", True)
+                and _b("FU96_BULK_DIFFERENCE_CHARACTERIZED", True)
+                and _b("SCIENTIFIC_BULK_VALIDATION_PASS", False)
+                and _b("BULK_YANG_BI_PSD_INTEGRATION_ELIGIBLE", False)
+                and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
+                and _b("PRODUCTION_ICE_OPTICS_READY", False)
+                and _b("physics_promotion_allowed", False)
+                and str(row.get("qualification_state", "")) == "FU96_INDEPENDENT_CROSSCHECK_EXECUTED_SCIENTIFIC_PROMOTION_BLOCKED"
+            )
+            _step3k_gate_detail = f"state={row.get('qualification_state')};crosscheck={row.get('FU96_INDEPENDENT_OPTICAL_CROSSCHECK_EXECUTED')};scientific={row.get('SCIENTIFIC_BULK_VALIDATION_PASS')};tau={row.get('TAU_ICE_PRODUCTION_ALLOWED')};production={row.get('physics_promotion_allowed')}"
+        add(
+            "ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION_FAIL_CLOSED",
+            PASS if _step3k_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION",
+            _step3k_gate_detail,
+            "Independent optical cross-check may advance while scientific and tau/production promotion remain blocked",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -3379,6 +3453,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_wyser_yang_diagnostic_bulk_evidence.csv",
         "ice_microphysics_wyser_yang_diagnostic_bulk_gate.csv",
         "ice_microphysics_wyser_yang_diagnostic_bulk_contract.json",
+        "ice_microphysics_fu96_independent_bulk_validation_evidence.csv",
+        "ice_microphysics_fu96_independent_bulk_validation_gate.csv",
+        "ice_microphysics_fu96_independent_bulk_validation_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -3730,6 +3807,40 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "component":"CASE_ARCHIVE", "observed":int(_step3j_contract_bytes),
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3J CASE evidence.",
+        })
+
+    # R5.7.41.3.4.10.24 Step 3K serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _step3k_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _step3k_evidence_rows = _step3k_manifest_metric("ice_microphysics_fu96_independent_bulk_validation_evidence.csv", "row_count", 0.0)
+        _step3k_gate_rows = _step3k_manifest_metric("ice_microphysics_fu96_independent_bulk_validation_gate.csv", "row_count", 0.0)
+        _step3k_contract_bytes = _step3k_manifest_metric("ice_microphysics_fu96_independent_bulk_validation_contract.json", "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION_EVIDENCE_NONEMPTY",
+            "status":PASS if _step3k_evidence_rows >= 11 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3k_evidence_rows),
+            "expected":">=11 serialized evidence rows",
+            "detail":"Step 3K independent validation evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION_GATE_NONEMPTY",
+            "status":PASS if _step3k_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3k_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3K independent validation gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_FU96_INDEPENDENT_BULK_VALIDATION_CONTRACT_NONEMPTY",
+            "status":PASS if _step3k_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3k_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3K CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:

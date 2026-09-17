@@ -1,0 +1,38 @@
+{
+  "bulk_yang_bi_psd_integration_eligible": false,
+  "contract_version": "FIRECLOUD_ICE_FU96_INDEPENDENT_BULK_VALIDATION_V1",
+  "dge_semantics_interchangeable": false,
+  "diagnostic_matrix": {
+    "all_fu96_extinction_chain_numeric_pass": true,
+    "all_projected_area_numeric_pass": true,
+    "case_count": 18,
+    "max_fu96_unit_chain_relative_error": 1.2244195600241499e-05,
+    "max_relative_difference_vs_fu96": 0.31216620726536515,
+    "min_relative_difference_vs_fu96": 0.26212710714149406
+  },
+  "forbidden_shortcuts": [
+    "Fu_mass_area_equivalent_Dge_treated_as_solid_hex_geometry_Dge",
+    "Fu_crosscheck_difference_treated_as_Yang_Bi_shape_equivalence",
+    "Fu_geometric_optics_crosscheck_treated_as_like_for_like_production_validation",
+    "diagnostic_k_ext_written_into_runtime_ice_optics",
+    "tau_ice_synthesized_from_step3k_reference_chain",
+    "runtime_habit_or_roughness_selected_by_step3k"
+  ],
+  "frozen_science_unchanged": true,
+  "fu96_extinction_coefficient": 2.5184,
+  "fu96_ice_density_kg_m3": 917.0,
+  "mass_area_dge_definition": "Dge=(2*sqrt(3)/(3*rho_ice))*IWC/Ac",
+  "mode": "FU96_PROJECTED_AREA_INDEPENDENT_BULK_EXTINCTION_CROSSCHECK_FAIL_CLOSED",
+  "physics_promotion_allowed": false,
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.24",
+  "primary_reference": "https://doi.org/10.1175/1520-0442(1996)009%3C2058:AAPOTS%3E2.0.CO;2",
+  "production_ice_optics_ready": false,
+  "projected_area_definition": "Pbar=(3/4)*(D*L+(sqrt(3)/4)*D^2)",
+  "reference_chain": "FU96_GEOMETRIC_OPTICS_BETA_APPROX_2AC",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "scientific_bulk_validation_pass": false,
+  "solid_hex_dge_definition": "Dge=integral[D^2*L*n dL]/integral[(D*L+(sqrt(3)/4)*D^2)*n dL]",
+  "step3k_version": "R5.7.41.3.4.10.24",
+  "tau_ice_production_allowed": false,
+  "uses_yang_bi_cext_in_reference_chain": false
+}
