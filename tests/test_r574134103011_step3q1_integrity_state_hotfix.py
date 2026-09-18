@@ -19,4 +19,4 @@ def test_step3q1_current_fail_closed_state_is_accepted_by_integrity_gate():
     audit = build_analysis_integrity_audit(result).set_index("check_id")
     row = audit.loc["ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_FAIL_CLOSED"]
     assert row["status"] == "PASS"
-    assert "PASS_FAIL_CLOSED_V25_EXTERNAL_DISTRIBUTION_LINEAGE_QUALIFIED_PREAVERAGING_GENERATOR_UNRECOVERED" in row["observed"]
+    assert "PASS_FAIL_CLOSED_V25_MIRROR_TIME_AND_RUNTIME_SOLAR_CONTEXT_QUALIFIED_PREAVERAGING_GENERATOR_UNRECOVERED" in row["observed"]

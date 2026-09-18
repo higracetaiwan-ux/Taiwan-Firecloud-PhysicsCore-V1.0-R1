@@ -1976,7 +1976,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         _guards = _c.get("production_guards", {}) if isinstance(_c, Mapping) else {}
         _step3q_contract_ok = bool(
             isinstance(_c, Mapping)
-            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_8"
+            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_9"
             and _c.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
             and _caps.get("EXACT_FU96_BAND_WEIGHTING_AVAILABLE") is False
             and _caps.get("BAND_INTEGRATED_OPTICAL_VALIDATION_READY") is False
@@ -2004,7 +2004,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
             and _b("PRODUCTION_ICE_OPTICS_READY", False)
             and _b("physics_promotion_allowed", False)
-            and _state == "PASS_FAIL_CLOSED_V25_EXTERNAL_DISTRIBUTION_LINEAGE_QUALIFIED_PREAVERAGING_GENERATOR_UNRECOVERED"
+            and _state == "PASS_FAIL_CLOSED_V25_MIRROR_TIME_AND_RUNTIME_SOLAR_CONTEXT_QUALIFIED_PREAVERAGING_GENERATOR_UNRECOVERED"
         )
         add(
             "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_FAIL_CLOSED",
