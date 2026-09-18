@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.4 — Fu96/RRTMG historical h-domain constraint qualification.
+"""Ice Optics Phase 2 Step 3Q.5 — RRTM_SW post-averaged archive boundary qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,9 +20,9 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.4"
-STEP3Q_MODE = "FU96_RRTMG_HISTORICAL_H_DOMAIN_CONSTRAINT_QUALIFICATION_FAIL_CLOSED"
-EVIDENCE_AS_OF = "2026-09-18"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.5"
+STEP3Q_MODE = "FU96_RRTMG_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFICATION_FAIL_CLOSED"
+EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
 FU2007_DOI = "https://doi.org/10.1175/2007JAS2289.1"
@@ -34,6 +34,8 @@ CAM5_DESCRIPTION = "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/descriptio
 BAEK2018_DOI = "https://doi.org/10.1029/2018MS001398"
 AER_RRTMG_SW_REPOSITORY = "https://github.com/AER-RC/RRTMG_SW"
 AER_RRTM_SW_INSTRUCTIONS = "https://github.com/AER-RC/RRTM_SW/blob/master/rrtm_sw_instructions"
+AER_RRTM_SW_CLDPROP_PINNED = "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac88ae782964cd030cb202a380032d11/src/cldprop.f"
+AER_RRTM_SW_CLDPROP_BLOB_SHA = "8632f7d1940285665b62fdbb30c69861924251da"
 GEOSCHEM_RRTMG_PINNED_SOURCE = (
     "https://github.com/geoschem/geos-chem/blob/"
     "a4551f9442183bb572b23e9c2d362e2d34420d3a/GeosRad/rrtmg_sw_init.F90"
@@ -156,6 +158,27 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "FINAL_REFERENCE_TABLES_PINNED", f"{GEOSCHEM_RRTMG_PINNED_SOURCE}; source_sha={GEOSCHEM_RRTMG_SOURCE_SHA}",
         ),
         _row(
+            "RRTM_SW_FU96_POST_AVERAGED_ARCHIVE_PINNED", "ARCHIVE_BOUNDARY", "PASS_QUALIFIED",
+            "Pinned AER RRTM_SW cldprop.f states that Q. Fu provided high-resolution tables which were appropriately averaged for RRTM_SW bands, and the archived runtime contains the resulting EXTICE3/SSAICE3/ASYICE3/FDLICE3 arrays",
+            "POST_AVERAGED_RUNTIME_TABLE_ARCHIVE_BOUNDARY_PINNED",
+            f"{AER_RRTM_SW_CLDPROP_PINNED}; blob_sha={AER_RRTM_SW_CLDPROP_BLOB_SHA}",
+        ),
+        _row(
+            "RRTM_SW_FU96_46_NODE_DGE_RUNTIME_GRID", "ARCHIVE_BOUNDARY", "PASS_QUALIFIED",
+            "ICEFLAG=3 runtime interpolation uses 46 stored nodes on the Dge grid 5,8,...,140 um (3 um spacing), confirming the archived object is a compact band table rather than the pre-averaging spectral sample set",
+            "POST_AVERAGED_46_NODE_RUNTIME_GRID_PINNED", AER_RRTM_SW_CLDPROP_PINNED,
+        ),
+        _row(
+            "RRTM_SW_PREAVERAGING_FU96_GENERATOR_PRESENT_IN_PINNED_ARCHIVE", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_PRESENT",
+            "The pinned AER RRTM_SW runtime source contains the post-averaged Fu96 band tables and interpolation logic but does not contain the Q. Fu high-resolution pre-averaging spectral tables or the historical band-averaging generator",
+            "AUTHORITATIVE_PREAVERAGING_SOURCE_OR_GENERATOR_REQUIRED", AER_RRTM_SW_CLDPROP_PINNED,
+        ),
+        _row(
+            "FINAL_TABLE_INVERSE_IDENTIFICATION_OF_H_OR_WEIGHTS", "SCOPE_GUARD", "PASS_FORBIDDEN",
+            "false",
+            "FINAL_EXTICE3_SSAICE3_ASYICE3_TABLES_ARE_OUTPUTS_AND_MUST_NOT_BE_INVERTED_TO_CLAIM_UNIQUE_H_SOLAR_GRID_OR_DISCRETE_WEIGHTS",
+        ),
+        _row(
             "RRTMG_HIGH_RES_TO_BAND_LINEAGE_STATEMENT", "MODEL_LINEAGE", "PASS_LINEAGE_ONLY",
             "RRTMG lineage documents that Fu high-resolution ice optical tables were averaged for RRTM_SW",
             "LINEAGE_STATEMENT_IS_NOT_EQUIVALENT_TO_REPRODUCIBLE_WEIGHT_VECTOR",
@@ -236,10 +259,14 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "RRTMG_BAND25_H_DOMAIN_CONSTRAINT",
         "RRTMG_BAND24_H_DOMAIN_BOUNDARY_CROSSING",
     ])
+    archive_boundary = all(status.get(k) == "PASS_QUALIFIED" for k in [
+        "RRTM_SW_FU96_POST_AVERAGED_ARCHIVE_PINNED",
+        "RRTM_SW_FU96_46_NODE_DGE_RUNTIME_GRID",
+    ]) and status.get("RRTM_SW_PREAVERAGING_FU96_GENERATOR_PRESENT_IN_PINNED_ARCHIVE") == "BLOCKED_NOT_PRESENT"
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_H_DOMAIN_CONSTRAINTS_QUALIFIED_RRTMG_EXACT_H_UNRESOLVED"
+        else "PASS_FAIL_CLOSED_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED_EXACT_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -251,6 +278,9 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "FU96_HISTORICAL_MIXED_LINEAR_LOG_COALBEDO_SEMANTIC_PINNED": True,
         "FU96_HISTORICAL_COALBEDO_EQUATION_FAMILY_QUALIFIED": bool(equation_family),
         "FU96_HISTORICAL_H_DOMAIN_CONSTRAINTS_QUALIFIED": bool(h_domain_constraints),
+        "RRTM_SW_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED": bool(archive_boundary),
+        "RRTM_SW_PREAVERAGING_GENERATOR_RECOVERED": False,
+        "FINAL_TABLE_INVERSE_IDENTIFICATION_ALLOWED": False,
         "RRTMG_BAND25_FULLY_WITHIN_FU_LINEAGE_H1_DOMAIN": bool(status.get("RRTMG_BAND25_H_DOMAIN_CONSTRAINT") == "PASS_QUALIFIED"),
         "RRTMG_BAND24_CROSSES_FU_LINEAGE_H_DOMAIN_BOUNDARY": bool(status.get("RRTMG_BAND24_H_DOMAIN_BOUNDARY_CROSSING") == "PASS_QUALIFIED"),
         "RRTMG_BAND24_SINGLE_H_ASSIGNMENT_JUSTIFIED": False,
@@ -283,7 +313,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_4",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_5",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -300,6 +330,8 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "cam5_description": CAM5_DESCRIPTION,
             "aer_rrtmg_sw_repository": AER_RRTMG_SW_REPOSITORY,
             "aer_rrtm_sw_instructions": AER_RRTM_SW_INSTRUCTIONS,
+            "aer_rrtm_sw_cldprop_pinned": AER_RRTM_SW_CLDPROP_PINNED,
+            "aer_rrtm_sw_cldprop_blob_sha": AER_RRTM_SW_CLDPROP_BLOB_SHA,
             "pinned_rrtmg_reference_source": GEOSCHEM_RRTMG_PINNED_SOURCE,
             "pinned_rrtmg_reference_source_sha": GEOSCHEM_RRTMG_SOURCE_SHA,
         },
@@ -319,6 +351,9 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "rrtmg_band24_domain_constraint": "0.625000-0.778210 um crosses 0.700 um h-domain boundary; no single h may be assigned without historical generator proof",
             "rrtmg_band24_single_h_assignment_allowed": False,
             "rrtmg_band25_exact_archived_generator_h_proven": False,
+            "rrtm_sw_archive_boundary": "pinned runtime archive contains post-averaged EXTICE3/SSAICE3/ASYICE3/FDLICE3 tables plus interpolation, not the Q. Fu high-resolution pre-averaging sample set or averaging generator",
+            "rrtm_sw_preaveraging_generator_recovered": False,
+            "final_table_inverse_identification_allowed": False,
             "later_rrtmg_band_ssa_example": "band_integrated_scattering_divided_by_band_integrated_extinction",
             "later_rrtmg_band_g_example": "scattering_cross_section_weighted_with_solar_spectrum",
             "later_formula_is_historical_fu96_generator": False,
@@ -333,10 +368,11 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "assumed_gpoint_weighting_for_cloud_optics_band_average",
             "ad_hoc_extinction_or_scattering_reweighting",
             "yi2013_formula_substituted_as_historical_fu96_generator",
+            "inverse_identification_of_unique_h_or_weights_from_final_rrtm_tables",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.4 pins Fu-lineage h-domain constraints onto the RRTMG band-24/25 wavelength domains while preserving the distinction between lineage constraints and the unrecovered archived RRTM/RRTMG generator. "
+            "Step 3Q.5 pins the AER RRTM_SW archive boundary: the public runtime source preserves post-averaged Fu96 band tables and interpolation logic, but not the historical Q. Fu high-resolution pre-averaging tables or generator. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."
