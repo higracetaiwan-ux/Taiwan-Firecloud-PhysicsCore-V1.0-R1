@@ -15,7 +15,7 @@ from firecloud.ice_microphysics_wyser_yang_diagnostic_bulk_integration import (
 
 
 def test_step3j_identity_is_diagnostic_only_and_fail_closed():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.28"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.28.1"
     assert STEP3J_VERSION == "R5.7.41.3.4.10.23"
     assert STEP3J_MODE == "WYSER_PSD_YANG_CEXT_DIAGNOSTIC_BULK_INTEGRATION_FAIL_CLOSED"
 
@@ -100,7 +100,7 @@ def test_step3j_evidence_gate_contract_keep_diagnostic_bulk_separate_from_tau_pr
     assert bool(gate["PRODUCTION_ICE_OPTICS_READY"]) is False
     assert bool(gate["physics_promotion_allowed"]) is False
 
-    contract = wyser_yang_diagnostic_bulk_contract_payload(physicscore_version="1.0.0-R5.7.41.3.4.10.28")
+    contract = wyser_yang_diagnostic_bulk_contract_payload(physicscore_version="1.0.0-R5.7.41.3.4.10.28.1")
     assert contract["contract_version"] == "FIRECLOUD_ICE_WYSER_YANG_DIAGNOSTIC_BULK_V1"
     assert contract["beta_ext_definition"] == "integral[n_wyser(D)*Cext_yang(D,lambda)dD]"
     assert contract["k_ext_definition"] == "beta_ext/IWC_kg_m3"

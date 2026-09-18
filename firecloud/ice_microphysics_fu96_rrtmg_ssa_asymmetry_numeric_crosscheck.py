@@ -18,6 +18,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
+import json
 import math
 
 import numpy as np
@@ -43,7 +44,7 @@ from .ice_microphysics_wyser_yang_population_bridge import (
 )
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3O_VERSION = "R5.7.41.3.4.10.28"
+STEP3O_VERSION = "R5.7.41.3.4.10.28.1"
 STEP3O_MODE = "FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_DIAGNOSTIC_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-18"
 
@@ -542,6 +543,15 @@ def build_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate(evidence: pd.DataFram
         "qualification_blockers": "YANG_FULL_BAND_SPECTRAL_WEIGHTING_UNAVAILABLE|RRTMG_BROAD_BAND_NOT_MONOCHROMATIC|INDEPENDENT_SSA_VALIDATION_PENDING|INDEPENDENT_ASYMMETRY_VALIDATION_PENDING|EXACT_SIX_BAND_LIKE_FOR_LIKE_REFERENCE_PENDING",
     }], columns=GATE_COLUMNS)
 
+
+
+def serialize_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_json_bytes(
+    payload: dict[str, Any],
+) -> bytes:
+    """Canonical Step 3O contract serialization shared by release and CASE export."""
+    return json.dumps(
+        payload, ensure_ascii=False, indent=2, sort_keys=True, default=str
+    ).encode("utf-8")
 
 def fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload(
     *, physicscore_version: str = PHYSICSCORE_VERSION,

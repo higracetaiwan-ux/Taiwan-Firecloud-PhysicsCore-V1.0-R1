@@ -82,7 +82,7 @@ def _gfs_completeness():
 
 
 def test_version_and_frozen_phase2_mode():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.28"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.28.1"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
     assert ICE_PHASE2_MODE == "DIAGNOSTIC_READINESS_ONLY"
 
