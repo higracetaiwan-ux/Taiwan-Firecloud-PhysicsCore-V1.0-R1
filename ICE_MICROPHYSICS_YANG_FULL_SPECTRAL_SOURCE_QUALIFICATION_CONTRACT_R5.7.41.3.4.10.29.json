@@ -1,0 +1,57 @@
+{
+  "capabilities": {
+    "BAND_INTEGRATED_OPTICAL_VALIDATION_READY": false,
+    "EXACT_FU96_BAND_WEIGHTING_AVAILABLE": false,
+    "FULL_SIX_BAND_LIKE_FOR_LIKE_OPTICAL_VALIDATION_PASS": false,
+    "INDEPENDENT_ASYMMETRY_VALIDATION_PASS": false,
+    "INDEPENDENT_SSA_VALIDATION_PASS": false,
+    "PRODUCTION_ICE_OPTICS_READY": false,
+    "RRTMG_BAND24_SPECTRAL_COVERAGE_PASS": false,
+    "RRTMG_BAND25_SPECTRAL_COVERAGE_PASS": false,
+    "TAU_ICE_PRODUCTION_ALLOWED": false,
+    "YANG_FULL_SPECTRAL_SOURCE_BYTES_AVAILABLE": false,
+    "YANG_FULL_SPECTRAL_SOURCE_CONTRACT_PINNED": true,
+    "physics_promotion_allowed": false
+  },
+  "contract_version": "FIRECLOUD_ICE_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION_V1",
+  "evidence_as_of": "2026-09-18",
+  "mode": "YANG_FULL_SPECTRAL_SOURCE_CAPABILITY_QUALIFICATION_FAIL_CLOSED",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.29",
+  "production_guards": {
+    "physics_promotion_allowed": false,
+    "production_ice_optics_ready": false,
+    "tau_ice_production_allowed": false
+  },
+  "qualification_state": "PASS_FAIL_CLOSED_SOURCE_BYTES_UNAVAILABLE",
+  "rrtmg_band_domains_um": {
+    "24": [
+      0.625,
+      0.7782101167315175
+    ],
+    "25": [
+      0.44150110375275936,
+      0.625
+    ]
+  },
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "scope_note": "Source coverage qualification only. Exact Fu96/RRTMG band weighting and optical validation remain blocked.",
+  "source_contract": {
+    "archive": "Data_0.2_15.25.tar.gz",
+    "expected_isca_rows": 74844,
+    "expected_size_count": 189,
+    "expected_wavelength_count": 396,
+    "habit": "single_column",
+    "published_md5": "2fb9bbab2c2c735a869c863a680e2f70",
+    "roughness_states": [
+      "Rough000",
+      "Rough003",
+      "Rough050"
+    ],
+    "shortwave_range_um": [
+      0.2,
+      15.25
+    ],
+    "zenodo_record": "5348402"
+  },
+  "step_version": "R5.7.41.3.4.10.29"
+}

@@ -21,7 +21,7 @@ def _analysis_result():
         "v1_ice_microphysics_yang_habit_roughness_qualification_evidence": evidence,
         "v1_ice_microphysics_yang_habit_roughness_qualification_gate": gate,
         "ice_microphysics_yang_habit_roughness_qualification_contract": yang_habit_roughness_qualification_contract_payload(
-            physicscore_version="1.0.0-R5.7.41.3.4.10.28.1"
+            physicscore_version="1.0.0-R5.7.41.3.4.10.29"
         ),
     }
 

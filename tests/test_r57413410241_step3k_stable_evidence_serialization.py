@@ -44,7 +44,7 @@ def _build_with(monkeypatch, grid_factory, sample_factory):
     monkeypatch.setattr(step3k, "diagnostic_fu96_independent_bulk_validation", sample_factory)
     evidence = step3k.build_fu96_independent_bulk_validation_evidence()
     contract = step3k.fu96_independent_bulk_validation_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.28.1"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.29"
     )
     numeric_values = dict(zip(evidence["evidence_id"], evidence["value"]))
     return numeric_values, contract

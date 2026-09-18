@@ -1,0 +1,12 @@
+check_id,category,status,observed,required,physics_promotion_allowed,notes
+YANG_V2_FULL_SPECTRAL_SOURCE_CONTRACT,SOURCE_CONTRACT,PASS_PINNED,396 wavelengths; 189 sizes; expected isca rows=74844,AUTHORITATIVE_SOURCE_CONTRACT_PINNED,False,Zenodo 5348402; archive Data_0.2_15.25.tar.gz; published MD5 2fb9bbab2c2c735a869c863a680e2f70
+YANG_V2_FULL_SPECTRAL_SOURCE_BYTES,SOURCE_AVAILABILITY,SOURCE_BYTES_UNAVAILABLE,false,EXPLICIT_SOURCE_ROOT_AND_THREE_SINGLE_COLUMN_ROUGHNESS_FILES,False,Release package intentionally does not invent or embed missing authoritative bytes.
+YANG_SINGLE_COLUMN_ROUGH000_FULL_SPECTRAL_FILE,SOURCE_FILE_QUALIFICATION,SOURCE_BYTES_UNAVAILABLE,source root not supplied,rows=74844; wavelengths=396; sizes=189,False,Source-row geometry may vary by wavelength under the frozen authoritative-source policy.
+YANG_SINGLE_COLUMN_ROUGH003_FULL_SPECTRAL_FILE,SOURCE_FILE_QUALIFICATION,SOURCE_BYTES_UNAVAILABLE,source root not supplied,rows=74844; wavelengths=396; sizes=189,False,Source-row geometry may vary by wavelength under the frozen authoritative-source policy.
+YANG_SINGLE_COLUMN_ROUGH050_FULL_SPECTRAL_FILE,SOURCE_FILE_QUALIFICATION,SOURCE_BYTES_UNAVAILABLE,source root not supplied,rows=74844; wavelengths=396; sizes=189,False,Source-row geometry may vary by wavelength under the frozen authoritative-source policy.
+RRTMG_BAND24_YANG_SPECTRAL_DOMAIN_COVERAGE,SPECTRAL_DOMAIN,BLOCKED_SOURCE_UNAVAILABLE_OR_INVALID,false,Yang source spans 0.625-0.778210117 um for all three roughness states,False,Domain coverage is not equivalent to Fu96/RRTMG band weighting.
+RRTMG_BAND25_YANG_SPECTRAL_DOMAIN_COVERAGE,SPECTRAL_DOMAIN,BLOCKED_SOURCE_UNAVAILABLE_OR_INVALID,false,Yang source spans 0.441501104-0.625 um for all three roughness states,False,Domain coverage is not equivalent to Fu96/RRTMG band weighting.
+PORTABLE_SIX_BAND_LUT_FULL_SPECTRAL_SUBSTITUTE,SCOPE_GUARD,PASS_FORBIDDEN,false,SIX_MONOCHROMATIC_POINTS_MUST_NOT_BE_EXPANDED_TO_SYNTHETIC_396_WAVE_SOURCE,False,
+EXACT_FU96_RRTMG_BAND_WEIGHTING,BAND_WEIGHTING_BLOCKER,BLOCKED_NOT_PROVEN,false,EXACT_PRIMARY_OR_AUTHORITATIVE_BAND_AVERAGING_WEIGHTING_REQUIRED,False,
+INDEPENDENT_SSA_ASYMMETRY_VALIDATION,VALIDATION_BLOCKER,BLOCKED,false,FULL_SPECTRAL_SOURCE_PLUS_EXACT_WEIGHTING_PLUS_NUMERIC_ACCEPTANCE_REQUIRED,False,
+PRODUCTION_PROMOTION_GUARD,PRODUCTION_GUARD,PASS_FAIL_CLOSED,tau_ice=false; production_ice_optics=false; physics_promotion=false,NO_STEP3P_PRODUCTION_PROMOTION,False,

@@ -162,3 +162,10 @@
 ## Frozen Science
 
 `R5.7.41.2_SHADOW_COT_AB_FROZEN` 不變。Formation / Viewing / Twilight Glow、六波段 550/575/600/650/700/750 nm、Canvas/Corridor/REZ、Earth Shadow、Production/Shadow COT、Missing ≠ Clear ≠ Zero、WINDY portable decoupling 均未修改。
+
+
+## R5.7.41.3.4.10.29 — Step 3P Full-Spectral Source Capability Qualification
+
+- Qualifies Yang/Bi V2 396-wave source-byte readiness and RRTMG SW band 24/25 spectral-domain coverage.
+- The FULL-CLEAN release does not bundle the large authoritative archive; missing source bytes remain explicit fail-close evidence.
+- The six-band portable LUT is never expanded into a synthetic full spectrum. Exact Fu96 weighting, SSA/g validation, tau_ice production and Production Ice Optics remain blocked.

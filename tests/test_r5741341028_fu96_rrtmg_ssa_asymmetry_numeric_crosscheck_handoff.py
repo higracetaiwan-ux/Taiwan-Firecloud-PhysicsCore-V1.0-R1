@@ -21,7 +21,7 @@ def _analysis_result():
         "v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence": evidence,
         "v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate": gate,
         "ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract": fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload(
-            physicscore_version="1.0.0-R5.7.41.3.4.10.28.1"
+            physicscore_version="1.0.0-R5.7.41.3.4.10.29"
         ),
     }
 

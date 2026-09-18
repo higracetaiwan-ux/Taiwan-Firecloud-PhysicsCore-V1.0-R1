@@ -62,10 +62,10 @@ def test_step3o_contract_is_deterministic_and_declares_spectral_blocker():
         fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload,
     )
     a = fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.28.1"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.29"
     )
     b = fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.28.1"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.29"
     )
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
     assert a["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_V1"

@@ -198,6 +198,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate = _df(result.get("v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate"))
     ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract = result.get("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract", {}) or {}
     ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_required = bool(result.get("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_required", False))
+    ice_microphysics_yang_full_spectral_source_qualification_evidence = _df(result.get("v1_ice_microphysics_yang_full_spectral_source_qualification_evidence"))
+    ice_microphysics_yang_full_spectral_source_qualification_gate = _df(result.get("v1_ice_microphysics_yang_full_spectral_source_qualification_gate"))
+    ice_microphysics_yang_full_spectral_source_qualification_contract = result.get("ice_microphysics_yang_full_spectral_source_qualification_contract", {}) or {}
+    ice_microphysics_yang_full_spectral_source_qualification_required = bool(result.get("ice_microphysics_yang_full_spectral_source_qualification_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1888,6 +1892,64 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK",
             _step3o_gate_detail,
             "Broad-band numeric cross-check may pass execution while exact spectral SSA/g validation and production remain fail-closed",
+        )
+
+    # R5.7.41.3.4.10.29 Step 3P full-spectral source capability integrity.
+    if ice_microphysics_yang_full_spectral_source_qualification_required:
+        _step3p_present = bool(
+            not ice_microphysics_yang_full_spectral_source_qualification_evidence.empty
+            and not ice_microphysics_yang_full_spectral_source_qualification_gate.empty
+            and isinstance(ice_microphysics_yang_full_spectral_source_qualification_contract, Mapping)
+            and bool(ice_microphysics_yang_full_spectral_source_qualification_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION_EVIDENCE_PRESENT",
+            PASS if _step3p_present else FAIL,
+            "ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION",
+            f"evidence_rows={len(ice_microphysics_yang_full_spectral_source_qualification_evidence)};gate_rows={len(ice_microphysics_yang_full_spectral_source_qualification_gate)};contract_present={bool(ice_microphysics_yang_full_spectral_source_qualification_contract)}",
+            "Step 3P evidence/gate/contract must all be present",
+        )
+        _c = ice_microphysics_yang_full_spectral_source_qualification_contract
+        _caps = _c.get("capabilities", {}) if isinstance(_c, Mapping) else {}
+        _guards = _c.get("production_guards", {}) if isinstance(_c, Mapping) else {}
+        _step3p_contract_ok = bool(
+            isinstance(_c, Mapping)
+            and _c.get("contract_version") == "FIRECLOUD_ICE_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION_V1"
+            and _c.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and _c.get("mode") == "YANG_FULL_SPECTRAL_SOURCE_CAPABILITY_QUALIFICATION_FAIL_CLOSED"
+            and _caps.get("EXACT_FU96_BAND_WEIGHTING_AVAILABLE") is False
+            and _caps.get("INDEPENDENT_SSA_VALIDATION_PASS") is False
+            and _caps.get("INDEPENDENT_ASYMMETRY_VALIDATION_PASS") is False
+            and _guards.get("tau_ice_production_allowed") is False
+            and _guards.get("production_ice_optics_ready") is False
+            and _guards.get("physics_promotion_allowed") is False
+        )
+        add(
+            "ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION_CONTRACT_FREEZE",
+            PASS if _step3p_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION",
+            f"contract={_c.get('contract_version') if isinstance(_c, Mapping) else None};state={_c.get('qualification_state') if isinstance(_c, Mapping) else None}",
+            "Source capability may advance while exact weighting, validation and production remain blocked",
+        )
+        row = ice_microphysics_yang_full_spectral_source_qualification_gate.iloc[0] if not ice_microphysics_yang_full_spectral_source_qualification_gate.empty else {}
+        _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+        _state = str(row.get("qualification_state", ""))
+        _step3p_gate_ok = bool(
+            _b("YANG_FULL_SPECTRAL_SOURCE_CONTRACT_PINNED", True)
+            and _b("EXACT_FU96_BAND_WEIGHTING_AVAILABLE", False)
+            and _b("INDEPENDENT_SSA_VALIDATION_PASS", False)
+            and _b("INDEPENDENT_ASYMMETRY_VALIDATION_PASS", False)
+            and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
+            and _b("PRODUCTION_ICE_OPTICS_READY", False)
+            and _b("physics_promotion_allowed", False)
+            and _state in {"PASS_FAIL_CLOSED_SOURCE_BYTES_UNAVAILABLE", "PASS_FAIL_CLOSED_WEIGHTING_PENDING"}
+        )
+        add(
+            "ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION_FAIL_CLOSED",
+            PASS if _step3p_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION",
+            f"state={_state};source={row.get('YANG_FULL_SPECTRAL_SOURCE_BYTES_AVAILABLE')};weighting={row.get('EXACT_FU96_BAND_WEIGHTING_AVAILABLE')}",
+            "Missing source bytes or exact weighting must remain explicit and non-production",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -4282,6 +4344,21 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3O CASE evidence.",
         })
+
+    # R5.7.41.3.4.10.29 Step 3P serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _step3p_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+        _e = _step3p_manifest_metric("ice_microphysics_yang_full_spectral_source_qualification_evidence.csv", "row_count", 0.0)
+        _g = _step3p_manifest_metric("ice_microphysics_yang_full_spectral_source_qualification_gate.csv", "row_count", 0.0)
+        _cbytes = _step3p_manifest_metric("ice_microphysics_yang_full_spectral_source_qualification_contract.json", "byte_size", 0.0)
+        rows.append({"check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION_EVIDENCE_NONEMPTY","status":PASS if _e >= 10 else FAIL,"component":"CASE_ARCHIVE","observed":int(_e),"expected":">=10 serialized evidence rows","detail":"Step 3P evidence must be serialized."})
+        rows.append({"check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION_GATE_NONEMPTY","status":PASS if _g >= 1 else FAIL,"component":"CASE_ARCHIVE","observed":int(_g),"expected":">=1 serialized gate row","detail":"Step 3P gate must be serialized."})
+        rows.append({"check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION_CONTRACT_NONEMPTY","status":PASS if _cbytes > 2 else FAIL,"component":"CASE_ARCHIVE","observed":int(_cbytes),"expected":">2 serialized JSON bytes","detail":"A bare {} contract is not valid Step 3P CASE evidence."})
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:
         upstream_fail = int(analysis_audit["status"].astype(str).eq(FAIL).sum())

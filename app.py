@@ -169,6 +169,12 @@ from firecloud.ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck impo
     fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload,
     serialize_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_json_bytes,
 )
+from firecloud.ice_microphysics_yang_full_spectral_source_qualification import (
+    build_yang_full_spectral_source_qualification_evidence,
+    build_yang_full_spectral_source_qualification_gate,
+    yang_full_spectral_source_qualification_contract_payload,
+    serialize_yang_full_spectral_source_qualification_contract_json_bytes,
+)
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -1261,6 +1267,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.29**：Step 3P Full-Spectral Source Capability Qualification。新增 Yang/Bi V2 396-wave authoritative source readiness / RRTMG band 24/25 spectral-domain qualification；FULL-CLEAN 預設不攜帶大型 source bytes，因此明確 fail-close 為 SOURCE_BYTES_UNAVAILABLE。禁止由六波段 LUT 補造 full spectrum；exact Fu96 weighting、SSA/g validation、tau_ice 與 Production Ice Optics 全部維持封鎖。
 - **R5.7.41.3.4.10.28.1**：Step 3O Stable Contract Serialization Hotfix。僅統一 Step 3O contract 的 release / CASE canonical JSON serialization（sorted keys）；evidence、gate、Frozen Science、SSA/g validation 與 production fail-close 全部不變。
 - **R5.7.41.3.4.10.28**：Step 3O Fu96/RRTMG SSA + Asymmetry Numeric Cross-Check。加入 pinned band 24/25 46-node Dge reference，利用 Wyser population × Yang/Bi single_column 三種 roughness 重建 population Dge 與六波段 bulk SSA/g，完成 54-row broad-band numeric cross-check。數值差異只作 regression characterization；因 Yang portable LUT 僅有六個單色 sample、缺完整 RRTMG band spectral weighting，independent SSA/g validation、exact six-band validation、`tau_ice`、Production Ice Optics 與 physics promotion 全部維持 fail-close。
 - **R5.7.41.3.4.10.27**：Step 3N Fu96/RRTMG Independent Bulk-band SSA + Asymmetry Qualification。固定 Fu (1996) solar cirrus SSA/g provenance 與 RRTMG `ssaice3`/`asyice3` 外部實作來源，明確映射六波段到 RRTMG visible broad bands（550/575/600→band 25；650/700/750→band 24），但禁止將 broad-band coefficient 偽裝為六個單色 authoritative values。本版只完成 independent bulk-band reference provenance/capability qualification；exact six-band SSA/g numeric validation、full like-for-like optical validation、`tau_ice`、Production Ice Optics 與 physics promotion 全部維持 fail-close。
@@ -2724,6 +2731,15 @@ if run or st.session_state.analysis_result is not None:
         _case_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract = fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload(
             physicscore_version=__version__
         )
+        _case_yang_full_spectral_source_qualification_evidence = build_yang_full_spectral_source_qualification_evidence()
+        _case_yang_full_spectral_source_qualification_gate = build_yang_full_spectral_source_qualification_gate(
+            _case_yang_full_spectral_source_qualification_evidence
+        )
+        _case_yang_full_spectral_source_qualification_contract = yang_full_spectral_source_qualification_contract_payload(
+            evidence=_case_yang_full_spectral_source_qualification_evidence,
+            gate=_case_yang_full_spectral_source_qualification_gate,
+            physicscore_version=__version__,
+        )
         _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
         _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
         _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
@@ -2826,6 +2842,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_gate.csv", _case_fu96_rrtmg_ssa_asymmetry_qualification_gate),
             ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence.csv", _case_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence),
             ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.csv", _case_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate),
+            ("ice_microphysics_yang_full_spectral_source_qualification_evidence.csv", _case_yang_full_spectral_source_qualification_evidence),
+            ("ice_microphysics_yang_full_spectral_source_qualification_gate.csv", _case_yang_full_spectral_source_qualification_gate),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2924,6 +2942,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_yang_matched_geometry_extinction_validation_contract.json", _case_yang_matched_geometry_extinction_validation_contract),
             ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract.json", _case_fu96_rrtmg_ssa_asymmetry_qualification_contract),
             ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.json", _case_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract),
+            ("ice_microphysics_yang_full_spectral_source_qualification_contract.json", _case_yang_full_spectral_source_qualification_contract),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),
@@ -2950,6 +2969,8 @@ if run or st.session_state.analysis_result is not None:
                 _status.caption(f"CASE：{_name}")
                 if _name == "ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.json":
                     _payload = serialize_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_json_bytes(_obj)
+                elif _name == "ice_microphysics_yang_full_spectral_source_qualification_contract.json":
+                    _payload = serialize_yang_full_spectral_source_qualification_contract_json_bytes(_obj)
                 else:
                     _payload = json.dumps(_obj, ensure_ascii=False, indent=2, default=str).encode("utf-8")
                 z.writestr(_name, _payload)

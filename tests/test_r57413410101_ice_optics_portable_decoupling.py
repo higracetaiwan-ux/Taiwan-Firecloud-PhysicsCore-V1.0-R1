@@ -43,7 +43,7 @@ def _fake_lut():
 
 
 def test_version_and_portable_contract_runtime_decoupling():
-    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.28.1'
+    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.29'
     c=portable_contract_payload(physicscore_version=firecloud.__version__, science_baseline='R5.7.41.2_SHADOW_COT_AB_FROZEN')
     assert c['portable_package_contract_version']==PORTABLE_PACKAGE_CONTRACT_VERSION
     assert c['runtime_dependency_on_physicscore']=='NONE'
