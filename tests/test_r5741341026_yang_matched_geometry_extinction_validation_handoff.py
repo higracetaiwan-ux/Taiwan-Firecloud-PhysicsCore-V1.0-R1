@@ -22,7 +22,7 @@ def _analysis_result():
         "v1_ice_microphysics_yang_matched_geometry_extinction_validation_evidence": evidence,
         "v1_ice_microphysics_yang_matched_geometry_extinction_validation_gate": gate,
         "ice_microphysics_yang_matched_geometry_extinction_validation_contract": yang_matched_geometry_extinction_validation_contract_payload(
-            physicscore_version="1.0.0-R5.7.41.3.4.10.29"
+            physicscore_version="1.0.0-R5.7.41.3.4.10.30"
         ),
     }
 
@@ -70,10 +70,10 @@ def test_model_and_app_wire_step3m_evidence_gate_contract_into_case_export():
 
 def test_step3m_contract_json_is_stable_with_canonical_sample_strings():
     a = yang_matched_geometry_extinction_validation_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.29"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.30"
     )
     b = yang_matched_geometry_extinction_validation_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.29"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.30"
     )
     assert json.dumps(a, ensure_ascii=False, indent=2) == json.dumps(b, ensure_ascii=False, indent=2)
     sample = a["sample_numeric_characterization"]

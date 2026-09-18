@@ -202,6 +202,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_yang_full_spectral_source_qualification_gate = _df(result.get("v1_ice_microphysics_yang_full_spectral_source_qualification_gate"))
     ice_microphysics_yang_full_spectral_source_qualification_contract = result.get("ice_microphysics_yang_full_spectral_source_qualification_contract", {}) or {}
     ice_microphysics_yang_full_spectral_source_qualification_required = bool(result.get("ice_microphysics_yang_full_spectral_source_qualification_required", False))
+    ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence = _df(result.get("v1_ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence"))
+    ice_microphysics_fu96_rrtmg_band_weighting_provenance_gate = _df(result.get("v1_ice_microphysics_fu96_rrtmg_band_weighting_provenance_gate"))
+    ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract = result.get("ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract", {}) or {}
+    ice_microphysics_fu96_rrtmg_band_weighting_provenance_required = bool(result.get("ice_microphysics_fu96_rrtmg_band_weighting_provenance_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1950,6 +1954,64 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_YANG_FULL_SPECTRAL_SOURCE_QUALIFICATION",
             f"state={_state};source={row.get('YANG_FULL_SPECTRAL_SOURCE_BYTES_AVAILABLE')};weighting={row.get('EXACT_FU96_BAND_WEIGHTING_AVAILABLE')}",
             "Missing source bytes or exact weighting must remain explicit and non-production",
+        )
+
+    # R5.7.41.3.4.10.30 Step 3Q exact Fu96/RRTMG band-weighting provenance integrity.
+    if ice_microphysics_fu96_rrtmg_band_weighting_provenance_required:
+        _step3q_present = bool(
+            not ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence.empty
+            and not ice_microphysics_fu96_rrtmg_band_weighting_provenance_gate.empty
+            and isinstance(ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract, Mapping)
+            and bool(ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_EVIDENCE_PRESENT",
+            PASS if _step3q_present else FAIL,
+            "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE",
+            f"evidence_rows={len(ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence)};gate_rows={len(ice_microphysics_fu96_rrtmg_band_weighting_provenance_gate)};contract_present={bool(ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract)}",
+            "Step 3Q evidence/gate/contract must all be present",
+        )
+        _c = ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract
+        _caps = _c.get("capabilities", {}) if isinstance(_c, Mapping) else {}
+        _guards = _c.get("production_guards", {}) if isinstance(_c, Mapping) else {}
+        _step3q_contract_ok = bool(
+            isinstance(_c, Mapping)
+            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_1"
+            and _c.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and _caps.get("EXACT_FU96_BAND_WEIGHTING_AVAILABLE") is False
+            and _caps.get("BAND_INTEGRATED_OPTICAL_VALIDATION_READY") is False
+            and _caps.get("INDEPENDENT_SSA_VALIDATION_PASS") is False
+            and _caps.get("INDEPENDENT_ASYMMETRY_VALIDATION_PASS") is False
+            and _guards.get("tau_ice_production_allowed") is False
+            and _guards.get("production_ice_optics_ready") is False
+            and _guards.get("physics_promotion_allowed") is False
+        )
+        add(
+            "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_CONTRACT_FREEZE",
+            PASS if _step3q_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE",
+            f"contract={_c.get('contract_version') if isinstance(_c, Mapping) else None};state={_c.get('qualification_state') if isinstance(_c, Mapping) else None}",
+            "Exact weighting provenance may not be inferred from final broad-band tables alone",
+        )
+        row = ice_microphysics_fu96_rrtmg_band_weighting_provenance_gate.iloc[0] if not ice_microphysics_fu96_rrtmg_band_weighting_provenance_gate.empty else {}
+        _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+        _state = str(row.get("qualification_state", ""))
+        _step3q_gate_ok = bool(
+            _b("FU96_PRIMARY_SOURCE_PINNED", True)
+            and _b("RRTMG_FU96_DGE_LINEAGE_PINNED", True)
+            and _b("RRTMG_FINAL_FU96_BAND_TABLES_PINNED", True)
+            and _b("EXACT_FU96_BAND_WEIGHTING_AVAILABLE", False)
+            and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
+            and _b("PRODUCTION_ICE_OPTICS_READY", False)
+            and _b("physics_promotion_allowed", False)
+            and _state == "PASS_FAIL_CLOSED_EXACT_WEIGHTING_PROVENANCE_UNRESOLVED"
+        )
+        add(
+            "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_FAIL_CLOSED",
+            PASS if _step3q_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE",
+            f"state={_state};exact_weighting={row.get('EXACT_FU96_BAND_WEIGHTING_AVAILABLE')};tau={row.get('TAU_ICE_PRODUCTION_ALLOWED')}",
+            "Unrecovered exact Fu96/RRTMG weighting must remain explicit and non-production",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:

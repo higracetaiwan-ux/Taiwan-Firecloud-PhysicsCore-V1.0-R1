@@ -175,6 +175,12 @@ from firecloud.ice_microphysics_yang_full_spectral_source_qualification import (
     yang_full_spectral_source_qualification_contract_payload,
     serialize_yang_full_spectral_source_qualification_contract_json_bytes,
 )
+from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import (
+    build_fu96_rrtmg_band_weighting_provenance_evidence,
+    build_fu96_rrtmg_band_weighting_provenance_gate,
+    fu96_rrtmg_band_weighting_provenance_contract_payload,
+    serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes,
+)
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -2740,6 +2746,15 @@ if run or st.session_state.analysis_result is not None:
             gate=_case_yang_full_spectral_source_qualification_gate,
             physicscore_version=__version__,
         )
+        _case_fu96_rrtmg_band_weighting_provenance_evidence = build_fu96_rrtmg_band_weighting_provenance_evidence()
+        _case_fu96_rrtmg_band_weighting_provenance_gate = build_fu96_rrtmg_band_weighting_provenance_gate(
+            _case_fu96_rrtmg_band_weighting_provenance_evidence
+        )
+        _case_fu96_rrtmg_band_weighting_provenance_contract = fu96_rrtmg_band_weighting_provenance_contract_payload(
+            evidence=_case_fu96_rrtmg_band_weighting_provenance_evidence,
+            gate=_case_fu96_rrtmg_band_weighting_provenance_gate,
+            physicscore_version=__version__,
+        )
         _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
         _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
         _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
@@ -2844,6 +2859,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.csv", _case_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate),
             ("ice_microphysics_yang_full_spectral_source_qualification_evidence.csv", _case_yang_full_spectral_source_qualification_evidence),
             ("ice_microphysics_yang_full_spectral_source_qualification_gate.csv", _case_yang_full_spectral_source_qualification_gate),
+            ("ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence.csv", _case_fu96_rrtmg_band_weighting_provenance_evidence),
+            ("ice_microphysics_fu96_rrtmg_band_weighting_provenance_gate.csv", _case_fu96_rrtmg_band_weighting_provenance_gate),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2943,6 +2960,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract.json", _case_fu96_rrtmg_ssa_asymmetry_qualification_contract),
             ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.json", _case_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract),
             ("ice_microphysics_yang_full_spectral_source_qualification_contract.json", _case_yang_full_spectral_source_qualification_contract),
+            ("ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract.json", _case_fu96_rrtmg_band_weighting_provenance_contract),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),
@@ -2971,6 +2989,8 @@ if run or st.session_state.analysis_result is not None:
                     _payload = serialize_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_json_bytes(_obj)
                 elif _name == "ice_microphysics_yang_full_spectral_source_qualification_contract.json":
                     _payload = serialize_yang_full_spectral_source_qualification_contract_json_bytes(_obj)
+                elif _name == "ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract.json":
+                    _payload = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(_obj)
                 else:
                     _payload = json.dumps(_obj, ensure_ascii=False, indent=2, default=str).encode("utf-8")
                 z.writestr(_name, _payload)

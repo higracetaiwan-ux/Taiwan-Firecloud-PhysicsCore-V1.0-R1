@@ -1,0 +1,23 @@
+from pathlib import Path
+
+
+def test_step3q_model_handoff_present():
+    text = Path("firecloud/model.py").read_text(encoding="utf-8")
+    assert "build_ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence" in text
+    assert '"v1_ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence"' in text
+    assert '"ice_microphysics_fu96_rrtmg_band_weighting_provenance_required": True' in text
+
+
+def test_step3q_app_case_archive_handoff_present():
+    text = Path("app.py").read_text(encoding="utf-8")
+    assert "ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence.csv" in text
+    assert "ice_microphysics_fu96_rrtmg_band_weighting_provenance_gate.csv" in text
+    assert "ice_microphysics_fu96_rrtmg_band_weighting_provenance_contract.json" in text
+    assert "serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes" in text
+
+
+def test_step3q_integrity_handoff_present():
+    text = Path("firecloud/case_integrity.py").read_text(encoding="utf-8")
+    assert "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_EVIDENCE_PRESENT" in text
+    assert "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_FAIL_CLOSED" in text
+    assert "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_1" in text

@@ -39,10 +39,10 @@ def test_step3n_contract_is_deterministic_and_fail_closed():
         fu96_rrtmg_ssa_asymmetry_qualification_contract_payload,
     )
     a = fu96_rrtmg_ssa_asymmetry_qualification_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.29"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.30"
     )
     b = fu96_rrtmg_ssa_asymmetry_qualification_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.29"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.30"
     )
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
     assert a["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_SSA_ASYMMETRY_QUALIFICATION_V1"
