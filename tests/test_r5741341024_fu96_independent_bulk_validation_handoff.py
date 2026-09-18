@@ -22,7 +22,7 @@ def _analysis_result():
         "v1_ice_microphysics_fu96_independent_bulk_validation_evidence": evidence,
         "v1_ice_microphysics_fu96_independent_bulk_validation_gate": gate,
         "ice_microphysics_fu96_independent_bulk_validation_contract": fu96_independent_bulk_validation_contract_payload(
-            physicscore_version="1.0.0-R5.7.41.3.4.10.27"
+            physicscore_version="1.0.0-R5.7.41.3.4.10.28"
         ),
     }
 

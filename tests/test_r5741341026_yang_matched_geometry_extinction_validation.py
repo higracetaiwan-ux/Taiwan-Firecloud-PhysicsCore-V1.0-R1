@@ -55,7 +55,7 @@ def test_step3m_gate_advances_extinction_reference_but_keeps_ssa_g_tau_and_produ
 
 def test_step3m_contract_records_matched_geometry_scope_and_forbidden_promotions():
     contract = yang_matched_geometry_extinction_validation_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.27"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.28"
     )
     assert contract["contract_version"] == "FIRECLOUD_ICE_YANG_MATCHED_GEOMETRY_EXTINCTION_VALIDATION_V1"
     assert contract["matched_geometry_extinction_reference_ready"] is True

@@ -1,6 +1,15 @@
-# Current development release: R5.7.41.3.4.10.27 — Step 3N Fu96/RRTMG Independent Bulk-band SSA + Asymmetry Qualification
+# Current development release: R5.7.41.3.4.10.28 — Step 3O Fu96/RRTMG SSA + Asymmetry Numeric Cross-Check
 
-> Current release: **V1.0-R5.7.41.3.4.10.26** — Step 3M Yang/Bi Matched-Geometry Extinction Validation; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+> Current release: **V1.0-R5.7.41.3.4.10.28** — Step 3O Fu96/RRTMG SSA + Asymmetry Numeric Cross-Check; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
+
+
+## R5.7.41.3.4.10.28 Step 3O — Fu96/RRTMG SSA + Asymmetry Numeric Cross-Check
+- 新增 pinned RRTMG Fu96 visible band 24/25 reference table：46 個 Dge 節點 × 2 bands = 92 records。
+- 以 Wyser PSD × Yang/Bi `single_column` × Rough000/Rough003/Rough050 重建 population effective diameter，並用 `Dge = 4/(3√3) × De` 做 diagnostic size bridge。
+- 執行 27 population states × 2 bands = 54-row broad-band SSA/g numeric cross-check；不新增 science tolerance。
+- RRTMG broad-band 與 Yang 六個 monochromatic samples spectral semantics 不等價，因此只標記 numeric cross-check executed，不標記 independent SSA/g validation PASS。
+- `tau_ice`、Production Ice Optics、runtime habit/roughness inference、Formation/Viewing/Twilight Glow 全部維持 fail-close。
+- Latest formal FIELD baseline: `V1.0-R5.7.41.3.4.10.27 FIELD PASS`。
 
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.26
 

@@ -194,6 +194,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
     ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_gate = _df(result.get("v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_gate"))
     ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract = result.get("ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract", {}) or {}
     ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_required = bool(result.get("ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_required", False))
+    ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence = _df(result.get("v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence"))
+    ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate = _df(result.get("v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate"))
+    ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract = result.get("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract", {}) or {}
+    ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_required = bool(result.get("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_required", False))
     gfs_canvas_probe_req = _df(result.get("gfs_canvas_optical_probe_request_audit"))
     gfs_canvas_probe = _df(result.get("v1_canvas_optical_native_probe"))
     gfs_canvas_probe_summary = _df(result.get("v1_canvas_optical_native_probe_summary"))
@@ -1819,6 +1823,71 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_QUALIFICATION",
             _step3n_gate_detail,
             "Bulk-band reference provenance may advance while exact six-band SSA/g validation and production remain fail-closed",
+        )
+
+    # R5.7.41.3.4.10.28 Step 3O broad-band SSA/g numeric cross-check integrity.
+    if ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_required:
+        _step3o_present = bool(
+            not ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence.empty
+            and not ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.empty
+            and isinstance(ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract, Mapping)
+            and bool(ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract)
+        )
+        add(
+            "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_EVIDENCE_PRESENT",
+            PASS if _step3o_present else FAIL,
+            "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK",
+            f"evidence_rows={len(ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence)};gate_rows={len(ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate)};contract_present={bool(ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract)}",
+            "Step 3O evidence/gate/contract must all be present",
+        )
+        _step3o_contract_ok = bool(
+            isinstance(ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract, Mapping)
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_V1"
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("mode") == "FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_DIAGNOSTIC_FAIL_CLOSED"
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("numeric_crosscheck_executed_pass") is True
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("rrtmg_reference_is_broad_band") is True
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("yang_reference_is_six_monochromatic_samples_only") is True
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("full_band_spectral_weighting_available") is False
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("independent_ssa_validation_pass") is False
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("independent_asymmetry_validation_pass") is False
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("full_six_band_like_for_like_optical_validation_pass") is False
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("tau_ice_production_allowed") is False
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("production_ice_optics_ready") is False
+            and ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get("physics_promotion_allowed") is False
+        )
+        add(
+            "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_CONTRACT_FREEZE",
+            PASS if _step3o_contract_ok else FAIL,
+            "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK",
+            f"contract={ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get('contract_version') if isinstance(ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract, Mapping) else None};numeric={ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.get('numeric_crosscheck_executed_pass') if isinstance(ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract, Mapping) else None}",
+            "Numeric cross-check may execute while scientific validation and production remain blocked",
+        )
+        _step3o_gate_ok = False
+        _step3o_gate_detail = "Step 3O gate missing"
+        if not ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.empty:
+            row = ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.iloc[0]
+            _b = lambda key, expected: (str(row.get(key, "")).strip().lower() in ({"true","1","1.0"} if expected else {"false","0","0.0"}))
+            _step3o_gate_ok = bool(
+                _b("RRTMG_REFERENCE_TABLE_PINNED_PASS", True)
+                and _b("DGE_BRIDGE_EXECUTED_PASS", True)
+                and _b("NUMERIC_CROSSCHECK_EXECUTED_PASS", True)
+                and _b("FULL_BAND_SPECTRAL_WEIGHTING_AVAILABLE", False)
+                and _b("INDEPENDENT_SSA_VALIDATION_PASS", False)
+                and _b("INDEPENDENT_ASYMMETRY_VALIDATION_PASS", False)
+                and _b("FULL_SIX_BAND_LIKE_FOR_LIKE_OPTICAL_VALIDATION_PASS", False)
+                and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
+                and _b("PRODUCTION_ICE_OPTICS_READY", False)
+                and _b("physics_promotion_allowed", False)
+                and str(row.get("qualification_state", "")) == "BROAD_BAND_NUMERIC_CROSSCHECK_EXECUTED_EXACT_SPECTRAL_VALIDATION_BLOCKED"
+            )
+            _step3o_gate_detail = f"state={row.get('qualification_state')};numeric={row.get('NUMERIC_CROSSCHECK_EXECUTED_PASS')};ssa_valid={row.get('INDEPENDENT_SSA_VALIDATION_PASS')};g_valid={row.get('INDEPENDENT_ASYMMETRY_VALIDATION_PASS')};tau={row.get('TAU_ICE_PRODUCTION_ALLOWED')}"
+        add(
+            "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_FAIL_CLOSED",
+            PASS if _step3o_gate_ok else FAIL,
+            "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK",
+            _step3o_gate_detail,
+            "Broad-band numeric cross-check may pass execution while exact spectral SSA/g validation and production remain fail-closed",
         )
 
     # R5.7.39 Canvas Optical Truth Phase 1. The pgrb2b probe is evidence-only:
@@ -3688,6 +3757,9 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
         "ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_evidence.csv",
         "ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_gate.csv",
         "ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract.json",
+        "ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence.csv",
+        "ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.csv",
+        "ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.json",
         "v1_formation.csv",
         "v1_observer_nearfield_cloud_environment.csv",
         "v1_observer_nearfield_cloud_environment_summary.csv",
@@ -4175,6 +4247,40 @@ def build_archive_integrity_audit(manifest: pd.DataFrame, analysis_audit: pd.Dat
             "component":"CASE_ARCHIVE", "observed":int(_step3n_contract_bytes),
             "expected":">2 serialized JSON bytes",
             "detail":"A bare {} contract is not valid Step 3N CASE evidence.",
+        })
+
+    # R5.7.41.3.4.10.28 Step 3O serialized-content integrity.
+    if {"artifact", "row_count", "byte_size"}.issubset(manifest.columns):
+        def _step3o_manifest_metric(name: str, column: str, default: float = float("nan")) -> float:
+            hit = manifest.loc[manifest["artifact"].astype(str).eq(name)]
+            if hit.empty:
+                return default
+            val = pd.to_numeric(hit[column], errors="coerce").iloc[-1]
+            return float(val) if pd.notna(val) else default
+
+        _step3o_evidence_rows = _step3o_manifest_metric("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence.csv", "row_count", 0.0)
+        _step3o_gate_rows = _step3o_manifest_metric("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.csv", "row_count", 0.0)
+        _step3o_contract_bytes = _step3o_manifest_metric("ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract.json", "byte_size", 0.0)
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_EVIDENCE_NONEMPTY",
+            "status":PASS if _step3o_evidence_rows >= 9 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3o_evidence_rows),
+            "expected":">=9 serialized evidence rows",
+            "detail":"Step 3O numeric cross-check evidence must be serialized, not an empty placeholder.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_GATE_NONEMPTY",
+            "status":PASS if _step3o_gate_rows >= 1 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3o_gate_rows),
+            "expected":">=1 serialized gate row",
+            "detail":"Step 3O numeric cross-check gate must be serialized with content.",
+        })
+        rows.append({
+            "check_id":"ARCHIVE_CONTENT::ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_CONTRACT_NONEMPTY",
+            "status":PASS if _step3o_contract_bytes > 2 else FAIL,
+            "component":"CASE_ARCHIVE", "observed":int(_step3o_contract_bytes),
+            "expected":">2 serialized JSON bytes",
+            "detail":"A bare {} contract is not valid Step 3O CASE evidence.",
         })
 
     if not analysis_audit.empty and "status" in analysis_audit.columns:

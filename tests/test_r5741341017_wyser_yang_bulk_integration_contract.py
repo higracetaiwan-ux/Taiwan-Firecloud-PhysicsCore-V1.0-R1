@@ -18,7 +18,7 @@ CONTRACT = "ice_microphysics_wyser_yang_bulk_contract.json"
 
 
 def test_release_and_step3d_mode():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.27"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.28"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
     assert STEP3D_MODE == "WYSER_PSD_YANG_BI_HABIT_BULK_INTEGRATION_QUALIFICATION_ONLY"
 

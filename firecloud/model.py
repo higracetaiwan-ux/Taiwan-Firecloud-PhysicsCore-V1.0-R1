@@ -206,6 +206,11 @@ from .ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification import (
     build_fu96_rrtmg_ssa_asymmetry_qualification_gate as build_ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_gate,
     fu96_rrtmg_ssa_asymmetry_qualification_contract_payload as ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract_payload,
 )
+from .ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck import (
+    build_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence as build_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence,
+    build_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate as build_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate,
+    fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload as ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload,
+)
 from .shadow_validation_collection import SCIENCE_BASELINE_ID
 from . import __version__ as PHYSICSCORE_VERSION
 from .viewing_spectral import (
@@ -3802,6 +3807,31 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         ),
     })
 
+    # R5.7.41.3.4.10.28 Ice Optics Phase 2 Step 3O:
+    # Fu96/RRTMG broad-band SSA/g numeric cross-check; exact spectral validation remains blocked.
+    _ice_fu96_rrtmg_numeric_t0 = perf_counter()
+    v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence = build_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence()
+    v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate = build_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate(
+        v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence
+    )
+    ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract = ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload(
+        physicscore_version=PHYSICSCORE_VERSION
+    )
+    _ice_fu96_rrtmg_numeric_state = (
+        str(v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.iloc[0].get("qualification_state", "UNKNOWN"))
+        if not v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate.empty else "UNKNOWN"
+    )
+    performance_rows.append({
+        "stage": "ICE_MICROPHYSICS_FU96_RRTMG_SSA_ASYMMETRY_NUMERIC_CROSSCHECK_AUDIT",
+        "elapsed_seconds": max(0.0, perf_counter() - _ice_fu96_rrtmg_numeric_t0),
+        "cache_status": "STATIC_BROAD_BAND_NUMERIC_CROSSCHECK_EXACT_SPECTRAL_AND_PRODUCTION_BLOCKED",
+        "detail": (
+            f"evidence_rows={len(v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence)};"
+            f"state={_ice_fu96_rrtmg_numeric_state};"
+            "NUMERIC_CROSSCHECK=EXECUTED;EXACT_SPECTRAL_VALIDATION=BLOCKED;TAU=BLOCKED;PRODUCTION=BLOCKED"
+        ),
+    })
+
     # R5.7.5: compact provider-I/O efficiency audit.  This is operational
     # diagnostics only; it does not participate in any physical gate.
     _cams_audit_df = _audit_dataframe_dedup([r for _d in details.values() for r in ((_d.get("cams_native_aerosol_metadata", {}) or {}).get("cams_request_audit", []) or [])]) if details else pd.DataFrame()
@@ -4014,6 +4044,10 @@ def analyze_event(lat: float, lon: float, day: date, event: str, tz_name: str | 
         "v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_gate": v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_gate,
         "ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract": ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract,
         "ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_required": True,
+        "v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence": v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_evidence,
+        "v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate": v1_ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_gate,
+        "ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract": ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract,
+        "ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_required": True,
         "native_cloud_voxel_matrix": native_cloud_voxel_matrix,
         "gas_profile_route_snapshots": gas_profile_route_snapshots,
         "ozone_profile_route_snapshots": gas_profile_route_snapshots[[c for c in ["time","solar_altitude_deg","point_id","distance_km","direction_offset_deg","pressure_hpa","altitude_agl_km","temperature_k","o3_mass_mixing_ratio_kgkg","o3_mole_fraction","o3_number_density_m3","o3_quality"] if c in gas_profile_route_snapshots.columns]].copy() if not gas_profile_route_snapshots.empty else pd.DataFrame(),
