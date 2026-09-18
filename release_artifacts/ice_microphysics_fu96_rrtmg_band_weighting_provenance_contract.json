@@ -33,7 +33,7 @@
     "ad_hoc_extinction_or_scattering_reweighting_outside_qualified_formulas"
   ],
   "mode": "FU96_RRTMG_BAND_WEIGHTING_SEMANTIC_NARROWING_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.1.1",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,

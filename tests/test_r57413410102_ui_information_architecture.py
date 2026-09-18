@@ -4,7 +4,7 @@ import firecloud
 
 
 def test_release_version_matches_current_release():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.1"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.1.1"
 
 
 def test_main_ui_exposes_current_state_without_wall_of_history():
