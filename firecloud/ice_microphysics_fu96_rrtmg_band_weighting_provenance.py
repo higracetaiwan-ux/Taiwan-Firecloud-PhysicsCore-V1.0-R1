@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.2 — Fu96/RRTMG historical averaging-semantics qualification.
+"""Ice Optics Phase 2 Step 3Q.3 — Fu96 historical coalbedo averaging-equation qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +20,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.2"
-STEP3Q_MODE = "FU96_RRTMG_HISTORICAL_AVERAGING_SEMANTICS_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.3"
+STEP3Q_MODE = "FU96_HISTORICAL_COALBEDO_EQUATION_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-18"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -70,6 +70,32 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "FU96_HISTORICAL_COALBEDO_MIXED_LINEAR_LOG_SEMANTIC", "WEIGHTING_SEMANTICS", "PASS_CONFIRMED",
             "Fu-lineage documentation states Fu (1996) used a mix of solar-weighted linear and logarithmic averaging for single-scattering coalbedo depending on absorption strength",
             "HISTORICAL_FU96_SSA_COALBEDO_MUST_NOT_BE_REPLACED_BY_SIMPLE_LINEAR_OR_MODERN_RATIO_FORMULA", CHOU1998_DOI,
+        ),
+
+        _row(
+            "FU96_LINEAGE_LINEAR_COALBEDO_EQUATION", "HISTORICAL_EQUATION_FAMILY", "PASS_QUALIFIED",
+            "alpha_linear = sum(alpha_lambda * S_lambda * dLambda) / sum(S_lambda * dLambda), where alpha=1-SSA",
+            "SOLAR_WEIGHTED_LINEAR_COALBEDO_EQUATION_PINNED", CHOU1998_DOI,
+        ),
+        _row(
+            "FU96_LINEAGE_LOG_COALBEDO_EQUATION", "HISTORICAL_EQUATION_FAMILY", "PASS_QUALIFIED",
+            "ln(alpha_log) = sum(ln(alpha_lambda) * S_lambda * dLambda) / sum(S_lambda * dLambda)",
+            "SOLAR_WEIGHTED_LOG_COALBEDO_EQUATION_PINNED", CHOU1998_DOI,
+        ),
+        _row(
+            "FU96_LINEAGE_MIXED_COALBEDO_EQUATION", "HISTORICAL_EQUATION_FAMILY", "PASS_QUALIFIED",
+            "alpha_eff = h*alpha_linear + (1-h)*alpha_log; h in [0,1]; h near 1 for weak absorption and decreases as absorption strengthens",
+            "LINEAR_LOG_MIXING_EQUATION_FAMILY_PINNED", CHOU1998_DOI,
+        ),
+        _row(
+            "FU96_LINEAGE_H_EMPIRICAL_SELECTION", "HISTORICAL_EQUATION_FAMILY", "PASS_QUALIFIED",
+            "Chou et al. 1998 determines optimal h empirically by trial and error to minimize TOA/surface flux differences against high-resolution calculations",
+            "H_IS_EMPIRICAL_FLUX_CALIBRATION_PARAMETER_NOT_DERIVABLE_FROM_ABSORPTION_STRENGTH_ALONE", CHOU1998_DOI,
+        ),
+        _row(
+            "FU96_RRTMG_BAND24_25_H_VALUES", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_RECOVERED",
+            "No authoritative band-24/band-25 h values or exactly equivalent historical calibration realization tied to archived RRTM/RRTMG Fu96 tables has been recovered",
+            "BAND_SPECIFIC_H_OR_EQUIVALENT_HISTORICAL_GENERATOR_REQUIRED",
         ),
         _row(
             "FU96_HISTORICAL_BAND_SPECIFIC_MIXING_REALIZATION", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_RECOVERED",
@@ -175,10 +201,11 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
     tables = status.get("RRTMG_FU96_FINAL_BAND_TABLES_PINNED") == "PASS_PINNED"
     semantic = status.get("FU96_RRTMG_WEIGHTING_SEMANTICS_CLASS") == "PASS_NARROWED_NOT_EXACT"
     band_limits = status.get("RRTMG_SW_BAND_LIMITS_24_25_PINNED") == "PASS_PINNED"
+    equation_family = all(status.get(k) == "PASS_QUALIFIED" for k in ["FU96_LINEAGE_LINEAR_COALBEDO_EQUATION","FU96_LINEAGE_LOG_COALBEDO_EQUATION","FU96_LINEAGE_MIXED_COALBEDO_EQUATION","FU96_LINEAGE_H_EMPIRICAL_SELECTION"])
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_WEIGHTING_SEMANTIC_CLASS_QUALIFIED_EXACT_HISTORY_UNRESOLVED"
+        else "PASS_FAIL_CLOSED_HISTORICAL_EQUATION_FAMILY_QUALIFIED_BAND_SPECIFIC_H_UNRESOLVED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -188,6 +215,8 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "RRTMG_BAND24_25_LIMITS_PINNED": bool(band_limits),
         "SOLAR_IRRADIANCE_WEIGHTING_SEMANTIC_SUPPORTED": True,
         "FU96_HISTORICAL_MIXED_LINEAR_LOG_COALBEDO_SEMANTIC_PINNED": True,
+        "FU96_HISTORICAL_COALBEDO_EQUATION_FAMILY_QUALIFIED": bool(equation_family),
+        "FU96_HISTORICAL_BAND24_25_H_VALUES_RECOVERED": False,
         "LATER_RRTMG_BAND_INTEGRATION_SEMANTIC_CLASS_QUALIFIED": bool(semantic),
         "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": False,
         "RRTMG_PRE_V4_KURUCZ_RUNTIME_SOLAR_SOURCE_PINNED": True,
@@ -215,7 +244,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_2",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_3",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -238,6 +267,10 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
         "qualified_weighting_semantic_class": {
             "shortwave_weighting_basis": "solar_irradiance",
             "historical_fu96_coalbedo": "absorption_dependent_mix_of_solar_weighted_linear_and_logarithmic_averages",
+            "historical_fu96_alpha_linear": "sum(alpha_lambda*S_lambda*dLambda)/sum(S_lambda*dLambda)",
+            "historical_fu96_alpha_log": "exp(sum(ln(alpha_lambda)*S_lambda*dLambda)/sum(S_lambda*dLambda))",
+            "historical_fu96_h_semantic": "empirical flux-calibration parameter; h near 1 for weak absorption and decreases with stronger absorption",
+            "historical_fu96_band24_25_h_values_recovered": False,
             "later_rrtmg_band_ssa_example": "band_integrated_scattering_divided_by_band_integrated_extinction",
             "later_rrtmg_band_g_example": "scattering_cross_section_weighted_with_solar_spectrum",
             "later_formula_is_historical_fu96_generator": False,
@@ -255,7 +288,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.2 separates historical Fu96 broad-band averaging semantics from later RRTMG-band integration formulas. "
+            "Step 3Q.3 pins the historical Fu-lineage coalbedo averaging equation family and separates historical Fu96 broad-band averaging semantics from later RRTMG-band integration formulas. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."

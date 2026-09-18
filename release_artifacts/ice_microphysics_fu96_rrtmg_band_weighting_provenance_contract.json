@@ -7,7 +7,9 @@
     "BAND_INTEGRATED_OPTICAL_VALIDATION_READY": false,
     "EXACT_FU96_BAND_WEIGHTING_AVAILABLE": false,
     "EXACT_HISTORICAL_SOLAR_SPECTRUM_AND_WEIGHTS_RECOVERED": false,
+    "FU96_HISTORICAL_BAND24_25_H_VALUES_RECOVERED": false,
     "FU96_HISTORICAL_BAND_SPECIFIC_LINEAR_LOG_MIXING_RECOVERED": false,
+    "FU96_HISTORICAL_COALBEDO_EQUATION_FAMILY_QUALIFIED": true,
     "FU96_HISTORICAL_MIXED_LINEAR_LOG_COALBEDO_SEMANTIC_PINNED": true,
     "FU96_PRIMARY_SOURCE_PINNED": true,
     "FULL_SIX_BAND_LIKE_FOR_LIKE_OPTICAL_VALIDATION_PASS": false,
@@ -30,7 +32,7 @@
     "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": false,
     "physics_promotion_allowed": false
   },
-  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_2",
+  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_3",
   "evidence_as_of": "2026-09-18",
   "forbidden_substitutes": [
     "equal_weighting",
@@ -39,25 +41,29 @@
     "ad_hoc_extinction_or_scattering_reweighting",
     "yi2013_formula_substituted_as_historical_fu96_generator"
   ],
-  "mode": "FU96_RRTMG_HISTORICAL_AVERAGING_SEMANTICS_QUALIFICATION_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.2",
+  "mode": "FU96_HISTORICAL_COALBEDO_EQUATION_QUALIFICATION_FAIL_CLOSED",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.3",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,
     "tau_ice_production_allowed": false
   },
-  "qualification_state": "PASS_FAIL_CLOSED_WEIGHTING_SEMANTIC_CLASS_QUALIFIED_EXACT_HISTORY_UNRESOLVED",
+  "qualification_state": "PASS_FAIL_CLOSED_HISTORICAL_EQUATION_FAMILY_QUALIFIED_BAND_SPECIFIC_H_UNRESOLVED",
   "qualified_weighting_semantic_class": {
     "historical_band_specific_linear_log_mixing_recovered": false,
     "historical_exact_solar_spectrum_and_discrete_weights_recovered": false,
+    "historical_fu96_alpha_linear": "sum(alpha_lambda*S_lambda*dLambda)/sum(S_lambda*dLambda)",
+    "historical_fu96_alpha_log": "exp(sum(ln(alpha_lambda)*S_lambda*dLambda)/sum(S_lambda*dLambda))",
+    "historical_fu96_band24_25_h_values_recovered": false,
     "historical_fu96_coalbedo": "absorption_dependent_mix_of_solar_weighted_linear_and_logarithmic_averages",
+    "historical_fu96_h_semantic": "empirical flux-calibration parameter; h near 1 for weak absorption and decreases with stronger absorption",
     "later_formula_is_historical_fu96_generator": false,
     "later_rrtmg_band_g_example": "scattering_cross_section_weighted_with_solar_spectrum",
     "later_rrtmg_band_ssa_example": "band_integrated_scattering_divided_by_band_integrated_extinction",
     "shortwave_weighting_basis": "solar_irradiance"
   },
   "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
-  "scope_note": "Step 3Q.2 separates historical Fu96 broad-band averaging semantics from later RRTMG-band integration formulas. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
+  "scope_note": "Step 3Q.3 pins the historical Fu-lineage coalbedo averaging equation family and separates historical Fu96 broad-band averaging semantics from later RRTMG-band integration formulas. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
   "sources": {
     "aer_rrtm_sw_instructions": "https://github.com/AER-RC/RRTM_SW/blob/master/rrtm_sw_instructions",
     "aer_rrtmg_sw_description": "https://rtweb.aer.com/rrtmg_sw_description.html",
@@ -71,5 +77,5 @@
     "pinned_rrtmg_reference_source_sha": "0ccf597d6aa3d6ed40ec592560e3ed94b653ef32",
     "yi2013_doi": "https://doi.org/10.1175/JAS-D-13-020.1"
   },
-  "step_version": "R5.7.41.3.4.10.30.2"
+  "step_version": "R5.7.41.3.4.10.30.3"
 }
