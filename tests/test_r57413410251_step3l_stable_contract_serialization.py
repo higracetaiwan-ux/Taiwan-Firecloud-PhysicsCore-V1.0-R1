@@ -42,7 +42,7 @@ def test_step3l_contract_sample_serialization_collapses_observed_field_platform_
 def test_step3l_stable_contract_hotfix_release_identity():
     import firecloud
 
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.4"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.4.1"
     assert step3l.STEP3L_VERSION == "R5.7.41.3.4.10.25.1"
     assert step3l.STABLE_EVIDENCE_SIGNIFICANT_DIGITS == 11
     assert step3l.STABLE_CONTRACT_SAMPLE_SIGNIFICANT_DIGITS == 8

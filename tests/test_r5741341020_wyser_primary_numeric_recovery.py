@@ -19,7 +19,7 @@ CONTRACT = "ice_microphysics_wyser_primary_numeric_recovery_contract.json"
 
 
 def test_release_identity_and_frozen_mode():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.4"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.4.1"
     assert STEP3G_VERSION == "R5.7.41.3.4.10.20.1"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
 
