@@ -47,7 +47,7 @@
     "yi2013_formula_substituted_as_historical_fu96_generator"
   ],
   "mode": "FU96_RRTMG_HISTORICAL_H_DOMAIN_CONSTRAINT_QUALIFICATION_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.4",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.4.1.1",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,

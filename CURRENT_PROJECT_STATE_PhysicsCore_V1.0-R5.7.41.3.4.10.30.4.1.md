@@ -1,7 +1,7 @@
 # Taiwan Firecloud PhysicsCore — Current Project State
 
 ## 現行版本
-`1.0.0-R5.7.41.3.4.10.30.4.1`
+`1.0.0-R5.7.41.3.4.10.30.4.1.1`
 
 ## 狀態
 Step 3Q.4 integrity contract matcher hotfix。
