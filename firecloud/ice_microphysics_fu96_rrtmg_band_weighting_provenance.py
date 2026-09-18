@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.5 — RRTM_SW post-averaged archive boundary qualification.
+"""Ice Optics Phase 2 Step 3Q.6 — RRTM/RRTMG public archive availability boundary qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +20,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.5"
-STEP3Q_MODE = "FU96_RRTMG_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.6"
+STEP3Q_MODE = "FU96_RRTMG_PUBLIC_ARCHIVE_AVAILABILITY_BOUNDARY_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -33,6 +33,7 @@ AER_RRTMG_SW_DESCRIPTION = "https://rtweb.aer.com/rrtmg_sw_description.html"
 CAM5_DESCRIPTION = "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
 BAEK2018_DOI = "https://doi.org/10.1029/2018MS001398"
 AER_RRTMG_SW_REPOSITORY = "https://github.com/AER-RC/RRTMG_SW"
+AER_RRTMG_SW_README = "https://github.com/AER-RC/RRTMG_SW/blob/master/README.md"
 AER_RRTM_SW_INSTRUCTIONS = "https://github.com/AER-RC/RRTM_SW/blob/master/rrtm_sw_instructions"
 AER_RRTM_SW_CLDPROP_PINNED = "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac88ae782964cd030cb202a380032d11/src/cldprop.f"
 AER_RRTM_SW_CLDPROP_BLOB_SHA = "8632f7d1940285665b62fdbb30c69861924251da"
@@ -174,6 +175,17 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "AUTHORITATIVE_PREAVERAGING_SOURCE_OR_GENERATOR_REQUIRED", AER_RRTM_SW_CLDPROP_PINNED,
         ),
         _row(
+            "RRTMG_SW_PRE_V5_PUBLIC_RELEASE_AVAILABILITY", "PUBLIC_ARCHIVE_BOUNDARY", "PASS_QUALIFIED",
+            "AER RRTMG_SW README states Version 5.0 is the latest release and releases before Version 5.0 are not publicly available",
+            "PUBLIC_RELEASE_AVAILABILITY_BOUNDARY_PINNED; ABSENCE_OF_PRE_V5_PUBLIC_RELEASES_MUST_NOT_BE_FILLED_BY_INFERENCE", AER_RRTMG_SW_README,
+        ),
+        _row(
+            "PUBLIC_RUNTIME_ARCHIVE_SUFFICIENT_FOR_EXACT_HISTORICAL_GENERATOR", "PUBLIC_ARCHIVE_BOUNDARY", "PASS_FAIL_CLOSED",
+            "false",
+            "POST_AVERAGED_RRTM_SW_RUNTIME_TABLES_PLUS_CURRENT_PUBLIC_RRTMG_SW_RELEASE_DO_NOT_ESTABLISH_THE_HISTORICAL_PREAVERAGING_GENERATOR",
+            f"{AER_RRTM_SW_CLDPROP_PINNED}; {AER_RRTMG_SW_README}",
+        ),
+        _row(
             "FINAL_TABLE_INVERSE_IDENTIFICATION_OF_H_OR_WEIGHTS", "SCOPE_GUARD", "PASS_FORBIDDEN",
             "false",
             "FINAL_EXTICE3_SSAICE3_ASYICE3_TABLES_ARE_OUTPUTS_AND_MUST_NOT_BE_INVERTED_TO_CLAIM_UNIQUE_H_SOLAR_GRID_OR_DISCRETE_WEIGHTS",
@@ -263,10 +275,14 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "RRTM_SW_FU96_POST_AVERAGED_ARCHIVE_PINNED",
         "RRTM_SW_FU96_46_NODE_DGE_RUNTIME_GRID",
     ]) and status.get("RRTM_SW_PREAVERAGING_FU96_GENERATOR_PRESENT_IN_PINNED_ARCHIVE") == "BLOCKED_NOT_PRESENT"
+    public_archive_boundary = (
+        status.get("RRTMG_SW_PRE_V5_PUBLIC_RELEASE_AVAILABILITY") == "PASS_QUALIFIED"
+        and status.get("PUBLIC_RUNTIME_ARCHIVE_SUFFICIENT_FOR_EXACT_HISTORICAL_GENERATOR") == "PASS_FAIL_CLOSED"
+    )
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED_EXACT_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_PUBLIC_ARCHIVE_AVAILABILITY_BOUNDARY_QUALIFIED_EXACT_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -279,6 +295,9 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "FU96_HISTORICAL_COALBEDO_EQUATION_FAMILY_QUALIFIED": bool(equation_family),
         "FU96_HISTORICAL_H_DOMAIN_CONSTRAINTS_QUALIFIED": bool(h_domain_constraints),
         "RRTM_SW_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED": bool(archive_boundary),
+        "RRTMG_SW_PUBLIC_RELEASE_AVAILABILITY_BOUNDARY_QUALIFIED": bool(public_archive_boundary),
+        "RRTMG_SW_PRE_V5_PUBLIC_RELEASES_AVAILABLE": False,
+        "PUBLIC_RUNTIME_ARCHIVE_SUFFICIENT_FOR_EXACT_HISTORICAL_GENERATOR": False,
         "RRTM_SW_PREAVERAGING_GENERATOR_RECOVERED": False,
         "FINAL_TABLE_INVERSE_IDENTIFICATION_ALLOWED": False,
         "RRTMG_BAND25_FULLY_WITHIN_FU_LINEAGE_H1_DOMAIN": bool(status.get("RRTMG_BAND25_H_DOMAIN_CONSTRAINT") == "PASS_QUALIFIED"),
@@ -313,7 +332,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_5",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_6",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -329,6 +348,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtmg_sw_description": AER_RRTMG_SW_DESCRIPTION,
             "cam5_description": CAM5_DESCRIPTION,
             "aer_rrtmg_sw_repository": AER_RRTMG_SW_REPOSITORY,
+            "aer_rrtmg_sw_readme": AER_RRTMG_SW_README,
             "aer_rrtm_sw_instructions": AER_RRTM_SW_INSTRUCTIONS,
             "aer_rrtm_sw_cldprop_pinned": AER_RRTM_SW_CLDPROP_PINNED,
             "aer_rrtm_sw_cldprop_blob_sha": AER_RRTM_SW_CLDPROP_BLOB_SHA,
@@ -353,6 +373,8 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "rrtmg_band25_exact_archived_generator_h_proven": False,
             "rrtm_sw_archive_boundary": "pinned runtime archive contains post-averaged EXTICE3/SSAICE3/ASYICE3/FDLICE3 tables plus interpolation, not the Q. Fu high-resolution pre-averaging sample set or averaging generator",
             "rrtm_sw_preaveraging_generator_recovered": False,
+            "rrtmg_sw_pre_v5_public_releases_available": False,
+            "public_runtime_archive_sufficient_for_exact_historical_generator": False,
             "final_table_inverse_identification_allowed": False,
             "later_rrtmg_band_ssa_example": "band_integrated_scattering_divided_by_band_integrated_extinction",
             "later_rrtmg_band_g_example": "scattering_cross_section_weighted_with_solar_spectrum",
@@ -369,10 +391,11 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "ad_hoc_extinction_or_scattering_reweighting",
             "yi2013_formula_substituted_as_historical_fu96_generator",
             "inverse_identification_of_unique_h_or_weights_from_final_rrtm_tables",
+            "treating_public_release_absence_as_generator_identity_evidence",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.5 pins the AER RRTM_SW archive boundary: the public runtime source preserves post-averaged Fu96 band tables and interpolation logic, but not the historical Q. Fu high-resolution pre-averaging tables or generator. "
+            "Step 3Q.6 pins the public archive availability boundary: AER RRTMG_SW documents that releases before Version 5.0 are not publicly available, while the pinned public RRTM_SW runtime source preserves post-averaged Fu96 band tables and interpolation logic but not the historical Q. Fu high-resolution pre-averaging tables or generator. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."

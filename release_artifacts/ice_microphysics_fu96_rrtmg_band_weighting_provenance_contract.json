@@ -21,6 +21,7 @@
     "LATER_RRTMG_BAND_INTEGRATION_SEMANTIC_CLASS_QUALIFIED": true,
     "PREAVERAGING_SPECTRAL_SAMPLES_RECOVERED": false,
     "PRODUCTION_ICE_OPTICS_READY": false,
+    "PUBLIC_RUNTIME_ARCHIVE_SUFFICIENT_FOR_EXACT_HISTORICAL_GENERATOR": false,
     "RRTMG_BAND24_25_LIMITS_PINNED": true,
     "RRTMG_BAND24_25_SOLAR_IRRADIANCE_TOTALS_PINNED": true,
     "RRTMG_BAND24_CROSSES_FU_LINEAGE_H_DOMAIN_BOUNDARY": true,
@@ -32,6 +33,8 @@
     "RRTMG_FINAL_FU96_BAND_TABLES_PINNED": true,
     "RRTMG_FU96_DGE_LINEAGE_PINNED": true,
     "RRTMG_PRE_V4_KURUCZ_RUNTIME_SOLAR_SOURCE_PINNED": true,
+    "RRTMG_SW_PRE_V5_PUBLIC_RELEASES_AVAILABLE": false,
+    "RRTMG_SW_PUBLIC_RELEASE_AVAILABILITY_BOUNDARY_QUALIFIED": true,
     "RRTM_SW_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED": true,
     "RRTM_SW_PREAVERAGING_GENERATOR_RECOVERED": false,
     "RUNTIME_SOLAR_SOURCE_IDENTITY_WITH_FU96_TABLE_GENERATOR_PROVEN": false,
@@ -40,7 +43,7 @@
     "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": false,
     "physics_promotion_allowed": false
   },
-  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_5",
+  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_6",
   "evidence_as_of": "2026-09-19",
   "forbidden_substitutes": [
     "equal_weighting",
@@ -48,16 +51,17 @@
     "assumed_gpoint_weighting_for_cloud_optics_band_average",
     "ad_hoc_extinction_or_scattering_reweighting",
     "yi2013_formula_substituted_as_historical_fu96_generator",
-    "inverse_identification_of_unique_h_or_weights_from_final_rrtm_tables"
+    "inverse_identification_of_unique_h_or_weights_from_final_rrtm_tables",
+    "treating_public_release_absence_as_generator_identity_evidence"
   ],
-  "mode": "FU96_RRTMG_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFICATION_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.5",
+  "mode": "FU96_RRTMG_PUBLIC_ARCHIVE_AVAILABILITY_BOUNDARY_QUALIFICATION_FAIL_CLOSED",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.6",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,
     "tau_ice_production_allowed": false
   },
-  "qualification_state": "PASS_FAIL_CLOSED_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED_EXACT_GENERATOR_UNRECOVERED",
+  "qualification_state": "PASS_FAIL_CLOSED_PUBLIC_ARCHIVE_AVAILABILITY_BOUNDARY_QUALIFIED_EXACT_GENERATOR_UNRECOVERED",
   "qualified_weighting_semantic_class": {
     "final_table_inverse_identification_allowed": false,
     "fu_lineage_h_domains": {
@@ -74,21 +78,24 @@
     "later_formula_is_historical_fu96_generator": false,
     "later_rrtmg_band_g_example": "scattering_cross_section_weighted_with_solar_spectrum",
     "later_rrtmg_band_ssa_example": "band_integrated_scattering_divided_by_band_integrated_extinction",
+    "public_runtime_archive_sufficient_for_exact_historical_generator": false,
     "rrtm_sw_archive_boundary": "pinned runtime archive contains post-averaged EXTICE3/SSAICE3/ASYICE3/FDLICE3 tables plus interpolation, not the Q. Fu high-resolution pre-averaging sample set or averaging generator",
     "rrtm_sw_preaveraging_generator_recovered": false,
     "rrtmg_band24_domain_constraint": "0.625000-0.778210 um crosses 0.700 um h-domain boundary; no single h may be assigned without historical generator proof",
     "rrtmg_band24_single_h_assignment_allowed": false,
     "rrtmg_band25_domain_constraint": "0.441501-0.625000 um lies entirely inside Fu-lineage h=1 domain; exact archived-generator identity still unproven",
     "rrtmg_band25_exact_archived_generator_h_proven": false,
+    "rrtmg_sw_pre_v5_public_releases_available": false,
     "shortwave_weighting_basis": "solar_irradiance"
   },
   "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
-  "scope_note": "Step 3Q.5 pins the AER RRTM_SW archive boundary: the public runtime source preserves post-averaged Fu96 band tables and interpolation logic, but not the historical Q. Fu high-resolution pre-averaging tables or generator. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
+  "scope_note": "Step 3Q.6 pins the public archive availability boundary: AER RRTMG_SW documents that releases before Version 5.0 are not publicly available, while the pinned public RRTM_SW runtime source preserves post-averaged Fu96 band tables and interpolation logic but not the historical Q. Fu high-resolution pre-averaging tables or generator. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
   "sources": {
     "aer_rrtm_sw_cldprop_blob_sha": "8632f7d1940285665b62fdbb30c69861924251da",
     "aer_rrtm_sw_cldprop_pinned": "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac88ae782964cd030cb202a380032d11/src/cldprop.f",
     "aer_rrtm_sw_instructions": "https://github.com/AER-RC/RRTM_SW/blob/master/rrtm_sw_instructions",
     "aer_rrtmg_sw_description": "https://rtweb.aer.com/rrtmg_sw_description.html",
+    "aer_rrtmg_sw_readme": "https://github.com/AER-RC/RRTMG_SW/blob/master/README.md",
     "aer_rrtmg_sw_repository": "https://github.com/AER-RC/RRTMG_SW",
     "baek2018_doi": "https://doi.org/10.1029/2018MS001398",
     "cam5_description": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf",
@@ -100,5 +107,5 @@
     "pinned_rrtmg_reference_source_sha": "0ccf597d6aa3d6ed40ec592560e3ed94b653ef32",
     "yi2013_doi": "https://doi.org/10.1175/JAS-D-13-020.1"
   },
-  "step_version": "R5.7.41.3.4.10.30.5"
+  "step_version": "R5.7.41.3.4.10.30.6"
 }

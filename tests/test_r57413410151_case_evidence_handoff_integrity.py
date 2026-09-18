@@ -24,7 +24,7 @@ def _manifest(evidence_rows=8, gate_rows=1, contract_bytes=1024):
 
 
 def test_release_version_and_static_step3b_payload_are_nonempty():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.5"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.6"
     evidence = build_gfsv16_scheme_pin_evidence()
     gate = build_gfsv16_scheme_pin_gate(evidence)
     contract = gfsv16_scheme_pin_contract_payload(physicscore_version=firecloud.__version__)
