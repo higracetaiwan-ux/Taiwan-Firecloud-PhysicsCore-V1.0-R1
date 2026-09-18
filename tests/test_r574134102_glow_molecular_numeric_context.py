@@ -50,7 +50,7 @@ def _diag_equal(a,b):
 
 
 def test_version_contract():
-    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.26'
+    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.27'
 
 
 def test_prepared_rayleigh_exact_equivalent():

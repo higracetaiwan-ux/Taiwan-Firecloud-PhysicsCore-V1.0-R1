@@ -158,6 +158,11 @@ from firecloud.ice_microphysics_yang_matched_geometry_extinction_validation impo
     build_yang_matched_geometry_extinction_validation_gate,
     yang_matched_geometry_extinction_validation_contract_payload,
 )
+from firecloud.ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification import (
+    build_fu96_rrtmg_ssa_asymmetry_qualification_evidence,
+    build_fu96_rrtmg_ssa_asymmetry_qualification_gate,
+    fu96_rrtmg_ssa_asymmetry_qualification_contract_payload,
+)
 from firecloud.hitran_runtime import (
     COEFFICIENT_FILENAME as HITRAN_LUT_FILENAME,
     MANIFEST_FILENAME as HITRAN_MANIFEST_FILENAME,
@@ -1250,6 +1255,7 @@ with st.expander("本版更新與版本歷史", expanded=False):
     st.markdown(
         """
 **目前版本**
+- **R5.7.41.3.4.10.27**：Step 3N Fu96/RRTMG Independent Bulk-band SSA + Asymmetry Qualification。固定 Fu (1996) solar cirrus SSA/g provenance 與 RRTMG `ssaice3`/`asyice3` 外部實作來源，明確映射六波段到 RRTMG visible broad bands（550/575/600→band 25；650/700/750→band 24），但禁止將 broad-band coefficient 偽裝為六個單色 authoritative values。本版只完成 independent bulk-band reference provenance/capability qualification；exact six-band SSA/g numeric validation、full like-for-like optical validation、`tau_ice`、Production Ice Optics 與 physics promotion 全部維持 fail-close。
 - **R5.7.41.3.4.10.26**：Step 3M Yang/Bi Matched-Geometry Extinction Validation。以與 Yang/Bi `single_column` 完全相同的 Dmax/投影面積幾何建立 Fu96 `Cext≈2A` reference chain；reference 不使用 Yang/Bi Cext/Qext。10–1000 µm、六波段、三 roughness 共 1,962 source-row comparisons，最小 minimum-dimension size parameter >15；同一 Wyser population 的 18-case bulk matrix 完成 matched-geometry difference characterization。此版只解鎖 extinction-only diagnostic reference；independent SSA/g、full optical validation、runtime habit/roughness truth、`tau_ice`、Production Ice Optics 與 Formation/Viewing/Twilight Glow 全部維持 fail-close。
 - **R5.7.41.3.4.10.25.1**：Step 3L.1 Stable Contract Sample Serialization Hotfix。修正 `.10.25` TWS091 FIELD CASE 中 Step 3L contract 的跨平台浮點尾數 drift；新增只作用於 `sample_roughness_bulk_ensemble` 的 8 significant digits canonicalization。原 evidence/source-row 11-digit serialization 與所有 full-double scientific calculations 不變；runtime habit/roughness default、`tau_ice`、Production Ice Optics、Formation/Viewing/Twilight Glow 全部維持 fail-close。`.10.25` 因 contract reproducibility blocker 不列 FIELD PASS；正式 FIELD baseline 仍為 `.10.24.1`。
 - **R5.7.41.3.4.10.25**：Step 3L Yang/Bi Habit + Roughness Qualification。正式分離「model-family habit bridge」與「runtime habit inference」：Wyser solid-column lineage 可對應 Yang/Bi `single_column` family，但不代表 exact geometry equivalence，也不代表 GFS 真實 habit。TAMU V2 的 `Rough000/Rough003/Rough050` 三態以 uncertainty ensemble 處理，不選 hidden roughness default；六波段 source-row 與 single-column bulk sensitivity 均量化保存。`tau_ice`、runtime habit/roughness defaults、production promotion 全部維持 fail-close；Frozen Science 不變。
@@ -2696,6 +2702,13 @@ if run or st.session_state.analysis_result is not None:
         _case_yang_matched_geometry_extinction_validation_contract = yang_matched_geometry_extinction_validation_contract_payload(
             physicscore_version=__version__
         )
+        _case_fu96_rrtmg_ssa_asymmetry_qualification_evidence = build_fu96_rrtmg_ssa_asymmetry_qualification_evidence()
+        _case_fu96_rrtmg_ssa_asymmetry_qualification_gate = build_fu96_rrtmg_ssa_asymmetry_qualification_gate(
+            _case_fu96_rrtmg_ssa_asymmetry_qualification_evidence
+        )
+        _case_fu96_rrtmg_ssa_asymmetry_qualification_contract = fu96_rrtmg_ssa_asymmetry_qualification_contract_payload(
+            physicscore_version=__version__
+        )
         _collection_case_manifest = build_shadow_validation_case_manifest(archive_req, result, program_version=__version__)
         _collection_cohort_summary = build_shadow_validation_cohort_summary(archive_req, result, program_version=__version__)
         _collection_ground_truth = build_shadow_validation_ground_truth_template(_collection_case_manifest)
@@ -2794,6 +2807,8 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_yang_habit_roughness_qualification_gate.csv", _case_yang_habit_roughness_qualification_gate),
             ("ice_microphysics_yang_matched_geometry_extinction_validation_evidence.csv", _case_yang_matched_geometry_extinction_validation_evidence),
             ("ice_microphysics_yang_matched_geometry_extinction_validation_gate.csv", _case_yang_matched_geometry_extinction_validation_gate),
+            ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_evidence.csv", _case_fu96_rrtmg_ssa_asymmetry_qualification_evidence),
+            ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_gate.csv", _case_fu96_rrtmg_ssa_asymmetry_qualification_gate),
             ("v1_observer_nearfield_cloud_environment.csv", result.get("v1_observer_nearfield_cloud_environment", pd.DataFrame())),
             ("v1_observer_nearfield_cloud_environment_summary.csv", result.get("v1_observer_nearfield_cloud_environment_summary", pd.DataFrame())),
             ("v1_observer_environment_timeline.csv", result.get("v1_observer_environment_timeline", pd.DataFrame())),
@@ -2890,6 +2905,7 @@ if run or st.session_state.analysis_result is not None:
             ("ice_microphysics_fu96_independent_bulk_validation_contract.json", _case_fu96_independent_bulk_validation_contract),
             ("ice_microphysics_yang_habit_roughness_qualification_contract.json", _case_yang_habit_roughness_qualification_contract),
             ("ice_microphysics_yang_matched_geometry_extinction_validation_contract.json", _case_yang_matched_geometry_extinction_validation_contract),
+            ("ice_microphysics_fu96_rrtmg_ssa_asymmetry_qualification_contract.json", _case_fu96_rrtmg_ssa_asymmetry_qualification_contract),
             ("windy_firecloud_ice_optics_summary_v1.json", result.get("windy_firecloud_ice_optics_summary_v1", {})),
             ("analysis_job_state.json", _load_analysis_job_state()),
             ("cams_worker_checkpoint.json", _load_cams_worker_checkpoint()),

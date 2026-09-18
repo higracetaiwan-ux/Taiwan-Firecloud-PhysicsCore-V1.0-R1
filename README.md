@@ -1,3 +1,5 @@
+# Current development release: R5.7.41.3.4.10.27 — Step 3N Fu96/RRTMG Independent Bulk-band SSA + Asymmetry Qualification
+
 > Current release: **V1.0-R5.7.41.3.4.10.26** — Step 3M Yang/Bi Matched-Geometry Extinction Validation; science baseline remains frozen at `R5.7.41.2_SHADOW_COT_AB_FROZEN`.
 
 # Taiwan Firecloud PhysicsCore V1.0-R5.7.41.3.4.10.26

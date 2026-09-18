@@ -1,0 +1,43 @@
+{
+  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_SSA_ASYMMETRY_QUALIFICATION_V1",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.27",
+  "step3n_version": "R5.7.41.3.4.10.27",
+  "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
+  "mode": "FU96_RRTMG_BULK_BAND_SSA_ASYMMETRY_QUALIFICATION_DIAGNOSTIC_FAIL_CLOSED",
+  "evidence_as_of": "2026-09-18",
+  "primary_reference": "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2",
+  "independent_reference_implementation": "https://github.com/geoschem/geos-chem/blob/a4551f9442183bb572b23e9c2d362e2d34420d3a/GeosRad/rrtmg_sw_init.F90",
+  "independent_reference_source_sha": "0ccf597d6aa3d6ed40ec592560e3ed94b653ef32",
+  "rrtmg_visible_band_wavenumber_cm1": {
+    "24": [
+      12850.0,
+      16000.0
+    ],
+    "25": [
+      16000.0,
+      22650.0
+    ]
+  },
+  "six_band_rrtmg_broad_band_map": {
+    "550": 25,
+    "575": 25,
+    "600": 25,
+    "650": 24,
+    "700": 24,
+    "750": 24
+  },
+  "broad_band_values_must_not_be_relabelled_monochromatic": true,
+  "independent_bulk_band_ssa_reference_available": true,
+  "independent_bulk_band_asymmetry_reference_available": true,
+  "independent_ssa_validation_pass": false,
+  "independent_asymmetry_validation_pass": false,
+  "full_six_band_like_for_like_optical_validation_pass": false,
+  "tau_ice_production_allowed": false,
+  "production_ice_optics_ready": false,
+  "physics_promotion_allowed": false,
+  "formation_viewing_twilight_glow_frozen": true,
+  "runtime_habit_inference_allowed": false,
+  "runtime_roughness_inference_allowed": false,
+  "qualification_state": "INDEPENDENT_BULK_BAND_SSA_G_REFERENCE_PINNED_EXACT_SIX_BAND_VALIDATION_BLOCKED",
+  "qualification_blockers": "RRTMG_REFERENCE_IS_BROAD_BAND_NOT_MONOCHROMATIC|INDEPENDENT_SSA_NUMERIC_VALIDATION_PENDING|INDEPENDENT_ASYMMETRY_NUMERIC_VALIDATION_PENDING|EXACT_SIX_BAND_LIKE_FOR_LIKE_REFERENCE_PENDING"
+}

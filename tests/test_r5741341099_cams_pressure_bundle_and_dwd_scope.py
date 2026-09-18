@@ -28,7 +28,7 @@ def _bundle_frame():
 
 
 def test_1099_version():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.26"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.27"
 
 
 def test_pressure_level_bundle_is_exact_union_of_legacy_requests():
