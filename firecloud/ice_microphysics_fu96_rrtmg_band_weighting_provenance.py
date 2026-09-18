@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.3 — Fu96 historical coalbedo averaging-equation qualification.
+"""Ice Optics Phase 2 Step 3Q.4 — Fu96/RRTMG historical h-domain constraint qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,14 +20,15 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.3"
-STEP3Q_MODE = "FU96_HISTORICAL_COALBEDO_EQUATION_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.4"
+STEP3Q_MODE = "FU96_RRTMG_HISTORICAL_H_DOMAIN_CONSTRAINT_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-18"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
 FU2007_DOI = "https://doi.org/10.1175/2007JAS2289.1"
 YI2013_DOI = "https://doi.org/10.1175/JAS-D-13-020.1"
 CHOU1998_DOI = "https://doi.org/10.1175/1520-0442(1998)011<0202:PFCOAS>2.0.CO;2"
+CHOU2002_DOI = "https://doi.org/10.1029/2002JD002061"
 AER_RRTMG_SW_DESCRIPTION = "https://rtweb.aer.com/rrtmg_sw_description.html"
 CAM5_DESCRIPTION = "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
 BAEK2018_DOI = "https://doi.org/10.1029/2018MS001398"
@@ -93,9 +94,36 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "H_IS_EMPIRICAL_FLUX_CALIBRATION_PARAMETER_NOT_DERIVABLE_FROM_ABSORPTION_STRENGTH_ALONE", CHOU1998_DOI,
         ),
         _row(
+            "FU96_LINEAGE_H_DOMAIN_VALUES_CHOU1998", "H_DOMAIN_CONSTRAINT", "PASS_QUALIFIED",
+            "For ice clouds Chou et al. 1998 Table 1 gives h=1 for 0.18-0.70 um and h=2/3 for 0.70-1.22 um",
+            "FU_LINEAGE_H_DOMAIN_VALUES_PINNED_AS_CONSTRAINT_NOT_RRTM_GENERATOR", CHOU1998_DOI,
+        ),
+        _row(
+            "FU96_LINEAGE_H_DOMAIN_VALUES_CHOU2002", "H_DOMAIN_CONSTRAINT", "PASS_QUALIFIED",
+            "Chou et al. 2002 explicitly gives h=1 for bands 1-8 (0.175-0.700 um) and h=2/3 for band 9 (0.700-1.220 um)",
+            "FU_LINEAGE_H_DOMAIN_VALUES_INDEPENDENTLY_RESTATED", CHOU2002_DOI,
+        ),
+        _row(
+            "RRTMG_BAND25_H_DOMAIN_CONSTRAINT", "H_DOMAIN_CONSTRAINT", "PASS_QUALIFIED",
+            "RRTMG band 25 is 16000-22650 cm-1 = 0.441501-0.625000 um, entirely inside the Fu-lineage weak-absorption h=1 domain below 0.700 um",
+            "BAND25_H1_DOMAIN_CONSTRAINT_QUALIFIED_BUT_ARCHIVED_RRTMG_GENERATOR_IDENTITY_NOT_PROVEN",
+            f"{AER_RRTMG_SW_REPOSITORY}; {CHOU1998_DOI}; {CHOU2002_DOI}",
+        ),
+        _row(
+            "RRTMG_BAND24_H_DOMAIN_BOUNDARY_CROSSING", "H_DOMAIN_CONSTRAINT", "PASS_QUALIFIED",
+            "RRTMG band 24 is 12850-16000 cm-1 = 0.625000-0.778210 um and crosses the 0.700 um Fu-lineage h-domain boundary: 0.625-0.700 lies in h=1 domain while 0.700-0.778210 lies in h=2/3 domain",
+            "BAND24_CANNOT_BE_ASSIGNED_ONE_H_FROM_CHOU_DOMAIN_VALUES_WITHOUT_HISTORICAL_RRTM_GENERATOR_RULE",
+            f"{AER_RRTMG_SW_REPOSITORY}; {CHOU1998_DOI}; {CHOU2002_DOI}",
+        ),
+        _row(
+            "RRTMG_BAND25_EXACT_H_FOR_ARCHIVED_TABLE", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_PROVEN",
+            "Fu-lineage domain evidence constrains all band-25 wavelengths to h=1, but no source ties that Chou/Fu-lineage h realization byte-for-byte to the archived RRTM/RRTMG Fu96 band-25 table generator",
+            "ARCHIVED_RRTM_GENERATOR_IDENTITY_OR_NUMERIC_REPRODUCTION_REQUIRED_BEFORE_EXACT_H_CLAIM",
+        ),
+        _row(
             "FU96_RRTMG_BAND24_25_H_VALUES", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_RECOVERED",
-            "No authoritative band-24/band-25 h values or exactly equivalent historical calibration realization tied to archived RRTM/RRTMG Fu96 tables has been recovered",
-            "BAND_SPECIFIC_H_OR_EQUIVALENT_HISTORICAL_GENERATOR_REQUIRED",
+            "Fu-lineage h domains are now constrained; however no authoritative RRTM/RRTMG-specific band-24 historical mixing realization, nor a fully provenance-linked band-25 generator, has been recovered",
+            "BAND24_HISTORICAL_MIXING_OR_EQUIVALENT_GENERATOR_AND_BAND25_GENERATOR_IDENTITY_REQUIRED",
         ),
         _row(
             "FU96_HISTORICAL_BAND_SPECIFIC_MIXING_REALIZATION", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_RECOVERED",
@@ -202,10 +230,16 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
     semantic = status.get("FU96_RRTMG_WEIGHTING_SEMANTICS_CLASS") == "PASS_NARROWED_NOT_EXACT"
     band_limits = status.get("RRTMG_SW_BAND_LIMITS_24_25_PINNED") == "PASS_PINNED"
     equation_family = all(status.get(k) == "PASS_QUALIFIED" for k in ["FU96_LINEAGE_LINEAR_COALBEDO_EQUATION","FU96_LINEAGE_LOG_COALBEDO_EQUATION","FU96_LINEAGE_MIXED_COALBEDO_EQUATION","FU96_LINEAGE_H_EMPIRICAL_SELECTION"])
+    h_domain_constraints = all(status.get(k) == "PASS_QUALIFIED" for k in [
+        "FU96_LINEAGE_H_DOMAIN_VALUES_CHOU1998",
+        "FU96_LINEAGE_H_DOMAIN_VALUES_CHOU2002",
+        "RRTMG_BAND25_H_DOMAIN_CONSTRAINT",
+        "RRTMG_BAND24_H_DOMAIN_BOUNDARY_CROSSING",
+    ])
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_HISTORICAL_EQUATION_FAMILY_QUALIFIED_BAND_SPECIFIC_H_UNRESOLVED"
+        else "PASS_FAIL_CLOSED_H_DOMAIN_CONSTRAINTS_QUALIFIED_RRTMG_EXACT_H_UNRESOLVED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -216,6 +250,11 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "SOLAR_IRRADIANCE_WEIGHTING_SEMANTIC_SUPPORTED": True,
         "FU96_HISTORICAL_MIXED_LINEAR_LOG_COALBEDO_SEMANTIC_PINNED": True,
         "FU96_HISTORICAL_COALBEDO_EQUATION_FAMILY_QUALIFIED": bool(equation_family),
+        "FU96_HISTORICAL_H_DOMAIN_CONSTRAINTS_QUALIFIED": bool(h_domain_constraints),
+        "RRTMG_BAND25_FULLY_WITHIN_FU_LINEAGE_H1_DOMAIN": bool(status.get("RRTMG_BAND25_H_DOMAIN_CONSTRAINT") == "PASS_QUALIFIED"),
+        "RRTMG_BAND24_CROSSES_FU_LINEAGE_H_DOMAIN_BOUNDARY": bool(status.get("RRTMG_BAND24_H_DOMAIN_BOUNDARY_CROSSING") == "PASS_QUALIFIED"),
+        "RRTMG_BAND24_SINGLE_H_ASSIGNMENT_JUSTIFIED": False,
+        "RRTMG_BAND25_EXACT_ARCHIVED_GENERATOR_H_PROVEN": False,
         "FU96_HISTORICAL_BAND24_25_H_VALUES_RECOVERED": False,
         "LATER_RRTMG_BAND_INTEGRATION_SEMANTIC_CLASS_QUALIFIED": bool(semantic),
         "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": False,
@@ -244,7 +283,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_3",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_4",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -255,6 +294,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "fu2007_doi": FU2007_DOI,
             "yi2013_doi": YI2013_DOI,
             "chou1998_doi": CHOU1998_DOI,
+            "chou2002_doi": CHOU2002_DOI,
             "baek2018_doi": BAEK2018_DOI,
             "aer_rrtmg_sw_description": AER_RRTMG_SW_DESCRIPTION,
             "cam5_description": CAM5_DESCRIPTION,
@@ -271,6 +311,14 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "historical_fu96_alpha_log": "exp(sum(ln(alpha_lambda)*S_lambda*dLambda)/sum(S_lambda*dLambda))",
             "historical_fu96_h_semantic": "empirical flux-calibration parameter; h near 1 for weak absorption and decreases with stronger absorption",
             "historical_fu96_band24_25_h_values_recovered": False,
+            "fu_lineage_h_domains": {
+                "0.175_to_0.700_um": 1.0,
+                "0.700_to_1.220_um": "2/3",
+            },
+            "rrtmg_band25_domain_constraint": "0.441501-0.625000 um lies entirely inside Fu-lineage h=1 domain; exact archived-generator identity still unproven",
+            "rrtmg_band24_domain_constraint": "0.625000-0.778210 um crosses 0.700 um h-domain boundary; no single h may be assigned without historical generator proof",
+            "rrtmg_band24_single_h_assignment_allowed": False,
+            "rrtmg_band25_exact_archived_generator_h_proven": False,
             "later_rrtmg_band_ssa_example": "band_integrated_scattering_divided_by_band_integrated_extinction",
             "later_rrtmg_band_g_example": "scattering_cross_section_weighted_with_solar_spectrum",
             "later_formula_is_historical_fu96_generator": False,
@@ -288,7 +336,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.3 pins the historical Fu-lineage coalbedo averaging equation family and separates historical Fu96 broad-band averaging semantics from later RRTMG-band integration formulas. "
+            "Step 3Q.4 pins Fu-lineage h-domain constraints onto the RRTMG band-24/25 wavelength domains while preserving the distinction between lineage constraints and the unrecovered archived RRTM/RRTMG generator. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."

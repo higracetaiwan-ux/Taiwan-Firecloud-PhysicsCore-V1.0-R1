@@ -2004,7 +2004,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
             and _b("PRODUCTION_ICE_OPTICS_READY", False)
             and _b("physics_promotion_allowed", False)
-            and _state == "PASS_FAIL_CLOSED_HISTORICAL_EQUATION_FAMILY_QUALIFIED_BAND_SPECIFIC_H_UNRESOLVED"
+            and _state == "PASS_FAIL_CLOSED_H_DOMAIN_CONSTRAINTS_QUALIFIED_RRTMG_EXACT_H_UNRESOLVED"
         )
         add(
             "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_FAIL_CLOSED",
