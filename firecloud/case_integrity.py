@@ -1976,7 +1976,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         _guards = _c.get("production_guards", {}) if isinstance(_c, Mapping) else {}
         _step3q_contract_ok = bool(
             isinstance(_c, Mapping)
-            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_1"
+            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_2"
             and _c.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
             and _caps.get("EXACT_FU96_BAND_WEIGHTING_AVAILABLE") is False
             and _caps.get("BAND_INTEGRATED_OPTICAL_VALIDATION_READY") is False

@@ -11,7 +11,7 @@ def test_step3q1_qualifies_semantic_class_but_keeps_exact_history_fail_closed():
     assert ev.loc["FU96_LINEAGE_SOLAR_IRRADIANCE_WEIGHTING_SEMANTIC", "status"] == "PASS_CONFIRMED"
     assert ev.loc["RRTMG_SW_BAND_INTEGRATION_FORMULA_SEMANTIC", "status"] == "PASS_QUALIFIED"
     assert bool(gate["SOLAR_IRRADIANCE_WEIGHTING_SEMANTIC_SUPPORTED"])
-    assert bool(gate["RRTMG_BAND_INTEGRATION_SEMANTIC_CLASS_QUALIFIED"])
+    assert bool(gate["LATER_RRTMG_BAND_INTEGRATION_SEMANTIC_CLASS_QUALIFIED"])
     assert bool(gate["RRTMG_BAND24_25_LIMITS_PINNED"])
     assert not bool(gate["PREAVERAGING_SPECTRAL_SAMPLES_RECOVERED"])
     assert not bool(gate["EXACT_HISTORICAL_SOLAR_SPECTRUM_AND_WEIGHTS_RECOVERED"])
@@ -30,17 +30,17 @@ def test_step3q1_contract_records_qualified_formulas_without_promoting_exact_wei
     )
     payload = fu96_rrtmg_band_weighting_provenance_contract_payload()
     sem = payload["qualified_weighting_semantic_class"]
-    assert payload["step_version"] == "R5.7.41.3.4.10.30.1"
-    assert sem["shortwave_spectral_weighting"] == "solar_spectrum_S_lambda"
-    assert sem["single_scattering_albedo"] == "band_integrated_scattering_divided_by_band_integrated_extinction"
-    assert sem["asymmetry_factor"] == "scattering_cross_section_weighted_with_solar_spectrum"
+    assert payload["step_version"] == "R5.7.41.3.4.10.30.2"
+    assert sem["shortwave_weighting_basis"] == "solar_irradiance"
+    assert sem["historical_fu96_coalbedo"] == "absorption_dependent_mix_of_solar_weighted_linear_and_logarithmic_averages"
+    assert sem["later_rrtmg_band_g_example"] == "scattering_cross_section_weighted_with_solar_spectrum"
     assert sem["historical_exact_solar_spectrum_and_discrete_weights_recovered"] is False
     assert payload["capabilities"]["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"] is False
     assert payload["production_guards"]["production_ice_optics_ready"] is False
     a = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(payload)
     b = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(dict(reversed(list(payload.items()))))
     assert a == b
-    assert json.loads(a.decode("utf-8"))["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_1"
+    assert json.loads(a.decode("utf-8"))["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_2"
 
 
 def test_step3q1_forbids_only_unproven_or_ad_hoc_substitutes():

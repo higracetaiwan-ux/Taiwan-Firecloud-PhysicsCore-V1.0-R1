@@ -1,13 +1,17 @@
-"""Ice Optics Phase 2 Step 3Q.1 — Fu96/RRTMG band-weighting semantic narrowing.
+"""Ice Optics Phase 2 Step 3Q.2 — Fu96/RRTMG historical averaging-semantics qualification.
 
-This step refines Step 3Q without promoting exact historical weighting.  Peer-reviewed
-Fu-lineage and RRTMG-band integrations establish the physically appropriate semantic
-class for shortwave band averaging: solar-spectrum weighting, with SSA derived from
-band-integrated scattering/extinction and asymmetry factor scattering-weighted.
+This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
+(a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
+semantics.  Fu-lineage literature states that Fu (1996) used solar-weighted broadband
+averaging with a mix of linear and logarithmic co-albedo averages depending on absorption
+strength.  Later RRTMG-band ice-optics work provides a solar-spectrum integration formula,
+but that later formula is not treated as proof of how the archived default Fu96 tables were
+historically generated.
 
-The historical Fu96 -> RRTM/RRTMG default-table transformation still remains fail-closed
-unless its version-pinned pre-averaging samples, exact solar spectrum / discrete weights,
-and reproduction of the archived band-24/25 tables are recovered.
+The historical Fu96 -> RRTM/RRTMG default-table transformation remains fail-closed unless
+its version-pinned pre-averaging samples, band-specific Fu96 averaging realization, exact
+solar spectrum / discrete weights, and reproduction of the archived band-24/25 tables are
+recovered.
 """
 from __future__ import annotations
 from typing import Any
@@ -16,13 +20,16 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.1"
-STEP3Q_MODE = "FU96_RRTMG_BAND_WEIGHTING_SEMANTIC_NARROWING_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.2"
+STEP3Q_MODE = "FU96_RRTMG_HISTORICAL_AVERAGING_SEMANTICS_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-18"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
 FU2007_DOI = "https://doi.org/10.1175/2007JAS2289.1"
 YI2013_DOI = "https://doi.org/10.1175/JAS-D-13-020.1"
+CHOU1998_DOI = "https://doi.org/10.1175/1520-0442(1998)011<0202:PFCOAS>2.0.CO;2"
+AER_RRTMG_SW_DESCRIPTION = "https://rtweb.aer.com/rrtmg_sw_description.html"
+CAM5_DESCRIPTION = "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
 BAEK2018_DOI = "https://doi.org/10.1029/2018MS001398"
 AER_RRTMG_SW_REPOSITORY = "https://github.com/AER-RC/RRTMG_SW"
 AER_RRTM_SW_INSTRUCTIONS = "https://github.com/AER-RC/RRTM_SW/blob/master/rrtm_sw_instructions"
@@ -60,14 +67,24 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "Primary source establishes materiality but not the later historical RRTM_SW discrete weight vector.",
         ),
         _row(
+            "FU96_HISTORICAL_COALBEDO_MIXED_LINEAR_LOG_SEMANTIC", "WEIGHTING_SEMANTICS", "PASS_CONFIRMED",
+            "Fu-lineage documentation states Fu (1996) used a mix of solar-weighted linear and logarithmic averaging for single-scattering coalbedo depending on absorption strength",
+            "HISTORICAL_FU96_SSA_COALBEDO_MUST_NOT_BE_REPLACED_BY_SIMPLE_LINEAR_OR_MODERN_RATIO_FORMULA", CHOU1998_DOI,
+        ),
+        _row(
+            "FU96_HISTORICAL_BAND_SPECIFIC_MIXING_REALIZATION", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_RECOVERED",
+            "The exact band-specific linear/log mixing realization used for the archived RRTM/RRTMG Fu96 tables has not been recovered",
+            "BAND_SPECIFIC_FU96_LINEAR_LOG_MIXING_RULE_OR_EQUIVALENT_GENERATOR_REQUIRED",
+        ),
+        _row(
             "FU96_LINEAGE_SOLAR_IRRADIANCE_WEIGHTING_SEMANTIC", "WEIGHTING_SEMANTICS", "PASS_CONFIRMED",
             "Fu 2007 states that calculations following Fu 1996 divide the solar spectrum into Fu96 bands and weight data with solar irradiance to obtain band averages",
             "SOLAR_IRRADIANCE_WEIGHTING_SEMANTIC_CLASS_SUPPORTED", FU2007_DOI,
         ),
         _row(
             "RRTMG_SW_BAND_INTEGRATION_FORMULA_SEMANTIC", "WEIGHTING_SEMANTICS", "PASS_QUALIFIED",
-            "Yi 2013 RRTMG-band ice optics integrates SW properties over wavelength with solar spectrum S(lambda); SSA is derived from integrated scattering/extinction and g is scattering-weighted",
-            "RRTMG_COMPATIBLE_SW_BAND_INTEGRATION_SEMANTIC_CLASS_QUALIFIED", YI2013_DOI,
+            "Yi 2013 later RRTMG-band ice optics integrates SW properties over wavelength with solar spectrum S(lambda); SSA is derived from integrated scattering/extinction and g is scattering-weighted",
+            "LATER_RRTMG_BAND_INTEGRATION_SEMANTIC_QUALIFIED_BUT_NOT_HISTORICAL_FU96_DEFAULT_TABLE_PROVENANCE", YI2013_DOI,
         ),
         _row(
             "RRTMG_SW_BAND_LIMITS_24_25_PINNED", "SPECTRAL_DOMAIN", "PASS_PINNED",
@@ -91,6 +108,21 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "The final tables and semantic class are known; the exact historical transformation remains unrecovered.",
         ),
         _row(
+            "RRTMG_PRE_V4_RUNTIME_SOLAR_SOURCE_KURUCZ", "HISTORICAL_SOLAR_SOURCE_CONTEXT", "PASS_PINNED_RUNTIME_CONTEXT",
+            "RRTMG_SW documentation states versions prior to v4.0 used the Kurucz solar source with total solar irradiance 1368.22 W m-2",
+            "RUNTIME_SOLAR_SOURCE_CONTEXT_PINNED_BUT_NOT_EQUATED_TO_CLOUD_TABLE_GENERATOR", AER_RRTMG_SW_DESCRIPTION,
+        ),
+        _row(
+            "RRTMG_PRE_V4_BAND24_25_SOLAR_IRRADIANCE_TOTALS", "HISTORICAL_SOLAR_SOURCE_CONTEXT", "PASS_PINNED_BAND_TOTALS",
+            "Documented RRTMG_SW band-integrated solar irradiance: band 24 (0.625-0.778 um) about 218.19 W m-2; band 25 (0.442-0.625 um) about 347.20 W m-2",
+            "BAND_TOTALS_ARE_CONTEXT_ONLY_AND_DO_NOT_DEFINE_WITHIN_BAND_DISCRETE_WEIGHTS", CAM5_DESCRIPTION,
+        ),
+        _row(
+            "RRTMG_RUNTIME_SOLAR_SOURCE_EQUALS_FU96_TABLE_GENERATION_SOURCE", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_PROVEN",
+            "No authoritative source recovered that proves the runtime Kurucz solar spectrum realization is exactly the spectrum/grid/weights used when Q. Fu high-resolution tables were averaged into the archived default RRTM_SW cloud tables",
+            "EXACT_GENERATOR_SOLAR_SOURCE_IDENTITY_MUST_BE_PROVEN_BEFORE_REUSE",
+        ),
+        _row(
             "FU96_RRTMG_PREAVERAGING_SPECTRAL_SAMPLE_SET", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_RECOVERED",
             "No version-pinned authoritative pre-averaging spectral sample set tied to the archived default RRTMG band-24/25 Fu96 tables has been recovered",
             "EXACT_PREAVERAGING_SPECTRAL_SAMPLES_REQUIRED",
@@ -102,8 +134,8 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
         ),
         _row(
             "FU96_RRTMG_WEIGHTING_SEMANTICS_CLASS", "EXACT_WEIGHTING_PREREQUISITE", "PASS_NARROWED_NOT_EXACT",
-            "Qualified class: SW solar-spectrum weighting; SSA from integrated scattering/extinction; g scattering-weighted. Historical exact spectrum/sample realization remains unresolved",
-            "SEMANTIC_CLASS_QUALIFIED_BUT_HISTORICAL_EXACT_REALIZATION_STILL_REQUIRED",
+            "Qualified constraints: solar irradiance is a weighting basis; historical Fu96 coalbedo used absorption-dependent linear/log averaging; later RRTMG-band schemes may use integrated scattering/extinction SSA and scattering-weighted g. These are not interchangeable provenance claims",
+            "HISTORICAL_FU96_AND_LATER_RRTMG_SEMANTICS_SEPARATED; EXACT_HISTORICAL_REALIZATION_STILL_REQUIRED",
         ),
         _row(
             "FU96_RRTMG_BAND24_EXACT_REPRODUCTION", "NUMERIC_REPRODUCTION", "BLOCKED_NO_EXACT_WEIGHT_VECTOR",
@@ -116,7 +148,8 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
         _row("ARBITRARY_EQUAL_WEIGHT_SUBSTITUTE", "SCOPE_GUARD", "PASS_FORBIDDEN", "false", "MUST_NOT_SUBSTITUTE_FOR_EXACT_FU96_RRTMG_WEIGHTING"),
         _row("UNVERSIONED_OR_ASSUMED_SOLAR_SPECTRUM_WEIGHTS", "SCOPE_GUARD", "PASS_FORBIDDEN", "false", "SOLAR_WEIGHTING_CLASS_IS_SUPPORTED_BUT_EXACT_HISTORICAL_SPECTRUM_AND_WEIGHTS_MUST_BE_PINNED"),
         _row("GPOINT_WEIGHT_SUBSTITUTE", "SCOPE_GUARD", "PASS_FORBIDDEN", "false", "MUST_NOT_BE_ASSUMED_AS_THE_CLOUD_OPTICS_BAND_AVERAGING_RULE"),
-        _row("AD_HOC_EXTINCTION_OR_SCATTERING_WEIGHT_SUBSTITUTE", "SCOPE_GUARD", "PASS_FORBIDDEN", "false", "ONLY_THE_QUALIFIED_SSA_AND_G_FORMULAS_MAY_BE_USED; NO_AD_HOC_REWEIGHTING"),
+        _row("AD_HOC_EXTINCTION_OR_SCATTERING_WEIGHT_SUBSTITUTE", "SCOPE_GUARD", "PASS_FORBIDDEN", "false", "NO_AD_HOC_REWEIGHTING"),
+        _row("YI2013_FORMULA_AS_HISTORICAL_FU96_DEFAULT_TABLE_GENERATOR", "SCOPE_GUARD", "PASS_FORBIDDEN", "false", "LATER_RRTMG_BAND_FORMULA_MUST_NOT_BE_SUBSTITUTED_FOR_UNRECOVERED_HISTORICAL_FU96_AVERAGING"),
         _row(
             "EXACT_FU96_RRTMG_BAND_WEIGHTING", "QUALIFICATION_RESULT", "BLOCKED_NOT_PROVEN", "false",
             "PREAVERAGING_SAMPLES_PLUS_VERSION_PINNED_SOLAR_SPECTRUM_AND_DISCRETE_WEIGHTS_PLUS_NUMERIC_REPRODUCTION_REQUIRED",
@@ -128,7 +161,7 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
         _row(
             "PRODUCTION_PROMOTION_GUARD", "PRODUCTION_GUARD", "PASS_FAIL_CLOSED",
             "independent_ssa=false; independent_g=false; tau_ice=false; production_ice_optics=false; physics_promotion=false",
-            "NO_STEP3Q1_PRODUCTION_PROMOTION",
+            "NO_STEP3Q2_PRODUCTION_PROMOTION",
         ),
     ]
     return pd.DataFrame(rows)
@@ -154,7 +187,13 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "RRTMG_FINAL_FU96_BAND_TABLES_PINNED": bool(tables),
         "RRTMG_BAND24_25_LIMITS_PINNED": bool(band_limits),
         "SOLAR_IRRADIANCE_WEIGHTING_SEMANTIC_SUPPORTED": True,
-        "RRTMG_BAND_INTEGRATION_SEMANTIC_CLASS_QUALIFIED": bool(semantic),
+        "FU96_HISTORICAL_MIXED_LINEAR_LOG_COALBEDO_SEMANTIC_PINNED": True,
+        "LATER_RRTMG_BAND_INTEGRATION_SEMANTIC_CLASS_QUALIFIED": bool(semantic),
+        "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": False,
+        "RRTMG_PRE_V4_KURUCZ_RUNTIME_SOLAR_SOURCE_PINNED": True,
+        "RRTMG_BAND24_25_SOLAR_IRRADIANCE_TOTALS_PINNED": True,
+        "RUNTIME_SOLAR_SOURCE_IDENTITY_WITH_FU96_TABLE_GENERATOR_PROVEN": False,
+        "FU96_HISTORICAL_BAND_SPECIFIC_LINEAR_LOG_MIXING_RECOVERED": False,
         "PREAVERAGING_SPECTRAL_SAMPLES_RECOVERED": False,
         "EXACT_HISTORICAL_SOLAR_SPECTRUM_AND_WEIGHTS_RECOVERED": False,
         "HISTORICAL_EXACT_WEIGHTING_REALIZATION_UNAMBIGUOUS": False,
@@ -176,7 +215,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_1",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_2",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -186,7 +225,10 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "fu96_doi": FU96_DOI,
             "fu2007_doi": FU2007_DOI,
             "yi2013_doi": YI2013_DOI,
+            "chou1998_doi": CHOU1998_DOI,
             "baek2018_doi": BAEK2018_DOI,
+            "aer_rrtmg_sw_description": AER_RRTMG_SW_DESCRIPTION,
+            "cam5_description": CAM5_DESCRIPTION,
             "aer_rrtmg_sw_repository": AER_RRTMG_SW_REPOSITORY,
             "aer_rrtm_sw_instructions": AER_RRTM_SW_INSTRUCTIONS,
             "pinned_rrtmg_reference_source": GEOSCHEM_RRTMG_PINNED_SOURCE,
@@ -194,10 +236,13 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
         },
         "bands": list(RRTMG_BANDS),
         "qualified_weighting_semantic_class": {
-            "shortwave_spectral_weighting": "solar_spectrum_S_lambda",
-            "single_scattering_albedo": "band_integrated_scattering_divided_by_band_integrated_extinction",
-            "asymmetry_factor": "scattering_cross_section_weighted_with_solar_spectrum",
+            "shortwave_weighting_basis": "solar_irradiance",
+            "historical_fu96_coalbedo": "absorption_dependent_mix_of_solar_weighted_linear_and_logarithmic_averages",
+            "later_rrtmg_band_ssa_example": "band_integrated_scattering_divided_by_band_integrated_extinction",
+            "later_rrtmg_band_g_example": "scattering_cross_section_weighted_with_solar_spectrum",
+            "later_formula_is_historical_fu96_generator": False,
             "historical_exact_solar_spectrum_and_discrete_weights_recovered": False,
+            "historical_band_specific_linear_log_mixing_recovered": False,
         },
         "qualification_state": str(g["qualification_state"]),
         "capabilities": {k: bool(v) for k, v in g.items() if k != "qualification_state"},
@@ -205,12 +250,14 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "equal_weighting",
             "unversioned_or_assumed_solar_spectrum_weights",
             "assumed_gpoint_weighting_for_cloud_optics_band_average",
-            "ad_hoc_extinction_or_scattering_reweighting_outside_qualified_formulas",
+            "ad_hoc_extinction_or_scattering_reweighting",
+            "yi2013_formula_substituted_as_historical_fu96_generator",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.1 narrows the physically supported RRTMG-compatible shortwave band-integration semantic class. "
-            "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization. "
+            "Step 3Q.2 separates historical Fu96 broad-band averaging semantics from later RRTMG-band integration formulas. "
+            "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
+            "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."
         ),
     }

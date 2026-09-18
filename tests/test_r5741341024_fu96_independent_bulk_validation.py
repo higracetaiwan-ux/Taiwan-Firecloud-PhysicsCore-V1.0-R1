@@ -13,7 +13,7 @@ from firecloud.ice_microphysics_fu96_independent_bulk_validation import (
 
 
 def test_step3k_identity_is_independent_optical_crosscheck_and_fail_closed():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.1.1"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.2"
     assert STEP3K_VERSION == "R5.7.41.3.4.10.24"
     assert STEP3K_MODE == "FU96_PROJECTED_AREA_INDEPENDENT_BULK_EXTINCTION_CROSSCHECK_FAIL_CLOSED"
 
