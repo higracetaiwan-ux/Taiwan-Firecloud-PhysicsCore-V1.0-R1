@@ -43,7 +43,7 @@ def _sigma(_lut, gas, wl, tk, ph):
 
 
 def test_version_contract_r5741341091():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.7"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.8"
 
 
 def test_preseeded_viewing_cache_reports_handoff_hits_without_changing_output(monkeypatch):

@@ -11,7 +11,7 @@ from firecloud.providers import dwd_icon_native as icon
 
 
 def test_1098_version():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.7"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.8"
 
 
 def test_shared_cache_root_is_explicit_and_independent_of_cwd(monkeypatch, tmp_path):
