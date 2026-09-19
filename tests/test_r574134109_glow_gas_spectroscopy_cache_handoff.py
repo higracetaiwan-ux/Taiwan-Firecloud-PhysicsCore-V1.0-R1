@@ -36,7 +36,7 @@ def _state():
 
 
 def test_version_contract():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.13"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.14"
 
 
 def test_glow_sigma_cache_handoff_is_exact_and_reuses_same_state(monkeypatch):

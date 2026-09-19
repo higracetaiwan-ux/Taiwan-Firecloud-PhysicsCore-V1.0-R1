@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.13 — official 2004 scientific-source semantic-equivalence qualification.
+"""Ice Optics Phase 2 Step 3Q.14 — pre-2020 cross-repository raw-blob replication qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +20,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.13"
-STEP3Q_MODE = "FU96_RRTM_SW_V25_OFFICIAL_2004_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.14"
+STEP3Q_MODE = "FU96_RRTM_SW_V25_PRE2020_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -75,6 +75,25 @@ AER_RRTM_SW_V25_OFFICIAL_RRTATM_2004_BLOB_SHA = "74fa6fc4dd352bff71c6f7eafa2ea1b
 RRTM_SW_V25_EXTERNAL_IMPORT_RRTATM_BLOB_SHA = "6262d3c1e331d237d7dd47520e8f1e5e713fee51"
 AER_RRTM_SW_V25_OFFICIAL_RRTM_2004_BLOB_SHA = "d4092d27a1e18b6408c1626617afdd84d88eb0c6"
 RRTM_SW_V25_EXTERNAL_IMPORT_RRTM_BLOB_SHA = "c3ef8c054583a9334b32b04261679eab4f704fe3"
+
+PYRRTM_REPOSITORY = "https://github.com/tomflannaghan/pyrrtm"
+PYRRTM_SW_2014_COMMIT = "31d776362503c20e84d2a6d78be4a96517f89e49"
+PYRRTM_SW_2014_DATE_UTC = "2014-07-14T13:11:02Z"
+PYRRTM_SW_2014_TREE_SHA = "e4a56fd0b150b6536e9653c9b4446aa5a0a03d31"
+PYRRTM_SW_2014_COMMIT_URL = (
+    "https://github.com/tomflannaghan/pyrrtm/commit/"
+    "31d776362503c20e84d2a6d78be4a96517f89e49"
+)
+RRTM_SW_V25_CROSS_REPOSITORY_SCIENTIFIC_FILE_COUNT = 26
+RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_MATCH_COUNT = 22
+RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_NONMATCH_COUNT = 4
+RRTM_SW_V25_CRITICAL_RAW_BLOB_REPLICATION_FILE_COUNT = 4
+PYRRTM_SW_2014_CLDPROP_BLOB_SHA = "d7a2efce33cdf5c1f02a66e598c685ef53b7b8c8"
+PYRRTM_SW_2014_TAUMOLDIS_BLOB_SHA = "5111a3bb7d981ea8facb4733c2ebb8d7f1308486"
+PYRRTM_SW_2014_KGB24_BLOB_SHA = "7847f1d19a9008137d60db422c623505ebf8835e"
+PYRRTM_SW_2014_KGB25_BLOB_SHA = "e3cc504280805b0b2de725d5645334095a92b07e"
+RRTM_SW_V25_EXTERNAL_IMPORT_KGB24_BLOB_SHA = "7847f1d19a9008137d60db422c623505ebf8835e"
+RRTM_SW_V25_EXTERNAL_IMPORT_KGB25_BLOB_SHA = "e3cc504280805b0b2de725d5645334095a92b07e"
 
 RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY = "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper"
 RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT = "a2d974ecefe6f369661bf5a3dfc648f07986ad89"
@@ -357,6 +376,30 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_MUST_NOT_BE_RELABELED_AS_RAW_BYTE_IDENTITY_OR_ORIGINAL_TARBALL_IDENTITY",
         ),
         _row(
+            "PYRRTM_SW_2014_PRE2020_HISTORY_PINNED", "CROSS_REPOSITORY_REPLICATION", "PASS_PINNED",
+            "tomflannaghan/pyrrtm is a non-fork GitHub repository whose commit 31d776362503c20e84d2a6d78be4a96517f89e49 added the shortwave code on 2014-07-14T13:11:02Z, predating the 2020 nickedkins mirror import by more than five years",
+            "SEPARATE_PRE2020_REPOSITORY_HISTORY_WITH_PINNED_COMMIT_DATE_AND_TREE_REQUIRED",
+            f"{PYRRTM_SW_2014_COMMIT_URL}; tree={PYRRTM_SW_2014_TREE_SHA}",
+        ),
+        _row(
+            "RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_MATCH_22_OF_26", "CROSS_REPOSITORY_REPLICATION", "PASS_QUALIFIED",
+            "Comparing the 26-file Fortran scientific-source set between pyrrtm's pinned 2014 SW-addition tree and the nickedkins pinned 2020 v2.5 import gives 22 of 26 exact Git-blob SHA matches; the four nonmatching files are RDI1MACH.f, disort.f, rrtatm.f, and rrtm.f",
+            "RAW_BLOB_REPLICATION_COUNT_MUST_BE_EXPLICIT_AND_NONMATCHES_MUST_NOT_BE_SILENTLY_NORMALIZED",
+            f"pyrrtm_tree={PYRRTM_SW_2014_TREE_SHA}; mirror_tree={RRTM_SW_V25_EXTERNAL_IMPORT_TREE_SHA}; raw_blob_match=22/26",
+        ),
+        _row(
+            "RRTM_SW_V25_CRITICAL_FU96_BAND24_25_RAW_BLOB_REPLICATION", "CROSS_REPOSITORY_REPLICATION", "PASS_QUALIFIED",
+            "The four provenance-critical files cldprop.f, taumoldis.f, k_gB24.f, and k_gB25.f are exact raw Git-blob matches between the pinned 2014 pyrrtm history and the pinned 2020 v2.5 import",
+            "CRITICAL_FU96_CLOUD_TABLE_RUNTIME_SOLAR_CONTEXT_AND_BAND24_25_FILES_MUST_MATCH_RAW_BLOBS_ACROSS_PINNED_REPOSITORY_HISTORIES",
+            f"cldprop={PYRRTM_SW_2014_CLDPROP_BLOB_SHA}; taumoldis={PYRRTM_SW_2014_TAUMOLDIS_BLOB_SHA}; k_gB24={PYRRTM_SW_2014_KGB24_BLOB_SHA}; k_gB25={PYRRTM_SW_2014_KGB25_BLOB_SHA}",
+        ),
+        _row(
+            "RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_IS_ORIGINAL_AER_TARBALL_IDENTITY", "SCOPE_GUARD", "PASS_FORBIDDEN",
+            "false",
+            "CROSS_REPOSITORY_RAW_BLOB_REPLICATION_MUST_NOT_BE_RELABELED_AS_ORIGINAL_AER_TARBALL_BYTE_IDENTITY_OR_AUTHORITATIVE_ARCHIVE_HASH",
+            "Separate repository replication strengthens source-lineage confidence but both histories may derive from the same historical AER distribution; original aer_rrtm_sw_v2.5.tar.gz bytes/hash remain unrecovered.",
+        ),
+        _row(
             "RRTM_SW_V25_RUNTIME_KURUCZ_LOW_HIGH_RESOLUTION_DISTINCTION", "HISTORICAL_SOLAR_SOURCE_CONTEXT", "PASS_QUALIFIED",
             "Pinned v2.5 taumoldis.f explicitly distinguishes a low-resolution Kurucz solar source from a high-resolution version and notes a band-total irradiance discrepancy handled by SCALEKUR",
             "RUNTIME_SFLUXREF_MUST_NOT_BE_EQUATED_TO_UNRECOVERED_HIGH_RESOLUTION_CLOUD_TABLE_WEIGHT_VECTOR",
@@ -566,10 +609,16 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         and status.get("RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT") == "PASS_SECONDARY_QUALIFIED"
         and status.get("AER_RRTM_SW_V25_ARCHIVE_ACQUISITION_VERIFIER_READY") == "PASS_TOOLING"
     )
+    pre2020_cross_repository_raw_blob_replication = (
+        status.get("PYRRTM_SW_2014_PRE2020_HISTORY_PINNED") == "PASS_PINNED"
+        and status.get("RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_MATCH_22_OF_26") == "PASS_QUALIFIED"
+        and status.get("RRTM_SW_V25_CRITICAL_FU96_BAND24_25_RAW_BLOB_REPLICATION") == "PASS_QUALIFIED"
+        and status.get("RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_IS_ORIGINAL_AER_TARBALL_IDENTITY") == "PASS_FORBIDDEN"
+    )
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_V25_OFFICIAL_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_V25_PRE2020_CROSS_REPOSITORY_CRITICAL_FU96_RAW_BLOB_REPLICATION_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -604,6 +653,10 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "RRTM_SW_V25_RRTM_INPUT_FILENAME_OPERATIONAL_ONLY_DELTA_QUALIFIED": bool(status.get("RRTM_SW_V25_RRTM_INPUT_FILENAME_OPERATIONAL_ONLY_DELTA_QUALIFIED") == "PASS_QUALIFIED"),
         "RRTM_SW_V25_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFIED": bool(official_scientific_source_semantic_equivalence),
         "RRTM_SW_V25_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_IS_FULL_RAW_BYTE_IDENTITY": False,
+        "PYRRTM_SW_2014_PRE2020_HISTORY_PINNED": bool(status.get("PYRRTM_SW_2014_PRE2020_HISTORY_PINNED") == "PASS_PINNED"),
+        "RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_MATCH_22_OF_26_QUALIFIED": bool(status.get("RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_MATCH_22_OF_26") == "PASS_QUALIFIED"),
+        "RRTM_SW_V25_CRITICAL_FU96_BAND24_25_RAW_BLOB_REPLICATION_QUALIFIED": bool(pre2020_cross_repository_raw_blob_replication),
+        "RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_IS_ORIGINAL_AER_TARBALL_IDENTITY": False,
         "AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED") == "PASS_PINNED"),
         "AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED": bool(status.get("AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED") == "PASS_PINNED"),
         "RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT_QUALIFIED": bool(status.get("RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT") == "PASS_SECONDARY_QUALIFIED"),
@@ -653,7 +706,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_13",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_14",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -694,6 +747,15 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtm_sw_v25_official_release_tree_commit": AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_COMMIT,
             "aer_rrtm_sw_v25_official_release_tree_sha": AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_SHA,
             "rrtm_sw_v25_external_import_tree_sha": RRTM_SW_V25_EXTERNAL_IMPORT_TREE_SHA,
+            "pyrrtm_repository": PYRRTM_REPOSITORY,
+            "pyrrtm_sw_2014_commit": PYRRTM_SW_2014_COMMIT,
+            "pyrrtm_sw_2014_date_utc": PYRRTM_SW_2014_DATE_UTC,
+            "pyrrtm_sw_2014_tree_sha": PYRRTM_SW_2014_TREE_SHA,
+            "pyrrtm_sw_2014_commit_url": PYRRTM_SW_2014_COMMIT_URL,
+            "pyrrtm_sw_2014_cldprop_blob_sha": PYRRTM_SW_2014_CLDPROP_BLOB_SHA,
+            "pyrrtm_sw_2014_taumoldis_blob_sha": PYRRTM_SW_2014_TAUMOLDIS_BLOB_SHA,
+            "pyrrtm_sw_2014_k_gB24_blob_sha": PYRRTM_SW_2014_KGB24_BLOB_SHA,
+            "pyrrtm_sw_2014_k_gB25_blob_sha": PYRRTM_SW_2014_KGB25_BLOB_SHA,
             "rrtm_sw_v25_scientific_source_file_count": RRTM_SW_V25_SCIENTIFIC_SOURCE_FILE_COUNT,
             "rrtm_sw_v25_cvs_normalized_full_file_match_count": RRTM_SW_V25_CVS_NORMALIZED_FULL_FILE_MATCH_COUNT,
             "rrtm_sw_v25_operational_delta_file_count": RRTM_SW_V25_OPERATIONAL_DELTA_FILE_COUNT,
@@ -754,6 +816,12 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "v25_scientific_source_operational_delta_line_count": 4,
             "v25_scientific_source_semantic_equivalence_qualified": True,
             "v25_scientific_source_semantic_equivalence_is_full_raw_byte_identity": False,
+            "v25_pre2020_pyrrtm_history_pinned": True,
+            "v25_cross_repository_scientific_source_file_count": 26,
+            "v25_cross_repository_raw_blob_match_count": 22,
+            "v25_cross_repository_raw_blob_nonmatch_count": 4,
+            "v25_critical_fu96_band24_25_raw_blob_replication_qualified": True,
+            "v25_cross_repository_raw_blob_replication_is_original_aer_tarball_identity": False,
             "v25_official_binary_download_endpoint_pinned": True,
             "v25_historical_ftp_distribution_path_pinned": True,
             "v25_independent_extracted_distribution_footprint_qualified": True,
@@ -788,12 +856,13 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "treating_official_archive_filename_or_web_build_procedure_as_equivalent_to_recovered_original_tarball_bytes_or_hash",
             "treating_cvs_normalized_source_tree_equivalence_as_proof_of_original_tarball_byte_identity_or_original_tarball_hash",
             "treating_scientific_source_semantic_equivalence_with_documented_operational_deltas_as_full_raw_byte_identity_or_original_tarball_identity",
+            "treating_pre2020_cross_repository_raw_blob_replication_as_original_aer_tarball_byte_identity_or_authoritative_archive_hash",
             "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
             "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.13 extends the qualified RRTM_SW v2.5 lineage from two critical files to the full 26-file Fortran scientific-source set present in the pinned AER 2004 release tree. Twenty-four files are complete-file identical after generic CVS-keyword normalization. The remaining two files contain exactly four documented operational-only deltas: rrtatm.f comments out three date/time-output calls, and rrtm.f changes one input filename literal from INPUT_RRTM to input_rrtm_MLS. No radiative-transfer equation, cloud-optics table, gas-optics table, spectral coefficient table, or band definition delta was identified in the pinned source-set comparison. This qualifies scientific-source semantic equivalence only; it does not establish whole-repository equality, raw-byte identity, original aer_rrtm_sw_v2.5.tar.gz identity, or a provenance-qualified archive hash. The Step 3Q.12 official download endpoint / extracted-distribution footprint qualification remains valid, but the original tarball bytes are still unrecovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
+            "Step 3Q.14 adds a separate pre-2020 repository-history replication check without changing the Step 3Q.13 AER-official semantic-equivalence result. The pinned pyrrtm commit that first added shortwave code on 2014-07-14 and the pinned nickedkins v2.5 import from 2020 share exact Git-blob identities for 22 of the 26 scientific-source files. The four provenance-critical files cldprop.f, taumoldis.f, k_gB24.f and k_gB25.f are raw-byte identical across those two repository histories. Four files (RDI1MACH.f, disort.f, rrtatm.f, rrtm.f) are not raw-blob identical, so this step does not claim whole-set raw equality. Cross-repository replication is not original AER tarball identity and supplies no authoritative archive hash; both histories may descend from the same historical AER distribution. The Step 3Q.13 scientific-source semantic-equivalence qualification and Step 3Q.12 official download endpoint / extracted-distribution footprint qualification remain valid, while original tarball bytes/hash remain unrecovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."

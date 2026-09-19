@@ -9,7 +9,7 @@ from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import (
 )
 from tools.verify_aer_rrtm_sw_v25_archive import inspect_archive, OFFICIAL_URL
 
-EXPECTED_STATE = "PASS_FAIL_CLOSED_V25_OFFICIAL_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+EXPECTED_STATE = "PASS_FAIL_CLOSED_V25_PRE2020_CROSS_REPOSITORY_CRITICAL_FU96_RAW_BLOB_REPLICATION_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
 
 
 def test_step3q12_official_endpoint_historical_ftp_and_secondary_footprint_are_pinned():
@@ -34,8 +34,8 @@ def test_step3q12_lineage_gain_keeps_original_archive_and_physics_fail_closed():
     assert bool(g["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"]) is False
     assert bool(g["PRODUCTION_ICE_OPTICS_READY"]) is False
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_13"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.13"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_14"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.14"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["sources"]["aer_rrtm_sw_v25_source_archive_url"] == OFFICIAL_URL
 

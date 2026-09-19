@@ -11,7 +11,7 @@ from firecloud.case_integrity import build_analysis_integrity_audit, build_archi
 
 
 def test_release_and_global_first_step3_contract():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.13"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.14"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
     assert STEP3_MODE == "GLOBAL_MAPPING_CANDIDATE_QUALIFICATION_ONLY"
 

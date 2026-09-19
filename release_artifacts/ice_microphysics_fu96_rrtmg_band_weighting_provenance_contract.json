@@ -33,6 +33,7 @@
     "PREAVERAGING_SPECTRAL_SAMPLES_RECOVERED": false,
     "PRODUCTION_ICE_OPTICS_READY": false,
     "PUBLIC_RUNTIME_ARCHIVE_SUFFICIENT_FOR_EXACT_HISTORICAL_GENERATOR": false,
+    "PYRRTM_SW_2014_PRE2020_HISTORY_PINNED": true,
     "RRTMG_BAND24_25_LIMITS_PINNED": true,
     "RRTMG_BAND24_25_SOLAR_IRRADIANCE_TOTALS_PINNED": true,
     "RRTMG_BAND24_CROSSES_FU_LINEAGE_H_DOMAIN_BOUNDARY": true,
@@ -52,6 +53,9 @@
     "RRTM_SW_V25_CLDPROP_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE_QUALIFIED": true,
     "RRTM_SW_V25_CLDPROP_CVS_PROVENANCE_PINNED": true,
     "RRTM_SW_V25_CLDPROP_SCIENCE_CONTENT_EQUIVALENCE_QUALIFIED": true,
+    "RRTM_SW_V25_CRITICAL_FU96_BAND24_25_RAW_BLOB_REPLICATION_QUALIFIED": true,
+    "RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_MATCH_22_OF_26_QUALIFIED": true,
+    "RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_IS_ORIGINAL_AER_TARBALL_IDENTITY": false,
     "RRTM_SW_V25_EXTERNAL_DISTRIBUTION_CONTAINS_PREAVERAGING_GENERATOR": false,
     "RRTM_SW_V25_EXTERNAL_DISTRIBUTION_MIRROR_PINNED": true,
     "RRTM_SW_V25_EXTERNAL_MIRROR_IMPORT_TIME_SEPARATED_FROM_SOURCE_TIME": true,
@@ -77,7 +81,7 @@
     "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": false,
     "physics_promotion_allowed": false
   },
-  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_13",
+  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_14",
   "evidence_as_of": "2026-09-19",
   "forbidden_substitutes": [
     "equal_weighting",
@@ -92,17 +96,18 @@
     "treating_official_archive_filename_or_web_build_procedure_as_equivalent_to_recovered_original_tarball_bytes_or_hash",
     "treating_cvs_normalized_source_tree_equivalence_as_proof_of_original_tarball_byte_identity_or_original_tarball_hash",
     "treating_scientific_source_semantic_equivalence_with_documented_operational_deltas_as_full_raw_byte_identity_or_original_tarball_identity",
+    "treating_pre2020_cross_repository_raw_blob_replication_as_original_aer_tarball_byte_identity_or_authoritative_archive_hash",
     "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
     "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date"
   ],
-  "mode": "FU96_RRTM_SW_V25_OFFICIAL_2004_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFICATION_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.13",
+  "mode": "FU96_RRTM_SW_V25_PRE2020_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_QUALIFICATION_FAIL_CLOSED",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.14",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,
     "tau_ice_production_allowed": false
   },
-  "qualification_state": "PASS_FAIL_CLOSED_V25_OFFICIAL_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED",
+  "qualification_state": "PASS_FAIL_CLOSED_V25_PRE2020_CROSS_REPOSITORY_CRITICAL_FU96_RAW_BLOB_REPLICATION_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED",
   "qualified_weighting_semantic_class": {
     "final_table_inverse_identification_allowed": false,
     "fu_lineage_h_domains": {
@@ -132,6 +137,11 @@
     "shortwave_weighting_basis": "solar_irradiance",
     "v25_archive_acquisition_verifier_ready": true,
     "v25_cldprop_official_mirror_cvs_normalized_equivalence": true,
+    "v25_critical_fu96_band24_25_raw_blob_replication_qualified": true,
+    "v25_cross_repository_raw_blob_match_count": 22,
+    "v25_cross_repository_raw_blob_nonmatch_count": 4,
+    "v25_cross_repository_raw_blob_replication_is_original_aer_tarball_identity": false,
+    "v25_cross_repository_scientific_source_file_count": 26,
     "v25_external_distribution_lineage_qualified": true,
     "v25_external_mirror_original_aer_tarball_byte_identity_proven": false,
     "v25_historical_ftp_distribution_path_pinned": true,
@@ -146,6 +156,7 @@
     "v25_official_web_tar_build_procedure_pinned": true,
     "v25_original_aer_archive_bytes_recovered": false,
     "v25_original_aer_archive_hash_recovered": false,
+    "v25_pre2020_pyrrtm_history_pinned": true,
     "v25_runtime_kurucz_low_high_resolution_distinction_qualified": true,
     "v25_runtime_sfluxref_equated_to_cloud_table_high_resolution_weights": false,
     "v25_scientific_source_cvs_normalized_full_file_match_count": 24,
@@ -156,7 +167,7 @@
     "v25_taumoldis_official_mirror_cvs_normalized_equivalence": true
   },
   "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
-  "scope_note": "Step 3Q.13 extends the qualified RRTM_SW v2.5 lineage from two critical files to the full 26-file Fortran scientific-source set present in the pinned AER 2004 release tree. Twenty-four files are complete-file identical after generic CVS-keyword normalization. The remaining two files contain exactly four documented operational-only deltas: rrtatm.f comments out three date/time-output calls, and rrtm.f changes one input filename literal from INPUT_RRTM to input_rrtm_MLS. No radiative-transfer equation, cloud-optics table, gas-optics table, spectral coefficient table, or band definition delta was identified in the pinned source-set comparison. This qualifies scientific-source semantic equivalence only; it does not establish whole-repository equality, raw-byte identity, original aer_rrtm_sw_v2.5.tar.gz identity, or a provenance-qualified archive hash. The Step 3Q.12 official download endpoint / extracted-distribution footprint qualification remains valid, but the original tarball bytes are still unrecovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
+  "scope_note": "Step 3Q.14 adds a separate pre-2020 repository-history replication check without changing the Step 3Q.13 AER-official semantic-equivalence result. The pinned pyrrtm commit that first added shortwave code on 2014-07-14 and the pinned nickedkins v2.5 import from 2020 share exact Git-blob identities for 22 of the 26 scientific-source files. The four provenance-critical files cldprop.f, taumoldis.f, k_gB24.f and k_gB25.f are raw-byte identical across those two repository histories. Four files (RDI1MACH.f, disort.f, rrtatm.f, rrtm.f) are not raw-blob identical, so this step does not claim whole-set raw equality. Cross-repository replication is not original AER tarball identity and supplies no authoritative archive hash; both histories may descend from the same historical AER distribution. The Step 3Q.13 scientific-source semantic-equivalence qualification and Step 3Q.12 official download endpoint / extracted-distribution footprint qualification remain valid, while original tarball bytes/hash remain unrecovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
   "sources": {
     "aer_rrtm_sw_cldprop_blob_sha": "8632f7d1940285665b62fdbb30c69861924251da",
     "aer_rrtm_sw_cldprop_pinned": "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac88ae782964cd030cb202a380032d11/src/cldprop.f",
@@ -194,6 +205,15 @@
     "michalsky2006_doi": "https://doi.org/10.1029/2005JD006341",
     "pinned_rrtmg_reference_source": "https://github.com/geoschem/geos-chem/blob/a4551f9442183bb572b23e9c2d362e2d34420d3a/GeosRad/rrtmg_sw_init.F90",
     "pinned_rrtmg_reference_source_sha": "0ccf597d6aa3d6ed40ec592560e3ed94b653ef32",
+    "pyrrtm_repository": "https://github.com/tomflannaghan/pyrrtm",
+    "pyrrtm_sw_2014_cldprop_blob_sha": "d7a2efce33cdf5c1f02a66e598c685ef53b7b8c8",
+    "pyrrtm_sw_2014_commit": "31d776362503c20e84d2a6d78be4a96517f89e49",
+    "pyrrtm_sw_2014_commit_url": "https://github.com/tomflannaghan/pyrrtm/commit/31d776362503c20e84d2a6d78be4a96517f89e49",
+    "pyrrtm_sw_2014_date_utc": "2014-07-14T13:11:02Z",
+    "pyrrtm_sw_2014_k_gB24_blob_sha": "7847f1d19a9008137d60db422c623505ebf8835e",
+    "pyrrtm_sw_2014_k_gB25_blob_sha": "e3cc504280805b0b2de725d5645334095a92b07e",
+    "pyrrtm_sw_2014_taumoldis_blob_sha": "5111a3bb7d981ea8facb4733c2ebb8d7f1308486",
+    "pyrrtm_sw_2014_tree_sha": "e4a56fd0b150b6536e9653c9b4446aa5a0a03d31",
     "rrtm_sw_v25_cvs_normalized_full_file_match_count": 24,
     "rrtm_sw_v25_external_cldprop": "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper/blob/a2d974ecefe6f369661bf5a3dfc648f07986ad89/SW/src/cldprop.f",
     "rrtm_sw_v25_external_cldprop_blob_sha": "d7a2efce33cdf5c1f02a66e598c685ef53b7b8c8",
@@ -218,5 +238,5 @@
     "rrtm_sw_v25_scientific_source_file_count": 26,
     "yi2013_doi": "https://doi.org/10.1175/JAS-D-13-020.1"
   },
-  "step_version": "R5.7.41.3.4.10.30.13"
+  "step_version": "R5.7.41.3.4.10.30.14"
 }
