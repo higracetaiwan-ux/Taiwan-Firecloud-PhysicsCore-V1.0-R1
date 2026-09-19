@@ -44,7 +44,7 @@ def _patch_small_contract(monkeypatch, habits=('8_columns',), roughness=('Rough0
 
 
 def test_version():
-    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.30.18.1'
+    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.30.18.2'
 
 
 def test_authoritative_source_manifest_is_explicit_dmax_first_and_non_promoting():
