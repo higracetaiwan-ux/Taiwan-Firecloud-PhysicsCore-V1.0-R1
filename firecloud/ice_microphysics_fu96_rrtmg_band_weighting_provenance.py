@@ -1,4 +1,12 @@
-"""Ice Optics Phase 2 Step 3Q.15 — official AER RRTM_SW-to-RRTMG_SW Fu96 final-table continuity qualification.
+"""Ice Optics Phase 2 Step 3Q.16 — historical AER RRTM band-generation pipeline scope qualification.
+
+This step pins the public AER-RC rrtmgp-band-generation repository as an imported historical
+RRTM_BAND_GEN SVN work tree and qualifies its recovered scope.  The 2014-04-02 AER commit
+explicitly describes the imported files as initial band-generation codes from Karen and
+original RRTM work, with no modifications yet.  The recovered pipeline operates on LBLRTM
+optical depths to generate molecular k-distributions, continuum/minor-gas coefficients and
+Planck-related band data.  No Fu96 ice-cloud high-resolution pre-averaging samples or cloud
+optics band-averaging generator are promoted from this evidence.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +28,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.15"
-STEP3Q_MODE = "FU96_AER_RRTM_SW_TO_RRTMG_SW_FINAL_TABLE_CONTINUITY_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.16"
+STEP3Q_MODE = "AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -106,6 +114,36 @@ AER_RRTMG_SW_2007_CLDPROP = (
 AER_RRTM_RRTMG_FU96_CONTINUITY_ARRAY_COUNT = 56
 AER_RRTM_RRTMG_FU96_CONTINUITY_VALUES_PER_ARRAY = 46
 AER_RRTM_RRTMG_FU96_CONTINUITY_VALUE_COUNT = 2576
+
+AER_RRTM_BAND_GEN_REPOSITORY = "https://github.com/AER-RC/rrtmgp-band-generation"
+AER_RRTM_BAND_GEN_GITHUB_PUBLIC_CREATED_AT = "2025-01-14T21:14:08Z"
+AER_RRTM_BAND_GEN_SVN_PATH = "https://svn.aer.com/svn/aer/project/RD/RRTM_BAND_GEN"
+AER_RRTM_BAND_GEN_EARLIEST_GIT_SVN_COMMIT = "b78641520629cf2cca39ee0b6d5fdf99f98ede21"
+AER_RRTM_BAND_GEN_EARLIEST_GIT_SVN_DATE_UTC = "2014-03-03T19:13:53Z"
+AER_RRTM_BAND_GEN_IMPORTED_HISTORY_COMMIT_COUNT = 176
+AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_COMMIT = "5ce72bd363c993189767f09f1c9fe9bc84b72c56"
+AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_DATE_UTC = "2014-04-02T14:35:38Z"
+AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_SVN_REVISION = 24171
+AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_URL = (
+    "https://github.com/AER-RC/rrtmgp-band-generation/commit/"
+    "5ce72bd363c993189767f09f1c9fe9bc84b72c56"
+)
+AER_RRTM_BAND_GEN_INITIAL_SCRIPT_GEN_2BAND = (
+    "https://github.com/AER-RC/rrtmgp-band-generation/blob/"
+    "5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/script.gen_2band"
+)
+AER_RRTM_BAND_GEN_INITIAL_KDIS_2SORT_FOR = (
+    "https://github.com/AER-RC/rrtmgp-band-generation/blob/"
+    "5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/kdis_2sort_for.f"
+)
+AER_RRTM_BAND_GEN_INITIAL_KDIS_2SORT_PLANCK = (
+    "https://github.com/AER-RC/rrtmgp-band-generation/blob/"
+    "5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/kdis_2sort_planck.f"
+)
+AER_RRTM_BAND_GEN_INITIAL_COMP_WTAVG_PLANCK = (
+    "https://github.com/AER-RC/rrtmgp-band-generation/blob/"
+    "5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/comp_wtavg_planck.f"
+)
 
 RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY = "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper"
 RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT = "a2d974ecefe6f369661bf5a3dfc648f07986ad89"
@@ -429,6 +467,30 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "FINAL_TABLE_CONTINUITY_MUST_NOT_BE_RELABELED_AS_PREAVERAGING_GENERATOR_OR_EXACT_WEIGHTING_RECOVERY",
         ),
         _row(
+            "AER_RRTM_BAND_GEN_IMPORTED_SVN_HISTORY_PINNED", "HISTORICAL_AER_BAND_GENERATION_PIPELINE", "PASS_PINNED",
+            "AER-RC/rrtmgp-band-generation is a 2025 public GitHub repository carrying 176 imported git-svn commits from AER RRTM_BAND_GEN history; the imported history begins 2014-03-03 and commit messages retain the private SVN path/revision provenance",
+            "PUBLIC_REPOSITORY_DATE_MUST_BE_SEPARATED_FROM_IMPORTED_AER_SVN_HISTORY_DATE",
+            f"repo={AER_RRTM_BAND_GEN_REPOSITORY}; public_created={AER_RRTM_BAND_GEN_GITHUB_PUBLIC_CREATED_AT}; earliest={AER_RRTM_BAND_GEN_EARLIEST_GIT_SVN_COMMIT}; svn={AER_RRTM_BAND_GEN_SVN_PATH}",
+        ),
+        _row(
+            "AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_COMMIT_PINNED", "HISTORICAL_AER_BAND_GENERATION_PIPELINE", "PASS_PINNED",
+            "AER commit 5ce72bd363c993189767f09f1c9fe9bc84b72c56 dated 2014-04-02 states: Adding initial band generation codes from Karen and original RRTM work. No modifications yet.",
+            "AER_SELF_DESCRIBED_ORIGINAL_RRTM_BAND_GENERATION_IMPORT_COMMIT_PINNED",
+            f"{AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_URL}; svn_revision={AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_SVN_REVISION}",
+        ),
+        _row(
+            "AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_SCOPE", "HISTORICAL_AER_BAND_GENERATION_PIPELINE", "PASS_QUALIFIED",
+            "The pinned initial pipeline drives LBLRTM optical-depth runs and kdis_2sort programs to generate molecular absorption k-distributions, continuum/minor-gas coefficients, g-band data, and Planck-related band information; write_data_* and write_tape5* tools serialize those products",
+            "RECOVERED_PIPELINE_SCOPE_MUST_BE_QUALIFIED_FROM_PINNED_CODE_BEHAVIOR_NOT_FROM_REPOSITORY_NAME_ALONE",
+            f"{AER_RRTM_BAND_GEN_INITIAL_SCRIPT_GEN_2BAND}; {AER_RRTM_BAND_GEN_INITIAL_KDIS_2SORT_FOR}; {AER_RRTM_BAND_GEN_INITIAL_KDIS_2SORT_PLANCK}; {AER_RRTM_BAND_GEN_INITIAL_COMP_WTAVG_PLANCK}",
+        ),
+        _row(
+            "AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_IS_FU96_CLOUD_PREAVERAGING_GENERATOR", "SCOPE_GUARD", "PASS_FORBIDDEN",
+            "false",
+            "MOLECULAR_K_DISTRIBUTION_PLANCK_CONTINUUM_PIPELINE_MUST_NOT_BE_RELABELED_AS_FU96_ICE_CLOUD_HIGH_RESOLUTION_PREAVERAGING_GENERATOR",
+            "The pinned initial-file set contains k-distribution/Planck/continuum/minor-gas generation tools, but no provenance-linked Fu96 high-resolution ice-cloud spectral samples or Fu96 cloud-optics band-averaging generator was identified.",
+        ),
+        _row(
             "RRTM_SW_V25_RUNTIME_KURUCZ_LOW_HIGH_RESOLUTION_DISTINCTION", "HISTORICAL_SOLAR_SOURCE_CONTEXT", "PASS_QUALIFIED",
             "Pinned v2.5 taumoldis.f explicitly distinguishes a low-resolution Kurucz solar source from a high-resolution version and notes a band-total irradiance discrepancy handled by SCALEKUR",
             "RUNTIME_SFLUXREF_MUST_NOT_BE_EQUATED_TO_UNRECOVERED_HIGH_RESOLUTION_CLOUD_TABLE_WEIGHT_VECTOR",
@@ -649,10 +711,16 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         and status.get("AER_RRTM_SW_2004_TO_RRTMG_SW_2007_FU96_FINAL_TABLE_VALUE_CONTINUITY") == "PASS_QUALIFIED"
         and status.get("AER_RRTM_RRTMG_FU96_FINAL_TABLE_CONTINUITY_IS_PREAVERAGING_GENERATOR_RECOVERY") == "PASS_FORBIDDEN"
     )
+    historical_aer_rrtm_band_generation_scope = (
+        status.get("AER_RRTM_BAND_GEN_IMPORTED_SVN_HISTORY_PINNED") == "PASS_PINNED"
+        and status.get("AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_COMMIT_PINNED") == "PASS_PINNED"
+        and status.get("AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_SCOPE") == "PASS_QUALIFIED"
+        and status.get("AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_IS_FU96_CLOUD_PREAVERAGING_GENERATOR") == "PASS_FORBIDDEN"
+    )
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_AER_RRTM_SW_TO_RRTMG_SW_FU96_FINAL_TABLE_CONTINUITY_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_FU96_CLOUD_PREAVERAGING_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -694,6 +762,11 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "AER_RRTMG_SW_2007_FU96_FINAL_TABLE_HISTORY_PINNED": bool(status.get("AER_RRTMG_SW_2007_FU96_FINAL_TABLE_HISTORY_PINNED") == "PASS_PINNED"),
         "AER_RRTM_SW_TO_RRTMG_SW_FU96_FINAL_TABLE_CONTINUITY_56_OF_56_ARRAYS_2576_OF_2576_VALUES_QUALIFIED": bool(official_aer_cross_generation_fu96_final_table_continuity),
         "AER_RRTM_RRTMG_FU96_FINAL_TABLE_CONTINUITY_IS_PREAVERAGING_GENERATOR_RECOVERY": False,
+        "AER_RRTM_BAND_GEN_IMPORTED_SVN_HISTORY_PINNED": bool(status.get("AER_RRTM_BAND_GEN_IMPORTED_SVN_HISTORY_PINNED") == "PASS_PINNED"),
+        "AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_COMMIT_PINNED": bool(status.get("AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_COMMIT_PINNED") == "PASS_PINNED"),
+        "AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED": bool(historical_aer_rrtm_band_generation_scope),
+        "AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_IS_FU96_CLOUD_PREAVERAGING_GENERATOR": False,
+        "FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED": False,
         "AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED") == "PASS_PINNED"),
         "AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED": bool(status.get("AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED") == "PASS_PINNED"),
         "RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT_QUALIFIED": bool(status.get("RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT") == "PASS_SECONDARY_QUALIFIED"),
@@ -743,7 +816,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_15",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_16",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -759,6 +832,12 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtmg_sw_description": AER_RRTMG_SW_DESCRIPTION,
             "cam5_description": CAM5_DESCRIPTION,
             "aer_rrtmg_sw_repository": AER_RRTMG_SW_REPOSITORY,
+            "aer_rrtm_band_gen_repository": AER_RRTM_BAND_GEN_REPOSITORY,
+            "aer_rrtm_band_gen_initial_original_rrtm_work_commit": AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_URL,
+            "aer_rrtm_band_gen_initial_script_gen_2band": AER_RRTM_BAND_GEN_INITIAL_SCRIPT_GEN_2BAND,
+            "aer_rrtm_band_gen_initial_kdis_2sort_for": AER_RRTM_BAND_GEN_INITIAL_KDIS_2SORT_FOR,
+            "aer_rrtm_band_gen_initial_kdis_2sort_planck": AER_RRTM_BAND_GEN_INITIAL_KDIS_2SORT_PLANCK,
+            "aer_rrtm_band_gen_initial_comp_wtavg_planck": AER_RRTM_BAND_GEN_INITIAL_COMP_WTAVG_PLANCK,
             "aer_rrtmg_sw_readme": AER_RRTMG_SW_README,
             "arm_2002_rrtm_sw_v24_proceedings": ARM_2002_RRTM_SW_V24_PROCEEDINGS,
             "michalsky2006_doi": MICHALSKY2006_DOI,
@@ -868,6 +947,11 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtm_rrtmg_fu96_continuity_array_count": 56,
             "aer_rrtm_rrtmg_fu96_continuity_value_count": 2576,
             "aer_rrtm_rrtmg_fu96_final_table_continuity_is_preaveraging_generator_recovery": False,
+            "aer_historical_rrtm_band_generation_svn_history_pinned": True,
+            "aer_historical_rrtm_band_generation_initial_original_rrtm_work_commit_pinned": True,
+            "aer_historical_rrtm_molecular_band_generation_pipeline_recovered": True,
+            "aer_historical_rrtm_band_generation_pipeline_is_fu96_cloud_preaveraging_generator": False,
+            "fu96_cloud_preaveraging_generator_recovered": False,
             "v25_official_binary_download_endpoint_pinned": True,
             "v25_historical_ftp_distribution_path_pinned": True,
             "v25_independent_extracted_distribution_footprint_qualified": True,
@@ -904,16 +988,17 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "treating_scientific_source_semantic_equivalence_with_documented_operational_deltas_as_full_raw_byte_identity_or_original_tarball_identity",
             "treating_pre2020_cross_repository_raw_blob_replication_as_original_aer_tarball_byte_identity_or_authoritative_archive_hash",
             "treating_official_aer_rrtm_sw_to_rrtmg_sw_final_table_continuity_as_recovered_preaveraging_generator_exact_weighting_or_original_v25_tarball_hash",
+            "treating_historical_aer_rrtm_molecular_kdistribution_planck_band_generation_pipeline_as_the_fu96_ice_cloud_high_resolution_preaveraging_generator",
             "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
             "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.14 adds a separate pre-2020 repository-history replication check without changing the Step 3Q.13 AER-official semantic-equivalence result. The pinned pyrrtm commit that first added shortwave code on 2014-07-14 and the pinned nickedkins v2.5 import from 2020 share exact Git-blob identities for 22 of the 26 scientific-source files. The four provenance-critical files cldprop.f, taumoldis.f, k_gB24.f and k_gB25.f are raw-byte identical across those two repository histories. Four files (RDI1MACH.f, disort.f, rrtatm.f, rrtm.f) are not raw-blob identical, so this step does not claim whole-set raw equality. Cross-repository replication is not original AER tarball identity and supplies no authoritative archive hash; both histories may descend from the same historical AER distribution. The Step 3Q.13 scientific-source semantic-equivalence qualification and Step 3Q.12 official download endpoint / extracted-distribution footprint qualification remain valid, while original tarball bytes/hash remain unrecovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
-            "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
-            "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
-            "Exact weighting and production gates remain fail-closed."
-        ),
+            "Step 3Q.16 pins the public AER-RC rrtmgp-band-generation repository as an imported historical AER RRTM_BAND_GEN SVN work tree and qualifies only the scope supported by its pinned 2014 history. "
+            "The 2014-04-02 AER commit explicitly describes the added files as initial band-generation codes from Karen and original RRTM work with no modifications yet. The pinned script.gen_2band and kdis_2sort sources operate on LBLRTM optical depths to generate molecular absorption k-distributions, continuum/minor-gas coefficients, g-band data and Planck-related products. "
+            "This recovers a historical AER molecular/k-distribution/Planck band-generation pipeline, but no provenance-linked Q. Fu high-resolution ice-cloud spectral sample set or Fu96 cloud-optics band-averaging generator is present in the qualified initial file set. Therefore AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED may be true while FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED remains false. "
+            "Step 3Q.15 official AER 2004-to-2007 Fu96 final-table continuity, Step 3Q.14 pre-2020 cross-repository raw-blob replication, Step 3Q.13 scientific-source semantic equivalence, and Step 3Q.12 archive-endpoint/footprint qualifications remain valid. Original AER v2.5 tarball bytes/hash, exact historical Fu96 solar/discrete weighting, pre-averaging spectral samples, and deterministic Band 24/25 reproduction remain unrecovered. Production Ice Optics and Step 3R remain fail-closed."
+        )
     }
 
 

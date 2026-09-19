@@ -4,6 +4,8 @@
     25
   ],
   "capabilities": {
+    "AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_IS_FU96_CLOUD_PREAVERAGING_GENERATOR": false,
+    "AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED": true,
     "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_BYTES_RECOVERED": false,
     "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_HASH_RECOVERED": false,
     "AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED": true,
@@ -13,6 +15,8 @@
     "AER_OFFICIAL_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME_PINNED": true,
     "AER_OFFICIAL_RRTM_SW_V25_TAUMOLDIS_2004_HISTORY_PINNED": true,
     "AER_RRTMG_SW_2007_FU96_FINAL_TABLE_HISTORY_PINNED": true,
+    "AER_RRTM_BAND_GEN_IMPORTED_SVN_HISTORY_PINNED": true,
+    "AER_RRTM_BAND_GEN_INITIAL_ORIGINAL_RRTM_WORK_COMMIT_PINNED": true,
     "AER_RRTM_RRTMG_FU96_FINAL_TABLE_CONTINUITY_IS_PREAVERAGING_GENERATOR_RECOVERY": false,
     "AER_RRTM_SW_TO_RRTMG_SW_FU96_FINAL_TABLE_CONTINUITY_56_OF_56_ARRAYS_2576_OF_2576_VALUES_QUALIFIED": true,
     "AER_RRTM_SW_V25_ARCHIVE_ACQUISITION_VERIFIER_READY": true,
@@ -22,6 +26,7 @@
     "EXACT_FU96_BAND_WEIGHTING_AVAILABLE": false,
     "EXACT_HISTORICAL_SOLAR_SPECTRUM_AND_WEIGHTS_RECOVERED": false,
     "FINAL_TABLE_INVERSE_IDENTIFICATION_ALLOWED": false,
+    "FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED": false,
     "FU96_HISTORICAL_BAND24_25_H_VALUES_RECOVERED": false,
     "FU96_HISTORICAL_BAND_SPECIFIC_LINEAR_LOG_MIXING_RECOVERED": false,
     "FU96_HISTORICAL_COALBEDO_EQUATION_FAMILY_QUALIFIED": true,
@@ -84,7 +89,7 @@
     "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": false,
     "physics_promotion_allowed": false
   },
-  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_15",
+  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_16",
   "evidence_as_of": "2026-09-19",
   "forbidden_substitutes": [
     "equal_weighting",
@@ -101,23 +106,29 @@
     "treating_scientific_source_semantic_equivalence_with_documented_operational_deltas_as_full_raw_byte_identity_or_original_tarball_identity",
     "treating_pre2020_cross_repository_raw_blob_replication_as_original_aer_tarball_byte_identity_or_authoritative_archive_hash",
     "treating_official_aer_rrtm_sw_to_rrtmg_sw_final_table_continuity_as_recovered_preaveraging_generator_exact_weighting_or_original_v25_tarball_hash",
+    "treating_historical_aer_rrtm_molecular_kdistribution_planck_band_generation_pipeline_as_the_fu96_ice_cloud_high_resolution_preaveraging_generator",
     "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
     "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date"
   ],
-  "mode": "FU96_AER_RRTM_SW_TO_RRTMG_SW_FINAL_TABLE_CONTINUITY_QUALIFICATION_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.15",
+  "mode": "AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFICATION_FAIL_CLOSED",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.16",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,
     "tau_ice_production_allowed": false
   },
-  "qualification_state": "PASS_FAIL_CLOSED_AER_RRTM_SW_TO_RRTMG_SW_FU96_FINAL_TABLE_CONTINUITY_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED",
+  "qualification_state": "PASS_FAIL_CLOSED_AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_FU96_CLOUD_PREAVERAGING_GENERATOR_UNRECOVERED",
   "qualified_weighting_semantic_class": {
+    "aer_historical_rrtm_band_generation_initial_original_rrtm_work_commit_pinned": true,
+    "aer_historical_rrtm_band_generation_pipeline_is_fu96_cloud_preaveraging_generator": false,
+    "aer_historical_rrtm_band_generation_svn_history_pinned": true,
+    "aer_historical_rrtm_molecular_band_generation_pipeline_recovered": true,
     "aer_rrtm_rrtmg_fu96_continuity_array_count": 56,
     "aer_rrtm_rrtmg_fu96_continuity_value_count": 2576,
     "aer_rrtm_rrtmg_fu96_final_table_continuity_is_preaveraging_generator_recovery": false,
     "aer_rrtm_sw_to_rrtmg_sw_fu96_final_table_continuity_qualified": true,
     "final_table_inverse_identification_allowed": false,
+    "fu96_cloud_preaveraging_generator_recovered": false,
     "fu_lineage_h_domains": {
       "0.175_to_0.700_um": 1.0,
       "0.700_to_1.220_um": "2/3"
@@ -175,8 +186,14 @@
     "v25_taumoldis_official_mirror_cvs_normalized_equivalence": true
   },
   "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
-  "scope_note": "Step 3Q.14 adds a separate pre-2020 repository-history replication check without changing the Step 3Q.13 AER-official semantic-equivalence result. The pinned pyrrtm commit that first added shortwave code on 2014-07-14 and the pinned nickedkins v2.5 import from 2020 share exact Git-blob identities for 22 of the 26 scientific-source files. The four provenance-critical files cldprop.f, taumoldis.f, k_gB24.f and k_gB25.f are raw-byte identical across those two repository histories. Four files (RDI1MACH.f, disort.f, rrtatm.f, rrtm.f) are not raw-blob identical, so this step does not claim whole-set raw equality. Cross-repository replication is not original AER tarball identity and supplies no authoritative archive hash; both histories may descend from the same historical AER distribution. The Step 3Q.13 scientific-source semantic-equivalence qualification and Step 3Q.12 official download endpoint / extracted-distribution footprint qualification remain valid, while original tarball bytes/hash remain unrecovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
+  "scope_note": "Step 3Q.16 pins the public AER-RC rrtmgp-band-generation repository as an imported historical AER RRTM_BAND_GEN SVN work tree and qualifies only the scope supported by its pinned 2014 history. The 2014-04-02 AER commit explicitly describes the added files as initial band-generation codes from Karen and original RRTM work with no modifications yet. The pinned script.gen_2band and kdis_2sort sources operate on LBLRTM optical depths to generate molecular absorption k-distributions, continuum/minor-gas coefficients, g-band data and Planck-related products. This recovers a historical AER molecular/k-distribution/Planck band-generation pipeline, but no provenance-linked Q. Fu high-resolution ice-cloud spectral sample set or Fu96 cloud-optics band-averaging generator is present in the qualified initial file set. Therefore AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED may be true while FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED remains false. Step 3Q.15 official AER 2004-to-2007 Fu96 final-table continuity, Step 3Q.14 pre-2020 cross-repository raw-blob replication, Step 3Q.13 scientific-source semantic equivalence, and Step 3Q.12 archive-endpoint/footprint qualifications remain valid. Original AER v2.5 tarball bytes/hash, exact historical Fu96 solar/discrete weighting, pre-averaging spectral samples, and deterministic Band 24/25 reproduction remain unrecovered. Production Ice Optics and Step 3R remain fail-closed.",
   "sources": {
+    "aer_rrtm_band_gen_initial_comp_wtavg_planck": "https://github.com/AER-RC/rrtmgp-band-generation/blob/5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/comp_wtavg_planck.f",
+    "aer_rrtm_band_gen_initial_kdis_2sort_for": "https://github.com/AER-RC/rrtmgp-band-generation/blob/5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/kdis_2sort_for.f",
+    "aer_rrtm_band_gen_initial_kdis_2sort_planck": "https://github.com/AER-RC/rrtmgp-band-generation/blob/5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/kdis_2sort_planck.f",
+    "aer_rrtm_band_gen_initial_original_rrtm_work_commit": "https://github.com/AER-RC/rrtmgp-band-generation/commit/5ce72bd363c993189767f09f1c9fe9bc84b72c56",
+    "aer_rrtm_band_gen_initial_script_gen_2band": "https://github.com/AER-RC/rrtmgp-band-generation/blob/5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/script.gen_2band",
+    "aer_rrtm_band_gen_repository": "https://github.com/AER-RC/rrtmgp-band-generation",
     "aer_rrtm_sw_cldprop_blob_sha": "8632f7d1940285665b62fdbb30c69861924251da",
     "aer_rrtm_sw_cldprop_pinned": "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac88ae782964cd030cb202a380032d11/src/cldprop.f",
     "aer_rrtm_sw_code_page": "https://rtweb.aer.com/rrtm_sw_code.html",
@@ -251,5 +268,5 @@
     "rrtm_sw_v25_scientific_source_file_count": 26,
     "yi2013_doi": "https://doi.org/10.1175/JAS-D-13-020.1"
   },
-  "step_version": "R5.7.41.3.4.10.30.15"
+  "step_version": "R5.7.41.3.4.10.30.16"
 }

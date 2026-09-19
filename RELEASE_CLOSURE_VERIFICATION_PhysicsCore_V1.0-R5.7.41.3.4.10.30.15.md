@@ -1,12 +1,12 @@
-# Release Closure Verification — R5.7.41.3.4.10.30.15
+# Release Closure Verification — R5.7.41.3.4.10.30.16
 
 **Decision: QA PASS / FIELD pending**
 
 ## Identity
-- Version: `1.0.0-R5.7.41.3.4.10.30.15`
+- Version: `1.0.0-R5.7.41.3.4.10.30.16`
 - Step: `Step 3Q.15 — Official AER RRTM_SW→RRTMG_SW Fu96 Final-Table Continuity Qualification`
 - Frozen science baseline: `R5.7.41.2_SHADOW_COT_AB_FROZEN`
-- Qualification state: `PASS_FAIL_CLOSED_AER_RRTM_SW_TO_RRTMG_SW_FU96_FINAL_TABLE_CONTINUITY_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED`
+- Qualification state: `PASS_FAIL_CLOSED_AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_FU96_CLOUD_PREAVERAGING_GENERATOR_UNRECOVERED`
 
 ## New provenance closure
 - AER official 2004 RRTM_SW v2.5 source: `src/cldprop.f`

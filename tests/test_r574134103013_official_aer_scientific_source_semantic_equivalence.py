@@ -10,7 +10,7 @@ from tools.verify_rrtm_sw_v25_scientific_source_semantics import (
     compare_trees,
 )
 
-EXPECTED_STATE = "PASS_FAIL_CLOSED_AER_RRTM_SW_TO_RRTMG_SW_FU96_FINAL_TABLE_CONTINUITY_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+EXPECTED_STATE = "PASS_FAIL_CLOSED_AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_FU96_CLOUD_PREAVERAGING_GENERATOR_UNRECOVERED"
 
 
 def test_step3q13_scientific_source_set_and_operational_deltas_are_pinned():
@@ -40,8 +40,8 @@ def test_step3q13_semantic_equivalence_promotes_lineage_only_and_stays_fail_clos
     assert bool(g["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"]) is False
     assert bool(g["PRODUCTION_ICE_OPTICS_READY"]) is False
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_15"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.15"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_16"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.16"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["qualified_weighting_semantic_class"]["v25_scientific_source_semantic_equivalence_qualified"] is True
     assert p["qualified_weighting_semantic_class"]["v25_scientific_source_semantic_equivalence_is_full_raw_byte_identity"] is False
