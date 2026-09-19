@@ -12,7 +12,7 @@ from firecloud.case_integrity import build_analysis_integrity_audit, build_archi
 
 
 def test_release_and_frozen_step2_mode():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.12"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.13"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
     assert STEP2_MODE == "SOURCE_CAPABILITY_SURVEY_ONLY"
 

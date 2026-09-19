@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.12 — official AER download-endpoint and independent extracted-distribution footprint qualification.
+"""Ice Optics Phase 2 Step 3Q.13 — official 2004 scientific-source semantic-equivalence qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +20,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.12"
-STEP3Q_MODE = "FU96_RRTM_SW_V25_OFFICIAL_DOWNLOAD_ENDPOINT_AND_EXTRACTED_DISTRIBUTION_FOOTPRINT_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.13"
+STEP3Q_MODE = "FU96_RRTM_SW_V25_OFFICIAL_2004_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -64,6 +64,17 @@ AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004 = (
     "https://github.com/AER-RC/RRTM_SW/blob/"
     "a43212334fd726dec8d69203be0c7d50fd9ce1b0/src/taumoldis.f"
 )
+AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_COMMIT = "a43212334fd726dec8d69203be0c7d50fd9ce1b0"
+AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_SHA = "24beb15d868c131b81e354ea34b2b409c4a4062e"
+RRTM_SW_V25_EXTERNAL_IMPORT_TREE_SHA = "51b90dfdb83f33f55dc3f23b680af6e327fe1fd8"
+RRTM_SW_V25_SCIENTIFIC_SOURCE_FILE_COUNT = 26
+RRTM_SW_V25_CVS_NORMALIZED_FULL_FILE_MATCH_COUNT = 24
+RRTM_SW_V25_OPERATIONAL_DELTA_FILE_COUNT = 2
+RRTM_SW_V25_OPERATIONAL_DELTA_LINE_COUNT = 4
+AER_RRTM_SW_V25_OFFICIAL_RRTATM_2004_BLOB_SHA = "74fa6fc4dd352bff71c6f7eafa2ea1b0aa67ee18"
+RRTM_SW_V25_EXTERNAL_IMPORT_RRTATM_BLOB_SHA = "6262d3c1e331d237d7dd47520e8f1e5e713fee51"
+AER_RRTM_SW_V25_OFFICIAL_RRTM_2004_BLOB_SHA = "d4092d27a1e18b6408c1626617afdd84d88eb0c6"
+RRTM_SW_V25_EXTERNAL_IMPORT_RRTM_BLOB_SHA = "c3ef8c054583a9334b32b04261679eab4f704fe3"
 
 RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY = "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper"
 RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT = "a2d974ecefe6f369661bf5a3dfc648f07986ad89"
@@ -311,6 +322,41 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "This is source-tree equivalence for pinned critical files, not proof that the external repository tree or archive bytes are byte-identical to aer_rrtm_sw_v2.5.tar.gz.",
         ),
         _row(
+            "AER_OFFICIAL_RRTM_SW_V25_SCIENTIFIC_SOURCE_SET_MANIFEST_PINNED", "OFFICIAL_HISTORICAL_SOURCE_TREE", "PASS_PINNED",
+            "AER official 2004 release tree at commit a43212334fd726dec8d69203be0c7d50fd9ce1b0 / tree 24beb15d868c131b81e354ea34b2b409c4a4062e contains 26 Fortran scientific-source files under src/",
+            "OFFICIAL_2004_SCIENTIFIC_SOURCE_SET_MANIFEST_PINNED",
+            f"official_commit={AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_COMMIT}; official_tree={AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_SHA}",
+        ),
+        _row(
+            "RRTM_SW_V25_SCIENTIFIC_SOURCE_SET_CVS_NORMALIZED_FULL_FILE_MATCH", "OFFICIAL_HISTORICAL_SOURCE_TREE", "PASS_QUALIFIED",
+            "24 of 26 common Fortran scientific-source files are complete-file identical between AER official 2004 history and the external v2.5 import after generic CVS keyword collapse/expansion normalization",
+            "FULL_FILE_EQUIVALENCE_FOR_NON_OPERATIONAL_DELTA_SOURCE_SET_REQUIRED",
+            f"official_tree={AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_SHA}; mirror_tree={RRTM_SW_V25_EXTERNAL_IMPORT_TREE_SHA}; matched=24/26",
+        ),
+        _row(
+            "RRTM_SW_V25_RRTATM_OPERATIONAL_ONLY_DELTA_QUALIFIED", "DOCUMENTED_OPERATIONAL_DELTA", "PASS_QUALIFIED",
+            "rrtatm.f has identical line count and, after CVS normalization, differs only at three adjacent lines where the mirror comments out LBLDAT/FTIME/date-time header output calls; no radiative-transfer equation, coefficient table, cloud-optics table, gas-optics table, or spectral-band definition is changed",
+            "ONLY_NON_PHYSICS_DATE_TIME_OUTPUT_DELTA_ALLOWED",
+            f"official_blob={AER_RRTM_SW_V25_OFFICIAL_RRTATM_2004_BLOB_SHA}; mirror_blob={RRTM_SW_V25_EXTERNAL_IMPORT_RRTATM_BLOB_SHA}; delta_lines=3",
+        ),
+        _row(
+            "RRTM_SW_V25_RRTM_INPUT_FILENAME_OPERATIONAL_ONLY_DELTA_QUALIFIED", "DOCUMENTED_OPERATIONAL_DELTA", "PASS_QUALIFIED",
+            "rrtm.f has identical line count and, after CVS normalization, differs only at one OPEN statement filename literal: official INPUT_RRTM versus mirror input_rrtm_MLS; the computation path and scientific equations are otherwise unchanged",
+            "ONLY_INPUT_FILENAME_LITERAL_DELTA_ALLOWED",
+            f"official_blob={AER_RRTM_SW_V25_OFFICIAL_RRTM_2004_BLOB_SHA}; mirror_blob={RRTM_SW_V25_EXTERNAL_IMPORT_RRTM_BLOB_SHA}; delta_lines=1",
+        ),
+        _row(
+            "RRTM_SW_V25_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE", "OFFICIAL_HISTORICAL_SOURCE_TREE", "PASS_QUALIFIED",
+            "Across the 26-file Fortran scientific-source set, 24 files are full-file identical after generic CVS-keyword normalization and the remaining two files contain exactly four documented operational-only deltas (three date/time-output comments and one input-filename literal); no scientific source delta was identified",
+            "SCIENTIFIC_SEMANTIC_EQUIVALENCE_MAY_BE_QUALIFIED_ONLY_WITH_OPERATIONAL_DELTAS_EXPLICITLY_PRESERVED_AND_RAW_BYTE_IDENTITY_FORBIDDEN",
+            "This qualifies scientific-source semantic equivalence for the pinned source set, not whole-repository equality, release-package equality, original tarball identity, or historical pre-averaging generator recovery.",
+        ),
+        _row(
+            "RRTM_SW_V25_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_IS_RAW_BYTE_IDENTITY", "SCOPE_GUARD", "PASS_FORBIDDEN",
+            "false",
+            "SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_MUST_NOT_BE_RELABELED_AS_RAW_BYTE_IDENTITY_OR_ORIGINAL_TARBALL_IDENTITY",
+        ),
+        _row(
             "RRTM_SW_V25_RUNTIME_KURUCZ_LOW_HIGH_RESOLUTION_DISTINCTION", "HISTORICAL_SOLAR_SOURCE_CONTEXT", "PASS_QUALIFIED",
             "Pinned v2.5 taumoldis.f explicitly distinguishes a low-resolution Kurucz solar source from a high-resolution version and notes a band-total irradiance discrepancy handled by SCALEKUR",
             "RUNTIME_SFLUXREF_MUST_NOT_BE_EQUATED_TO_UNRECOVERED_HIGH_RESOLUTION_CLOUD_TABLE_WEIGHT_VECTOR",
@@ -506,6 +552,14 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         and status.get("RRTM_SW_V25_TAUMOLDIS_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE") == "PASS_QUALIFIED"
         and status.get("RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE") == "PASS_QUALIFIED"
     )
+    official_scientific_source_semantic_equivalence = (
+        status.get("AER_OFFICIAL_RRTM_SW_V25_SCIENTIFIC_SOURCE_SET_MANIFEST_PINNED") == "PASS_PINNED"
+        and status.get("RRTM_SW_V25_SCIENTIFIC_SOURCE_SET_CVS_NORMALIZED_FULL_FILE_MATCH") == "PASS_QUALIFIED"
+        and status.get("RRTM_SW_V25_RRTATM_OPERATIONAL_ONLY_DELTA_QUALIFIED") == "PASS_QUALIFIED"
+        and status.get("RRTM_SW_V25_RRTM_INPUT_FILENAME_OPERATIONAL_ONLY_DELTA_QUALIFIED") == "PASS_QUALIFIED"
+        and status.get("RRTM_SW_V25_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE") == "PASS_QUALIFIED"
+        and status.get("RRTM_SW_V25_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_IS_RAW_BYTE_IDENTITY") == "PASS_FORBIDDEN"
+    )
     official_download_distribution_footprint = (
         status.get("AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED") == "PASS_PINNED"
         and status.get("AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED") == "PASS_PINNED"
@@ -515,7 +569,7 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_V25_OFFICIAL_DOWNLOAD_ENDPOINT_AND_EXTRACTED_FOOTPRINT_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_V25_OFFICIAL_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -544,6 +598,12 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "AER_RRTM_SW_WEB_TAR_BUILD_PROCEDURE_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_WEB_TAR_BUILD_PROCEDURE") == "PASS_PINNED"),
         "RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED": bool(official_archive_publication_chain),
         "RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFIED": bool(official_source_tree_equivalence),
+        "AER_OFFICIAL_RRTM_SW_V25_SCIENTIFIC_SOURCE_SET_MANIFEST_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_SCIENTIFIC_SOURCE_SET_MANIFEST_PINNED") == "PASS_PINNED"),
+        "RRTM_SW_V25_SCIENTIFIC_SOURCE_SET_CVS_NORMALIZED_FULL_FILE_MATCH_24_OF_26_QUALIFIED": bool(status.get("RRTM_SW_V25_SCIENTIFIC_SOURCE_SET_CVS_NORMALIZED_FULL_FILE_MATCH") == "PASS_QUALIFIED"),
+        "RRTM_SW_V25_RRTATM_OPERATIONAL_ONLY_DELTA_QUALIFIED": bool(status.get("RRTM_SW_V25_RRTATM_OPERATIONAL_ONLY_DELTA_QUALIFIED") == "PASS_QUALIFIED"),
+        "RRTM_SW_V25_RRTM_INPUT_FILENAME_OPERATIONAL_ONLY_DELTA_QUALIFIED": bool(status.get("RRTM_SW_V25_RRTM_INPUT_FILENAME_OPERATIONAL_ONLY_DELTA_QUALIFIED") == "PASS_QUALIFIED"),
+        "RRTM_SW_V25_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_QUALIFIED": bool(official_scientific_source_semantic_equivalence),
+        "RRTM_SW_V25_SCIENTIFIC_SOURCE_SEMANTIC_EQUIVALENCE_IS_FULL_RAW_BYTE_IDENTITY": False,
         "AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED") == "PASS_PINNED"),
         "AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED": bool(status.get("AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED") == "PASS_PINNED"),
         "RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT_QUALIFIED": bool(status.get("RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT") == "PASS_SECONDARY_QUALIFIED"),
@@ -593,7 +653,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_12",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_13",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -631,6 +691,17 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtm_sw_v25_official_taumoldis_2004_commit": AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_COMMIT,
             "aer_rrtm_sw_v25_official_taumoldis_2004_date_utc": AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_DATE_UTC,
             "aer_rrtm_sw_v25_official_taumoldis_2004_blob_sha": AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_BLOB_SHA,
+            "aer_rrtm_sw_v25_official_release_tree_commit": AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_COMMIT,
+            "aer_rrtm_sw_v25_official_release_tree_sha": AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_SHA,
+            "rrtm_sw_v25_external_import_tree_sha": RRTM_SW_V25_EXTERNAL_IMPORT_TREE_SHA,
+            "rrtm_sw_v25_scientific_source_file_count": RRTM_SW_V25_SCIENTIFIC_SOURCE_FILE_COUNT,
+            "rrtm_sw_v25_cvs_normalized_full_file_match_count": RRTM_SW_V25_CVS_NORMALIZED_FULL_FILE_MATCH_COUNT,
+            "rrtm_sw_v25_operational_delta_file_count": RRTM_SW_V25_OPERATIONAL_DELTA_FILE_COUNT,
+            "rrtm_sw_v25_operational_delta_line_count": RRTM_SW_V25_OPERATIONAL_DELTA_LINE_COUNT,
+            "aer_rrtm_sw_v25_official_rrtatm_2004_blob_sha": AER_RRTM_SW_V25_OFFICIAL_RRTATM_2004_BLOB_SHA,
+            "rrtm_sw_v25_external_import_rrtatm_blob_sha": RRTM_SW_V25_EXTERNAL_IMPORT_RRTATM_BLOB_SHA,
+            "aer_rrtm_sw_v25_official_rrtm_2004_blob_sha": AER_RRTM_SW_V25_OFFICIAL_RRTM_2004_BLOB_SHA,
+            "rrtm_sw_v25_external_import_rrtm_blob_sha": RRTM_SW_V25_EXTERNAL_IMPORT_RRTM_BLOB_SHA,
             "rrtm_sw_v25_external_mirror_repository": RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY,
             "rrtm_sw_v25_external_mirror_commit": RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT,
             "rrtm_sw_v25_external_import_commit": RRTM_SW_V25_EXTERNAL_IMPORT_COMMIT,
@@ -677,6 +748,12 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "v25_official_web_tar_build_procedure_pinned": True,
             "v25_official_archive_publication_chain_qualified": True,
             "v25_official_source_tree_cvs_normalized_equivalence_qualified": True,
+            "v25_official_scientific_source_set_manifest_pinned": True,
+            "v25_scientific_source_cvs_normalized_full_file_match_count": 24,
+            "v25_scientific_source_operational_delta_file_count": 2,
+            "v25_scientific_source_operational_delta_line_count": 4,
+            "v25_scientific_source_semantic_equivalence_qualified": True,
+            "v25_scientific_source_semantic_equivalence_is_full_raw_byte_identity": False,
             "v25_official_binary_download_endpoint_pinned": True,
             "v25_historical_ftp_distribution_path_pinned": True,
             "v25_independent_extracted_distribution_footprint_qualified": True,
@@ -710,12 +787,13 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "treating_external_v25_mirror_as_byte_identical_original_aer_tarball_without_original_archive_hash",
             "treating_official_archive_filename_or_web_build_procedure_as_equivalent_to_recovered_original_tarball_bytes_or_hash",
             "treating_cvs_normalized_source_tree_equivalence_as_proof_of_original_tarball_byte_identity_or_original_tarball_hash",
+            "treating_scientific_source_semantic_equivalence_with_documented_operational_deltas_as_full_raw_byte_identity_or_original_tarball_identity",
             "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
             "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.12 extends the qualified RRTM_SW v2.5 lineage with an explicit official binary-download endpoint and a secondary extracted-distribution footprint. The current AER Code and Examples page links aer_rrtm_sw_v2.5.tar.gz directly to files.aer.com/rtweb/aer_rrtm_sw/aer_rrtm_sw_v2.5.tar.gz. The historical v2.5 update notice separately records anonymous FTP distribution at ftp.aer.com/pub/downloads/aer_rrtm_sw. An independent installation record describes obtaining the v2.5 archive from AER and shows an extracted footprint containing src/, makefiles/, rrtm_sw_instructions and update_rrtm_sw_v2.5.txt, with VERSION=v2.5 in the makefile. A local verification tool is included to hash and manifest any archive bytes actually acquired. These observations strengthen acquisition and packaging lineage only. In the present qualified evidence set the original tarball bytes were not successfully recovered, no provenance-qualified original archive hash exists, and the secondary footprint cannot establish byte identity. The Step 3Q.11 official historical critical-source-tree CVS-normalized equivalence remains qualified. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
+            "Step 3Q.13 extends the qualified RRTM_SW v2.5 lineage from two critical files to the full 26-file Fortran scientific-source set present in the pinned AER 2004 release tree. Twenty-four files are complete-file identical after generic CVS-keyword normalization. The remaining two files contain exactly four documented operational-only deltas: rrtatm.f comments out three date/time-output calls, and rrtm.f changes one input filename literal from INPUT_RRTM to input_rrtm_MLS. No radiative-transfer equation, cloud-optics table, gas-optics table, spectral coefficient table, or band definition delta was identified in the pinned source-set comparison. This qualifies scientific-source semantic equivalence only; it does not establish whole-repository equality, raw-byte identity, original aer_rrtm_sw_v2.5.tar.gz identity, or a provenance-qualified archive hash. The Step 3Q.12 official download endpoint / extracted-distribution footprint qualification remains valid, but the original tarball bytes are still unrecovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."
