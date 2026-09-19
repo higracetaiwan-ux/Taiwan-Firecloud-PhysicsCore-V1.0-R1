@@ -416,6 +416,7 @@ def retrieve_with_stateful_deadline(
     poll_seconds: float = 2.0,
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    reattach_only: bool = False,
 ) -> dict[str, Any]:
     """Submit/reattach one ADS request and download it when successful.
 
@@ -434,6 +435,7 @@ def retrieve_with_stateful_deadline(
     request_id = ""
     remote = None
     reattached = False
+    reattach_only = bool(reattach_only)
 
     # Reattach only when the journal is exactly for this request fingerprint.
     if journal.get("request_fingerprint") == fingerprint and journal.get("request_id"):
@@ -449,13 +451,35 @@ def retrieve_with_stateful_deadline(
                 _atomic_json(journal_path, journal)
                 remote = None
         except Exception as exc:
-            # A stale/expired remote is not silently treated as success.  It is
-            # recorded, then one fresh submit is allowed for this invocation.
+            # A stale/expired remote is not silently treated as success.  In
+            # normal mode one fresh submit is allowed.  Same-run deferred
+            # recovery uses reattach_only=True and MUST NOT duplicate an ADS
+            # request if the journalled remote cannot be recovered.
             journal.update({"reattach_error": f"{type(exc).__name__}: {exc}", "reattach_failed_at_utc": utc_now_iso()})
             _atomic_json(journal_path, journal)
             remote = None
+            if reattach_only:
+                raise AdsStatefulFailure(
+                    "CAMS_ADS_REATTACH_ONLY_REMOTE_UNAVAILABLE",
+                    audit_fields={
+                        "ads_request_id": candidate,
+                        "ads_request_recovery_eligible": False,
+                        "ads_request_journal": str(journal_path),
+                        "ads_reattach_only": True,
+                    },
+                ) from exc
 
     if remote is None:
+        if reattach_only:
+            raise AdsStatefulFailure(
+                "CAMS_ADS_REATTACH_ONLY_NO_RECOVERABLE_REQUEST",
+                audit_fields={
+                    "ads_request_id": str(journal.get("request_id") or ""),
+                    "ads_request_recovery_eligible": False,
+                    "ads_request_journal": str(journal_path),
+                    "ads_reattach_only": True,
+                },
+            )
         try:
             remote = client.submit(dataset, request)
         except TypeError:
@@ -529,6 +553,7 @@ def retrieve_with_stateful_deadline(
                 "ads_request_id": request_id,
                 "ads_remote_status": status,
                 "ads_request_reattached": reattached,
+                "ads_reattach_only": reattach_only,
                 "ads_request_recovery_eligible": False,
                 "ads_request_journal": str(journal_path),
                 "ads_queue_elapsed_seconds": round(queue_elapsed, 3),

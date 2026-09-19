@@ -18,7 +18,7 @@ CONTRACT = "ice_microphysics_gfsv16_rei_dmax_bridge_contract.json"
 
 
 def test_release_and_step3c_mode():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.18"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.18.1"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
     assert STEP3C_MODE == "GFSV16_REI_DMAX_BRIDGE_FEASIBILITY_AUDIT_ONLY"
 

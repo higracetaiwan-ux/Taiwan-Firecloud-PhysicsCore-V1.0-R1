@@ -121,7 +121,7 @@
     "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date"
   ],
   "mode": "FU96_PRIMARY_SPECTRAL_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.18",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.18.1",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,

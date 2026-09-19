@@ -516,12 +516,15 @@ def _retrieve_request(points: list[dict], valid_time: datetime, role: str, reque
             try:
                 if datastores_client_available():
                     queue_grace, running_grace, total_deadline, poll_seconds = _stateful_ads_deadlines()
+                    reattach_only = str(os.getenv("FIRECLOUD_CAMS_ADS_REATTACH_ONLY", "0")).strip().lower() in {"1","true","yes","on"}
                     state_meta = retrieve_with_stateful_deadline(
                         client=_make_datastores_client(), dataset=DATASET, request=request,
                         target=tmp, role=role, cache_dir=(cache_dir or _default_cache_dir()),
                         queue_grace_seconds=queue_grace, running_grace_seconds=running_grace,
                         total_deadline_seconds=total_deadline, poll_seconds=poll_seconds,
+                        reattach_only=reattach_only,
                     )
+                    audit["ads_reattach_only"] = reattach_only
                     audit.update(state_meta)
                     audit["ads_queue_grace_seconds"] = queue_grace
                     audit["ads_running_grace_seconds"] = running_grace
@@ -1313,7 +1316,8 @@ def _cams_role_worker(result_path: str, role: str, points: list[dict], valid_tim
 def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
                             cache_dir: str | Path | None = None,
                             deadline_seconds: float = 210.0,
-                            heartbeat_callback=None) -> dict:
+                            heartbeat_callback=None,
+                            reattach_only: bool = False) -> dict:
     """Run one CAMS ADS role in a dedicated *external* Python worker.
 
     V8.4.10.5 removes ``multiprocessing.spawn`` from the Streamlit process.
@@ -1401,6 +1405,10 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
             cmd=[_timeout_bin, "--signal=TERM", "--kill-after=2s", f"{deadline_seconds:.3f}s", *cmd]
         env=os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED","1")
+        if reattach_only:
+            env["FIRECLOUD_CAMS_ADS_REATTACH_ONLY"] = "1"
+        else:
+            env.pop("FIRECLOUD_CAMS_ADS_REATTACH_ONLY", None)
         proc=None
         observed_returncode=None
 
@@ -1688,6 +1696,17 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
     except Exception:
         timeout_cooldown=15.0
     timeout_cooldown=min(timeout_cooldown, max(0.0, deadline_seconds*0.25))
+    try:
+        deferred_reattach_count=max(0,int(os.getenv("FIRECLOUD_CAMS_DEFERRED_REATTACH_COUNT","1")))
+    except Exception:
+        deferred_reattach_count=1
+    try:
+        deferred_reattach_cooldown=max(0.0,float(os.getenv("FIRECLOUD_CAMS_DEFERRED_REATTACH_COOLDOWN_SECONDS","8")))
+    except Exception:
+        deferred_reattach_cooldown=8.0
+    deferred_reattach_cooldown=min(deferred_reattach_cooldown, max(0.0, deadline_seconds*0.25))
+    meta["cams_deferred_reattach_count"] = deferred_reattach_count
+    meta["cams_deferred_reattach_contract"] = "R5.7.41.3.4.10.30.18.1_SAME_REQUEST_ID_BOUNDED_REATTACH_V1"
 
     role_results={}
     for idx,role in enumerate(roles):
@@ -1732,10 +1751,42 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
             if str(res.get("status","")).upper()=="OK":
                 break
 
+        # R5.7.41.3.4.10.30.18.1: TIMEOUT_DEFERRED means the remote ADS
+        # request can still be alive and its request_id is durable.  Re-enter
+        # the same role in reattach-only mode so the child may collect the
+        # original request when it completes.  reattach-only mode is forbidden
+        # from calling submit(), so this recovery cannot duplicate the request.
+        deferred_attempts = 0
+        while (
+            deferred_attempts < deferred_reattach_count
+            and str(res.get("status", "")).upper() == "TIMEOUT_DEFERRED"
+            and bool(((res.get("meta") or {}).get("request_audit") or {}).get("ads_request_recovery_eligible", False))
+            and str(((res.get("meta") or {}).get("request_audit") or {}).get("ads_request_id", ""))
+        ):
+            deferred_attempts += 1
+            if deferred_reattach_cooldown:
+                time.sleep(deferred_reattach_cooldown)
+            prior = res
+            if progress_callback:
+                try: progress_callback(role+"_REATTACH", "RUNNING", 0.0)
+                except Exception: pass
+            res = _run_cams_role_isolated(
+                role, points, valid_time, cache_dir, deadline_seconds,
+                heartbeat_callback=progress_callback, reattach_only=True,
+            )
+            res["deferred_reattach_attempted"] = True
+            res["deferred_reattach_count"] = deferred_attempts
+            res["deferred_initial_status"] = str(prior.get("status", ""))
+            res["deferred_initial_error"] = str(prior.get("error", "") or "")
+            res["deferred_initial_elapsed_seconds"] = float(prior.get("elapsed_seconds", 0.0) or 0.0)
+            res["deferred_recovery_contract"] = "R5.7.41.3.4.10.30.18.1_SAME_REQUEST_ID_BOUNDED_REATTACH_V1"
+            if progress_callback:
+                try: progress_callback(role+"_REATTACH", res.get("status","FAILED"), res.get("elapsed_seconds",0.0))
+                except Exception: pass
+
         if str(res.get("status","")).upper()=="TIMEOUT_DEFERRED" and timeout_cooldown:
-            # Remote ADS jobs may outlive the terminated local process.  A short
-            # cooldown before submitting the next role prevents an immediate
-            # cascade of queued requests.
+            # The bounded reattach still did not reach terminal success.  Preserve
+            # Missing/fail-close and cool down before advancing to the next role.
             time.sleep(timeout_cooldown)
         role_results[role]=res
 
@@ -1759,6 +1810,12 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
                       "initial_status":res.get("initial_status",""),
                       "initial_error":res.get("initial_error",""),
                       "initial_elapsed_seconds":round(float(res.get("initial_elapsed_seconds",0.0) or 0.0),3),
+                      "deferred_reattach_attempted":bool(res.get("deferred_reattach_attempted",False)),
+                      "deferred_reattach_count":int(res.get("deferred_reattach_count",0) or 0),
+                      "deferred_initial_status":res.get("deferred_initial_status",""),
+                      "deferred_initial_error":res.get("deferred_initial_error",""),
+                      "deferred_initial_elapsed_seconds":round(float(res.get("deferred_initial_elapsed_seconds",0.0) or 0.0),3),
+                      "deferred_recovery_contract":res.get("deferred_recovery_contract",""),
                       "error":res.get("error","")})
         request_audit.append(audit)
         inv=res.get("inventory") or []
