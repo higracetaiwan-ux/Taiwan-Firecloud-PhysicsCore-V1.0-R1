@@ -104,7 +104,7 @@ def test_viewing_precipitation_science_dataframe_matches_legacy_values():
 
 def test_version_is_r574134103():
     import firecloud
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.11"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.12"
 
 def test_view_grouped_integrator_preserves_partial_missing_intersection_semantics():
     snap=_route_native()

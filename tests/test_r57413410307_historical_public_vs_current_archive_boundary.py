@@ -15,7 +15,7 @@ def test_historical_public_release_existence_is_separate_from_current_availabili
 def test_current_unavailability_does_not_erase_historical_publication_or_unlock_generator():
     e = build_fu96_rrtmg_band_weighting_provenance_evidence()
     g = build_fu96_rrtmg_band_weighting_provenance_gate(e).iloc[0]
-    assert g["qualification_state"] == "PASS_FAIL_CLOSED_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFIED_ORIGINAL_TARBALL_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+    assert g["qualification_state"] == "PASS_FAIL_CLOSED_V25_OFFICIAL_DOWNLOAD_ENDPOINT_AND_EXTRACTED_FOOTPRINT_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
     assert bool(g["RRTMG_SW_PRE_V5_CURRENT_PUBLIC_RELEASES_AVAILABLE"]) is False
     assert bool(g["RRTM_SW_V24_HISTORICALLY_PUBLIC_2002"]) is True
     assert bool(g["RRTM_SW_V25_HISTORICAL_USE_2006"]) is True
@@ -25,8 +25,8 @@ def test_current_unavailability_does_not_erase_historical_publication_or_unlock_
 
 def test_step3q7_contract_version_and_semantics():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_11"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.11"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_12"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.12"
     q = p["qualified_weighting_semantic_class"]
     assert q["rrtmg_sw_pre_v5_current_public_releases_available"] is False
     assert q["rrtm_sw_v24_historically_public_2002"] is True

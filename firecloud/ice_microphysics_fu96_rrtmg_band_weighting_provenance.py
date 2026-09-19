@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.11 — official AER historical source-tree CVS-normalized equivalence qualification.
+"""Ice Optics Phase 2 Step 3Q.12 — official AER download-endpoint and independent extracted-distribution footprint qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +20,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.11"
-STEP3Q_MODE = "FU96_RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.12"
+STEP3Q_MODE = "FU96_RRTM_SW_V25_OFFICIAL_DOWNLOAD_ENDPOINT_AND_EXTRACTED_DISTRIBUTION_FOOTPRINT_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -42,6 +42,9 @@ AER_RRTM_SW_CLDPROP_BLOB_SHA = "8632f7d1940285665b62fdbb30c69861924251da"
 AER_RRTM_SW_CODE_PAGE = "https://rtweb.aer.com/rrtm_sw_code.html"
 AER_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME = "aer_rrtm_sw_v2.5.tar.gz"
 AER_RRTM_SW_V25_EXAMPLES_ARCHIVE_FILENAME = "aer_rrtm_sw_examples_v2.5.tar.gz"
+AER_RRTM_SW_V25_SOURCE_ARCHIVE_URL = "https://files.aer.com/rtweb/aer_rrtm_sw/aer_rrtm_sw_v2.5.tar.gz"
+AER_RRTM_SW_V25_HISTORICAL_FTP_SOURCE_PATH = "ftp://ftp.aer.com/pub/downloads/aer_rrtm_sw/aer_rrtm_sw_v2.5.tar.gz"
+APPROPEDIA_RRTM_SW_V25_INSTALL_GUIDE = "https://www.appropedia.org/Installing_RTM_Software_on_Linux"
 AER_RRTM_SW_RELEASE_BUILD_NOTES_PINNED = (
     "https://github.com/AER-RC/RRTM_SW/blob/"
     "b1253809ac88ae782964cd030cb202a380032d11/README.cvs_checkin_notes"
@@ -332,6 +335,30 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             AER_RRTM_SW_CODE_PAGE,
         ),
         _row(
+            "AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED", "OFFICIAL_ARCHIVE_ACQUISITION", "PASS_PINNED",
+            "The current AER RRTM_SW Code and Examples page links aer_rrtm_sw_v2.5.tar.gz directly to files.aer.com/rtweb/aer_rrtm_sw/aer_rrtm_sw_v2.5.tar.gz",
+            "OFFICIAL_AER_BINARY_ENDPOINT_PINNED_WITHOUT_CLAIMING_SUCCESSFUL_ARCHIVE_RETRIEVAL_OR_HASH",
+            AER_RRTM_SW_V25_SOURCE_ARCHIVE_URL,
+        ),
+        _row(
+            "AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED", "OFFICIAL_ARCHIVE_ACQUISITION", "PASS_PINNED",
+            "The v2.5 update notice documents anonymous FTP distribution at ftp.aer.com/pub/downloads/aer_rrtm_sw and explicitly instructs get aer_rrtm_sw_v2.5.tar.gz",
+            "HISTORICAL_AER_FTP_DISTRIBUTION_PATH_PINNED_AS_LINEAGE_EVIDENCE_NOT_AS_CURRENT_ARCHIVE_BYTES",
+            RRTM_SW_V25_EXTERNAL_UPDATE,
+        ),
+        _row(
+            "RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT", "SECONDARY_ARCHIVAL_OBSERVATION", "PASS_SECONDARY_QUALIFIED",
+            "An independent RRTM_SW v2.5 installation record describes obtaining the source package from AER and, after extraction, shows src/, makefiles/, rrtm_sw_instructions, update_rrtm_sw_v2.5.txt and a linux_pgi build object; the shown makefile declares VERSION = v2.5",
+            "SECONDARY_EXTRACTED_DISTRIBUTION_FOOTPRINT_MAY_CORROBORATE_PACKAGING_ONLY_AND_MUST_NOT_ESTABLISH_ORIGINAL_TARBALL_HASH_OR_BYTE_IDENTITY",
+            APPROPEDIA_RRTM_SW_V25_INSTALL_GUIDE,
+        ),
+        _row(
+            "AER_RRTM_SW_V25_ARCHIVE_ACQUISITION_VERIFIER_READY", "LOCAL_ARCHIVE_VERIFICATION_TOOLING", "PASS_TOOLING",
+            "tools/verify_aer_rrtm_sw_v25_archive.py can hash a locally acquired tar.gz, enumerate its tar manifest, check expected v2.5 footprint anchors, and optionally fetch the pinned official endpoint; it never upgrades archive authenticity without actual local bytes",
+            "LOCAL_ARCHIVE_BYTES_REQUIRED_BEFORE_HASH_AND_MANIFEST_CAN_BE_RECORDED",
+            "tools/verify_aer_rrtm_sw_v25_archive.py",
+        ),
+        _row(
             "AER_OFFICIAL_RRTM_SW_WEB_TAR_BUILD_PROCEDURE", "OFFICIAL_ARCHIVE_PUBLICATION_CHAIN", "PASS_PINNED",
             "Pinned AER README.cvs_checkin_notes documents the April 2004 public-release procedure: update release files, then run script_build_rrtm_sw.pl to build source-code and example tar files for the web-site, with the proper version number",
             "OFFICIAL_WEB_TARBALL_RELEASE_BUILD_CHAIN_PINNED",
@@ -479,10 +506,16 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         and status.get("RRTM_SW_V25_TAUMOLDIS_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE") == "PASS_QUALIFIED"
         and status.get("RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE") == "PASS_QUALIFIED"
     )
+    official_download_distribution_footprint = (
+        status.get("AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED") == "PASS_PINNED"
+        and status.get("AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED") == "PASS_PINNED"
+        and status.get("RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT") == "PASS_SECONDARY_QUALIFIED"
+        and status.get("AER_RRTM_SW_V25_ARCHIVE_ACQUISITION_VERIFIER_READY") == "PASS_TOOLING"
+    )
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFIED_ORIGINAL_TARBALL_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_V25_OFFICIAL_DOWNLOAD_ENDPOINT_AND_EXTRACTED_FOOTPRINT_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -511,6 +544,11 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "AER_RRTM_SW_WEB_TAR_BUILD_PROCEDURE_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_WEB_TAR_BUILD_PROCEDURE") == "PASS_PINNED"),
         "RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED": bool(official_archive_publication_chain),
         "RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFIED": bool(official_source_tree_equivalence),
+        "AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED") == "PASS_PINNED"),
+        "AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED": bool(status.get("AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED") == "PASS_PINNED"),
+        "RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT_QUALIFIED": bool(status.get("RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT") == "PASS_SECONDARY_QUALIFIED"),
+        "AER_RRTM_SW_V25_ARCHIVE_ACQUISITION_VERIFIER_READY": bool(status.get("AER_RRTM_SW_V25_ARCHIVE_ACQUISITION_VERIFIER_READY") == "PASS_TOOLING"),
+        "RRTM_SW_V25_OFFICIAL_DOWNLOAD_AND_EXTRACTED_FOOTPRINT_QUALIFIED": bool(official_download_distribution_footprint),
         "AER_OFFICIAL_RRTM_SW_V25_CLDPROP_2004_HISTORY_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_CLDPROP_2004_HISTORY_PINNED") == "PASS_PINNED"),
         "AER_OFFICIAL_RRTM_SW_V25_TAUMOLDIS_2004_HISTORY_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_TAUMOLDIS_2004_HISTORY_PINNED") == "PASS_PINNED"),
         "RRTM_SW_V25_CLDPROP_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE_QUALIFIED": bool(status.get("RRTM_SW_V25_CLDPROP_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE") == "PASS_QUALIFIED"),
@@ -555,7 +593,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_11",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_12",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -580,6 +618,9 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtm_sw_code_page": AER_RRTM_SW_CODE_PAGE,
             "aer_rrtm_sw_v25_source_archive_filename": AER_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME,
             "aer_rrtm_sw_v25_examples_archive_filename": AER_RRTM_SW_V25_EXAMPLES_ARCHIVE_FILENAME,
+            "aer_rrtm_sw_v25_source_archive_url": AER_RRTM_SW_V25_SOURCE_ARCHIVE_URL,
+            "aer_rrtm_sw_v25_historical_ftp_source_path": AER_RRTM_SW_V25_HISTORICAL_FTP_SOURCE_PATH,
+            "appropedia_rrtm_sw_v25_install_guide": APPROPEDIA_RRTM_SW_V25_INSTALL_GUIDE,
             "aer_rrtm_sw_release_build_notes_pinned": AER_RRTM_SW_RELEASE_BUILD_NOTES_PINNED,
             "aer_rrtm_sw_release_build_notes_blob_sha": AER_RRTM_SW_RELEASE_BUILD_NOTES_BLOB_SHA,
             "aer_rrtm_sw_v25_official_cldprop_2004": AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004,
@@ -636,6 +677,11 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "v25_official_web_tar_build_procedure_pinned": True,
             "v25_official_archive_publication_chain_qualified": True,
             "v25_official_source_tree_cvs_normalized_equivalence_qualified": True,
+            "v25_official_binary_download_endpoint_pinned": True,
+            "v25_historical_ftp_distribution_path_pinned": True,
+            "v25_independent_extracted_distribution_footprint_qualified": True,
+            "v25_archive_acquisition_verifier_ready": True,
+            "v25_official_download_and_extracted_footprint_qualified": True,
             "v25_cldprop_official_mirror_cvs_normalized_equivalence": True,
             "v25_taumoldis_official_mirror_cvs_normalized_equivalence": True,
             "v25_official_source_tree_equivalence_is_original_tarball_byte_identity": False,
@@ -664,11 +710,12 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "treating_external_v25_mirror_as_byte_identical_original_aer_tarball_without_original_archive_hash",
             "treating_official_archive_filename_or_web_build_procedure_as_equivalent_to_recovered_original_tarball_bytes_or_hash",
             "treating_cvs_normalized_source_tree_equivalence_as_proof_of_original_tarball_byte_identity_or_original_tarball_hash",
+            "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
             "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.11 extends the qualified RRTM_SW v2.5 lineage with official AER historical source-tree equivalence evidence. AER's RRTM_SW Code and Examples page identifies the v2.5 source package filename as aer_rrtm_sw_v2.5.tar.gz, and pinned AER release notes document that the April 2004 public-release procedure used script_build_rrtm_sw.pl to build source-code and example tar files for the web-site with the proper version number. This retains the official publication-lineage qualification. In addition, AER official 2004 repository history now directly pins cldprop.f at 2004-04-15T18:42:10Z and taumoldis.f at 2004-04-15T18:50:57Z. Full-file comparison against the external mirror import shows that both critical files become identical after canonical removal of CVS keyword expansion, qualifying critical-source-tree historical equivalence. This still does not recover the original tarball bytes or a provenance-qualified archive hash and therefore does not prove the mirror repository tree or archive byte-identical to the original AER tarball. The prior mirror import-time/CVS-time separation and runtime Kurucz context remain qualified. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
+            "Step 3Q.12 extends the qualified RRTM_SW v2.5 lineage with an explicit official binary-download endpoint and a secondary extracted-distribution footprint. The current AER Code and Examples page links aer_rrtm_sw_v2.5.tar.gz directly to files.aer.com/rtweb/aer_rrtm_sw/aer_rrtm_sw_v2.5.tar.gz. The historical v2.5 update notice separately records anonymous FTP distribution at ftp.aer.com/pub/downloads/aer_rrtm_sw. An independent installation record describes obtaining the v2.5 archive from AER and shows an extracted footprint containing src/, makefiles/, rrtm_sw_instructions and update_rrtm_sw_v2.5.txt, with VERSION=v2.5 in the makefile. A local verification tool is included to hash and manifest any archive bytes actually acquired. These observations strengthen acquisition and packaging lineage only. In the present qualified evidence set the original tarball bytes were not successfully recovered, no provenance-qualified original archive hash exists, and the secondary footprint cannot establish byte identity. The Step 3Q.11 official historical critical-source-tree CVS-normalized equivalence remains qualified. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."

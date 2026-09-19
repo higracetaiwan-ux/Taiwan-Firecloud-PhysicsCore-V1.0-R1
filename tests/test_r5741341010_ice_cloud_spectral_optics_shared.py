@@ -39,7 +39,7 @@ def _fake_lut():
 
 
 def test_version_and_six_band_contract():
-    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.30.11'
+    assert firecloud.__version__ == '1.0.0-R5.7.41.3.4.10.30.12'
     assert ICE_OPTICS_WAVELENGTHS_NM == (550,575,600,650,700,750)
 
 
