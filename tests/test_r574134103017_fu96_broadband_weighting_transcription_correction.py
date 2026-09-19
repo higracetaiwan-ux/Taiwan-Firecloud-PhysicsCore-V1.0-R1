@@ -5,7 +5,7 @@ from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import (
     fu96_rrtmg_band_weighting_provenance_contract_payload,
 )
 
-STATE = "PASS_FAIL_CLOSED_FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+STATE = "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
 
 def test_step3q17_equations_retain_extinction_and_scattering_weights():
     e = build_fu96_rrtmg_band_weighting_provenance_evidence().set_index("check_id")
@@ -28,8 +28,8 @@ def test_step3q17_gate_is_corrected_but_fail_closed():
 
 def test_step3q17_contract_identity():
     c = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert __version__ == "1.0.0-R5.7.41.3.4.10.30.17"
-    assert c["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_17"
+    assert __version__ == "1.0.0-R5.7.41.3.4.10.30.18"
+    assert c["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
     assert c["qualification_state"] == STATE
     assert c["science_baseline"] == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
     assert c["production_guards"]["physics_promotion_allowed"] is False

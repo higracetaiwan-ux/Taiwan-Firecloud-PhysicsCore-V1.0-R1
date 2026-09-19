@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.17 — Fu96-lineage broadband weighting equation transcription correction.
+"""Ice Optics Phase 2 Step 3Q.18 — Fu96 primary spectral-boundary and Band-24 inverse re-averaging barrier qualification.
 
 This step corrects the Step3Q diagnostic/provenance transcription of the Fu96-lineage
 shortwave broadband averaging equations. The linear and logarithmic single-scattering
@@ -34,8 +34,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.17"
-STEP3Q_MODE = "FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.18"
+STEP3Q_MODE = "FU96_PRIMARY_SPECTRAL_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -269,6 +269,27 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "Chou et al. 2002 explicitly gives h=1 for bands 1-8 (0.175-0.700 um) and h=2/3 for band 9 (0.700-1.220 um)",
             "FU_LINEAGE_H_DOMAIN_VALUES_INDEPENDENTLY_RESTATED", CHOU2002_DOI,
         ),
+        _row(
+            "FU96_PRIMARY_VISIBLE_NIR_0P700UM_SPECTRAL_BOUNDARY", "PRIMARY_SPECTRAL_BOUNDARY", "PASS_PINNED",
+            "Fu96-lineage solar cirrus parameterization uses adjacent bands 0.2-0.7 um and 0.7-1.41 um; the 0.700 um boundary is therefore a primary parameterization boundary rather than an arbitrary later split",
+            "FU96_PRIMARY_0P700UM_BOUNDARY_MUST_BE_PRESERVED_IN_HISTORICAL_RECONSTRUCTION", FU2007_DOI,
+        ),
+        _row(
+            "RRTMG_BAND25_WITHIN_SINGLE_FU96_PRIMARY_BAND", "SPECTRAL_GEOMETRY", "PASS_QUALIFIED",
+            "RRTMG band 25 spans 0.441501-0.625000 um and lies wholly inside the Fu96 0.2-0.7 um primary solar band",
+            "BAND25_DOES_NOT_CROSS_FU96_0P700UM_PRIMARY_BOUNDARY", f"{FU2007_DOI}; {YI2013_DOI}",
+        ),
+        _row(
+            "RRTMG_BAND24_STRADDLES_FU96_PRIMARY_0P700UM_BOUNDARY", "SPECTRAL_GEOMETRY", "PASS_QUALIFIED",
+            "RRTMG band 24 spans 0.625000-0.778210 um and therefore straddles the Fu96 primary 0.700 um boundary",
+            "BAND24_RECONSTRUCTION_MUST_PRESERVE_BOTH_SIDES_OF_FU96_PRIMARY_BOUNDARY", f"{FU2007_DOI}; {YI2013_DOI}",
+        ),
+        _row(
+            "RRTMG_BAND24_FINAL_TABLE_INVERSE_REAVERAGING_NONUNIQUENESS", "INVERSE_PROBLEM_BARRIER", "PASS_QUALIFIED",
+            "Because Fu96-lineage co-albedo uses mixed linear/log moments and band 24 crosses the 0.700 um primary boundary, archived final broad-band values do not retain the separate beta*S-weighted linear and logarithmic spectral moments needed to uniquely reconstruct the historical cross-boundary average",
+            "FINAL_BROADBAND_TABLES_ALONE_CANNOT_UNIQUELY_RECOVER_BAND24_PREAVERAGING_REALIZATION", f"{FU96_DOI}; {FU2007_DOI}; {CHOU1998_DOI}",
+        ),
+
         _row(
             "RRTMG_BAND25_H_DOMAIN_CONSTRAINT", "H_DOMAIN_CONSTRAINT", "PASS_QUALIFIED",
             "RRTMG band 25 is 16000-22650 cm-1 = 0.441501-0.625000 um, entirely inside the Fu-lineage weak-absorption h=1 domain below 0.700 um",
@@ -739,10 +760,16 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         and status.get("AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_SCOPE") == "PASS_QUALIFIED"
         and status.get("AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_IS_FU96_CLOUD_PREAVERAGING_GENERATOR") == "PASS_FORBIDDEN"
     )
+    fu96_primary_boundary_barrier = (
+        status.get("FU96_PRIMARY_VISIBLE_NIR_0P700UM_SPECTRAL_BOUNDARY") == "PASS_PINNED"
+        and status.get("RRTMG_BAND25_WITHIN_SINGLE_FU96_PRIMARY_BAND") == "PASS_QUALIFIED"
+        and status.get("RRTMG_BAND24_STRADDLES_FU96_PRIMARY_0P700UM_BOUNDARY") == "PASS_QUALIFIED"
+        and status.get("RRTMG_BAND24_FINAL_TABLE_INVERSE_REAVERAGING_NONUNIQUENESS") == "PASS_QUALIFIED"
+    )
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -756,6 +783,11 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "FU96_LINEAGE_COALBEDO_BETA_WEIGHTING_TRANSCRIPTION_CORRECTED": bool(status.get("FU96_LINEAGE_COALBEDO_EXTINCTION_WEIGHTING_TRANSCRIPTION_CORRECTED") == "PASS_CORRECTED"),
         "FU96_LINEAGE_ASYMMETRY_SCATTERING_WEIGHTING_QUALIFIED": bool(status.get("FU96_LINEAGE_ASYMMETRY_SCATTERING_WEIGHTED_EQUATION") == "PASS_QUALIFIED"),
         "FU96_LINEAGE_SIMPLE_SOLAR_ONLY_COALBEDO_WEIGHTING_FORBIDDEN": bool(status.get("FU96_LINEAGE_SIMPLE_SOLAR_ONLY_COALBEDO_AVERAGE") == "PASS_FORBIDDEN"),
+        "FU96_PRIMARY_0P700UM_SPECTRAL_BOUNDARY_PINNED": bool(status.get("FU96_PRIMARY_VISIBLE_NIR_0P700UM_SPECTRAL_BOUNDARY") == "PASS_PINNED"),
+        "RRTMG_BAND25_WITHIN_SINGLE_FU96_PRIMARY_BAND_QUALIFIED": bool(status.get("RRTMG_BAND25_WITHIN_SINGLE_FU96_PRIMARY_BAND") == "PASS_QUALIFIED"),
+        "RRTMG_BAND24_STRADDLES_FU96_PRIMARY_0P700UM_BOUNDARY_QUALIFIED": bool(status.get("RRTMG_BAND24_STRADDLES_FU96_PRIMARY_0P700UM_BOUNDARY") == "PASS_QUALIFIED"),
+        "RRTMG_BAND24_FINAL_TABLE_INVERSE_REAVERAGING_NONUNIQUE_QUALIFIED": bool(fu96_primary_boundary_barrier),
+        "RRTMG_BAND24_FINAL_TABLE_INVERSE_REAVERAGING_UNIQUE": False,
         "FU96_HISTORICAL_H_DOMAIN_CONSTRAINTS_QUALIFIED": bool(h_domain_constraints),
         "RRTM_SW_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED": bool(archive_boundary),
         "RRTMG_SW_PUBLIC_RELEASE_AVAILABILITY_BOUNDARY_QUALIFIED": bool(public_archive_boundary),
@@ -841,7 +873,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_17",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -1005,6 +1037,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "ad_hoc_extinction_or_scattering_reweighting",
             "yi2013_formula_substituted_as_historical_fu96_generator",
             "inverse_identification_of_unique_h_or_weights_from_final_rrtm_tables",
+            "reconstructing_cross_boundary_rrtmg_band24_from_fu96_broadband_final_values_without_preaveraging_spectral_moments",
             "treating_public_release_absence_as_generator_identity_evidence",
             "treating_v25_runtime_low_resolution_kurucz_sfluxref_as_exact_cloud_table_high_resolution_weights",
             "treating_external_v25_mirror_as_byte_identical_original_aer_tarball_without_original_archive_hash",
@@ -1020,7 +1053,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.17 corrects the Fu96-lineage broadband-weighting equation transcription used by Step3Q diagnostics: linear/log single-scattering coalbedo means retain beta_lambda extinction weighting together with TOA solar irradiance and spectral interval, while asymmetry factor is weighted by omega_lambda*beta_lambda scattering. This is a provenance-contract correction only; it does not alter frozen Formation/Viewing/Twilight Glow science. "
+            "Step 3Q.18 pins the Fu96 primary 0.700 um solar-band boundary and qualifies the Band-24 inverse re-averaging barrier. RRTMG band 25 lies wholly within the Fu96 0.2-0.7 um band, whereas band 24 spans 0.625-0.778210 um and crosses the Fu96 0.700 um boundary. Because Fu96-lineage co-albedo averaging preserves separate extinction-weighted linear/log spectral moments before mixing, the compact archived final broad-band values do not contain enough information to uniquely invert the historical cross-boundary band-24 realization. Final-table inverse fitting therefore remains forbidden. Step 3Q.17 also corrects the Fu96-lineage broadband-weighting equation transcription used by Step3Q diagnostics: linear/log single-scattering coalbedo means retain beta_lambda extinction weighting together with TOA solar irradiance and spectral interval, while asymmetry factor is weighted by omega_lambda*beta_lambda scattering. This is a provenance-contract correction only; it does not alter frozen Formation/Viewing/Twilight Glow science. "
             "Step 3Q.16 remains valid: the public AER-RC rrtmgp-band-generation repository is an imported historical AER RRTM_BAND_GEN SVN work tree whose qualified scope is molecular/k-distribution/continuum/minor-gas/Planck band generation, not the Fu96 ice-cloud pre-averaging generator. "
             "The 2014-04-02 AER commit explicitly describes the added files as initial band-generation codes from Karen and original RRTM work with no modifications yet. The pinned script.gen_2band and kdis_2sort sources operate on LBLRTM optical depths to generate molecular absorption k-distributions, continuum/minor-gas coefficients, g-band data and Planck-related products. "
             "This release also corrects the diagnostic Fu96-lineage broadband equations: single-scattering coalbedo linear/log means retain extinction coefficient beta_lambda weighting together with TOA solar irradiance, and asymmetry factor is scattering-weighted. This corrects provenance transcription only and does not recover the exact archived RRTM band-24/25 realization. A historical AER molecular/k-distribution/Planck band-generation pipeline is recovered, but no provenance-linked Q. Fu high-resolution ice-cloud spectral sample set or Fu96 cloud-optics band-averaging generator is present in the qualified initial file set. Therefore AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED may be true while FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED remains false. "

@@ -4,7 +4,7 @@ from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import (
     fu96_rrtmg_band_weighting_provenance_contract_payload,
 )
 
-EXPECTED_STATE = "PASS_FAIL_CLOSED_FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+EXPECTED_STATE = "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
 
 
 def test_step3q10_official_aer_v25_archive_filename_and_web_build_chain_are_pinned():
@@ -29,8 +29,8 @@ def test_step3q10_publication_chain_does_not_promote_original_tarball_byte_ident
 
 def test_step3q10_contract_identity_and_fail_closed_state():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_17"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.17"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.18"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["sources"]["aer_rrtm_sw_v25_source_archive_filename"] == "aer_rrtm_sw_v2.5.tar.gz"
     assert p["qualified_weighting_semantic_class"]["v25_original_aer_archive_hash_recovered"] is False

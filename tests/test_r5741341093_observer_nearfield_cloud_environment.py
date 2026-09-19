@@ -36,7 +36,7 @@ def _native_no_columns():
 
 
 def test_version_bumped_to_nearfield_diagnostic_release():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.17"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.18"
 
 
 def test_coarse_low_cloud_is_preserved_when_native_3d_has_no_column():

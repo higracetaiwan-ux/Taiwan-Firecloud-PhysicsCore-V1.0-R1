@@ -17,7 +17,7 @@ def test_step3q_pins_lineage_but_keeps_exact_weighting_fail_closed():
     assert not bool(gate["BAND_INTEGRATED_OPTICAL_VALIDATION_READY"])
     assert not bool(gate["TAU_ICE_PRODUCTION_ALLOWED"])
     assert not bool(gate["PRODUCTION_ICE_OPTICS_READY"])
-    assert gate["qualification_state"] == "PASS_FAIL_CLOSED_FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+    assert gate["qualification_state"] == "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
 
 
 def test_step3q_forbids_all_unproven_weighting_substitutes():
@@ -45,10 +45,10 @@ def test_step3q_contract_is_stable_nonproduction_and_versioned():
     ev = build_fu96_rrtmg_band_weighting_provenance_evidence()
     gate = build_fu96_rrtmg_band_weighting_provenance_gate(ev)
     payload = fu96_rrtmg_band_weighting_provenance_contract_payload(evidence=ev, gate=gate)
-    assert payload["step_version"] == "R5.7.41.3.4.10.30.17"
+    assert payload["step_version"] == "R5.7.41.3.4.10.30.18"
     assert payload["production_guards"]["tau_ice_production_allowed"] is False
     assert payload["production_guards"]["production_ice_optics_ready"] is False
     a = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(payload)
     b = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(dict(reversed(list(payload.items()))))
     assert a == b
-    assert json.loads(a.decode("utf-8"))["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_17"
+    assert json.loads(a.decode("utf-8"))["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"

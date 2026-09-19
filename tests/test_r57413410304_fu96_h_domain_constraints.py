@@ -15,7 +15,7 @@ def test_step3q4_h_domain_constraints_narrow_band25_and_keep_band24_fail_closed(
     assert status["RRTMG_BAND25_EXACT_H_FOR_ARCHIVED_TABLE"] == "BLOCKED_NOT_PROVEN"
 
     g = build_fu96_rrtmg_band_weighting_provenance_gate(e).iloc[0]
-    assert g["qualification_state"] == "PASS_FAIL_CLOSED_FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+    assert g["qualification_state"] == "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
     assert bool(g["FU96_HISTORICAL_H_DOMAIN_CONSTRAINTS_QUALIFIED"]) is True
     assert bool(g["RRTMG_BAND25_FULLY_WITHIN_FU_LINEAGE_H1_DOMAIN"]) is True
     assert bool(g["RRTMG_BAND24_CROSSES_FU_LINEAGE_H_DOMAIN_BOUNDARY"]) is True
@@ -24,7 +24,7 @@ def test_step3q4_h_domain_constraints_narrow_band25_and_keep_band24_fail_closed(
     assert bool(g["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"]) is False
 
     p = fu96_rrtmg_band_weighting_provenance_contract_payload(evidence=e, gate=build_fu96_rrtmg_band_weighting_provenance_gate(e))
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_17"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
     q = p["qualified_weighting_semantic_class"]
     assert q["fu_lineage_h_domains"]["0.175_to_0.700_um"] == 1.0
     assert q["fu_lineage_h_domains"]["0.700_to_1.220_um"] == "2/3"
