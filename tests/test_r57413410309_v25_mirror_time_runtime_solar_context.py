@@ -21,7 +21,7 @@ def test_step3q9_official_runtime_solar_context_does_not_unlock_generator():
 
 def test_step3q9_contract_identity():
     p=fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"]=="FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_16"
-    assert p["step_version"]=="R5.7.41.3.4.10.30.16"
-    assert p["qualification_state"]=="PASS_FAIL_CLOSED_AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_FU96_CLOUD_PREAVERAGING_GENERATOR_UNRECOVERED"
+    assert p["contract_version"]=="FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_17"
+    assert p["step_version"]=="R5.7.41.3.4.10.30.17"
+    assert p["qualification_state"]=="PASS_FAIL_CLOSED_FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
     assert p["sources"]["rrtm_sw_v25_external_import_date_utc"]=="2020-03-17T22:23:17Z"

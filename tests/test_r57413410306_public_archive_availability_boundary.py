@@ -10,7 +10,7 @@ def test_step3q6_public_archive_boundary_fail_closed():
     assert e.loc["RRTMG_SW_CURRENT_PRE_V5_PUBLIC_RELEASE_AVAILABILITY", "status"] == "PASS_QUALIFIED"
     assert e.loc["PUBLIC_RUNTIME_ARCHIVE_SUFFICIENT_FOR_EXACT_HISTORICAL_GENERATOR", "status"] == "PASS_FAIL_CLOSED"
     g = build_fu96_rrtmg_band_weighting_provenance_gate(e.reset_index()).iloc[0]
-    assert g["qualification_state"] == "PASS_FAIL_CLOSED_AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_FU96_CLOUD_PREAVERAGING_GENERATOR_UNRECOVERED"
+    assert g["qualification_state"] == "PASS_FAIL_CLOSED_FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
     assert bool(g["RRTMG_SW_PUBLIC_RELEASE_AVAILABILITY_BOUNDARY_QUALIFIED"]) is True
     assert bool(g["RRTMG_SW_PRE_V5_CURRENT_PUBLIC_RELEASES_AVAILABLE"]) is False
     assert bool(g["PUBLIC_RUNTIME_ARCHIVE_SUFFICIENT_FOR_EXACT_HISTORICAL_GENERATOR"]) is False
@@ -20,8 +20,8 @@ def test_step3q6_public_archive_boundary_fail_closed():
 
 def test_step3q6_contract_records_archive_availability_without_inference():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_16"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.16"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_17"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.17"
     assert p["qualified_weighting_semantic_class"]["rrtmg_sw_pre_v5_current_public_releases_available"] is False
     assert p["qualified_weighting_semantic_class"]["public_runtime_archive_sufficient_for_exact_historical_generator"] is False
     assert "treating_public_release_absence_as_generator_identity_evidence" in p["forbidden_substitutes"]

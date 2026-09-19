@@ -70,7 +70,7 @@ def _native():
 
 
 def test_version_bumped_to_observer_environment_timeline_release():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.16"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.17"
 
 
 def test_timeline_covers_t_minus_180_to_t_plus_60_at_five_minute_steps():

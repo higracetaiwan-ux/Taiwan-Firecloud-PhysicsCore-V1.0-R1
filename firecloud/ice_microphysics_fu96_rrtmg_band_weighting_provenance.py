@@ -1,4 +1,10 @@
-"""Ice Optics Phase 2 Step 3Q.16 — historical AER RRTM band-generation pipeline scope qualification.
+"""Ice Optics Phase 2 Step 3Q.17 — Fu96-lineage broadband weighting equation transcription correction.
+
+This step corrects the Step3Q diagnostic/provenance transcription of the Fu96-lineage
+shortwave broadband averaging equations. The linear and logarithmic single-scattering
+co-albedo means are extinction-weighted as well as TOA-solar-irradiance-weighted, and
+the band-mean asymmetry factor is scattering-weighted. This is a provenance-contract
+correction only; frozen Formation/Viewing/Twilight Glow science is unchanged.
 
 This step pins the public AER-RC rrtmgp-band-generation repository as an imported historical
 RRTM_BAND_GEN SVN work tree and qualifies its recovered scope.  The 2014-04-02 AER commit
@@ -28,8 +34,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.16"
-STEP3Q_MODE = "AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.17"
+STEP3Q_MODE = "FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -219,12 +225,12 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
 
         _row(
             "FU96_LINEAGE_LINEAR_COALBEDO_EQUATION", "HISTORICAL_EQUATION_FAMILY", "PASS_QUALIFIED",
-            "alpha_linear = sum(alpha_lambda * S_lambda * dLambda) / sum(S_lambda * dLambda), where alpha=1-SSA",
+            "alpha_linear = sum(alpha_lambda * beta_lambda * S_lambda * dLambda) / sum(beta_lambda * S_lambda * dLambda), where alpha=1-SSA and beta is extinction coefficient",
             "SOLAR_WEIGHTED_LINEAR_COALBEDO_EQUATION_PINNED", CHOU1998_DOI,
         ),
         _row(
             "FU96_LINEAGE_LOG_COALBEDO_EQUATION", "HISTORICAL_EQUATION_FAMILY", "PASS_QUALIFIED",
-            "ln(alpha_log) = sum(ln(alpha_lambda) * S_lambda * dLambda) / sum(S_lambda * dLambda)",
+            "ln(alpha_log) = sum(ln(alpha_lambda) * beta_lambda * S_lambda * dLambda) / sum(beta_lambda * S_lambda * dLambda)",
             "SOLAR_WEIGHTED_LOG_COALBEDO_EQUATION_PINNED", CHOU1998_DOI,
         ),
         _row(
@@ -232,6 +238,22 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "alpha_eff = h*alpha_linear + (1-h)*alpha_log; h in [0,1]; h near 1 for weak absorption and decreases as absorption strengthens",
             "LINEAR_LOG_MIXING_EQUATION_FAMILY_PINNED", CHOU1998_DOI,
         ),
+        _row(
+            "FU96_LINEAGE_COALBEDO_EXTINCTION_WEIGHTING_TRANSCRIPTION_CORRECTED", "PROVENANCE_CONTRACT_CORRECTION", "PASS_CORRECTED",
+            "Step3Q linear/log coalbedo equations now retain beta_lambda extinction weighting in numerator and denominator in addition to TOA solar irradiance and spectral-interval weighting",
+            "FU96_LINEAGE_COALBEDO_EQUATIONS_MUST_USE_BETA_TIMES_SOLAR_WEIGHTING", CHOU1998_DOI,
+        ),
+        _row(
+            "FU96_LINEAGE_ASYMMETRY_SCATTERING_WEIGHTED_EQUATION", "HISTORICAL_EQUATION_FAMILY", "PASS_QUALIFIED",
+            "g_eff = sum(g_lambda * omega_lambda * beta_lambda * S_lambda * dLambda) / sum(omega_lambda * beta_lambda * S_lambda * dLambda)",
+            "FU96_LINEAGE_BAND_MEAN_G_MUST_BE_SCATTERING_WEIGHTED", CHOU1998_DOI,
+        ),
+        _row(
+            "FU96_LINEAGE_SIMPLE_SOLAR_ONLY_COALBEDO_AVERAGE", "SCOPE_GUARD", "PASS_FORBIDDEN",
+            "false",
+            "MUST_NOT_DROP_BETA_LAMBDA_EXTINCTION_WEIGHTING_FROM_LINEAR_OR_LOG_COALBEDO_AVERAGES", CHOU1998_DOI,
+        ),
+
         _row(
             "FU96_LINEAGE_H_EMPIRICAL_SELECTION", "HISTORICAL_EQUATION_FAMILY", "PASS_QUALIFIED",
             "Chou et al. 1998 determines optimal h empirically by trial and error to minimize TOA/surface flux differences against high-resolution calculations",
@@ -720,7 +742,7 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_SCOPE_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_FU96_CLOUD_PREAVERAGING_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_FU96_LINEAGE_BROADBAND_WEIGHTING_EQUATION_TRANSCRIPTION_CORRECTED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -731,6 +753,9 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "SOLAR_IRRADIANCE_WEIGHTING_SEMANTIC_SUPPORTED": True,
         "FU96_HISTORICAL_MIXED_LINEAR_LOG_COALBEDO_SEMANTIC_PINNED": True,
         "FU96_HISTORICAL_COALBEDO_EQUATION_FAMILY_QUALIFIED": bool(equation_family),
+        "FU96_LINEAGE_COALBEDO_BETA_WEIGHTING_TRANSCRIPTION_CORRECTED": bool(status.get("FU96_LINEAGE_COALBEDO_EXTINCTION_WEIGHTING_TRANSCRIPTION_CORRECTED") == "PASS_CORRECTED"),
+        "FU96_LINEAGE_ASYMMETRY_SCATTERING_WEIGHTING_QUALIFIED": bool(status.get("FU96_LINEAGE_ASYMMETRY_SCATTERING_WEIGHTED_EQUATION") == "PASS_QUALIFIED"),
+        "FU96_LINEAGE_SIMPLE_SOLAR_ONLY_COALBEDO_WEIGHTING_FORBIDDEN": bool(status.get("FU96_LINEAGE_SIMPLE_SOLAR_ONLY_COALBEDO_AVERAGE") == "PASS_FORBIDDEN"),
         "FU96_HISTORICAL_H_DOMAIN_CONSTRAINTS_QUALIFIED": bool(h_domain_constraints),
         "RRTM_SW_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED": bool(archive_boundary),
         "RRTMG_SW_PUBLIC_RELEASE_AVAILABILITY_BOUNDARY_QUALIFIED": bool(public_archive_boundary),
@@ -816,7 +841,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_16",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_17",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -989,14 +1014,16 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "treating_pre2020_cross_repository_raw_blob_replication_as_original_aer_tarball_byte_identity_or_authoritative_archive_hash",
             "treating_official_aer_rrtm_sw_to_rrtmg_sw_final_table_continuity_as_recovered_preaveraging_generator_exact_weighting_or_original_v25_tarball_hash",
             "treating_historical_aer_rrtm_molecular_kdistribution_planck_band_generation_pipeline_as_the_fu96_ice_cloud_high_resolution_preaveraging_generator",
+            "dropping_beta_lambda_extinction_weighting_and_using_solar_irradiance_only_for_fu96_lineage_coalbedo_band_averages",
             "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
             "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.16 pins the public AER-RC rrtmgp-band-generation repository as an imported historical AER RRTM_BAND_GEN SVN work tree and qualifies only the scope supported by its pinned 2014 history. "
+            "Step 3Q.17 corrects the Fu96-lineage broadband-weighting equation transcription used by Step3Q diagnostics: linear/log single-scattering coalbedo means retain beta_lambda extinction weighting together with TOA solar irradiance and spectral interval, while asymmetry factor is weighted by omega_lambda*beta_lambda scattering. This is a provenance-contract correction only; it does not alter frozen Formation/Viewing/Twilight Glow science. "
+            "Step 3Q.16 remains valid: the public AER-RC rrtmgp-band-generation repository is an imported historical AER RRTM_BAND_GEN SVN work tree whose qualified scope is molecular/k-distribution/continuum/minor-gas/Planck band generation, not the Fu96 ice-cloud pre-averaging generator. "
             "The 2014-04-02 AER commit explicitly describes the added files as initial band-generation codes from Karen and original RRTM work with no modifications yet. The pinned script.gen_2band and kdis_2sort sources operate on LBLRTM optical depths to generate molecular absorption k-distributions, continuum/minor-gas coefficients, g-band data and Planck-related products. "
-            "This recovers a historical AER molecular/k-distribution/Planck band-generation pipeline, but no provenance-linked Q. Fu high-resolution ice-cloud spectral sample set or Fu96 cloud-optics band-averaging generator is present in the qualified initial file set. Therefore AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED may be true while FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED remains false. "
+            "This release also corrects the diagnostic Fu96-lineage broadband equations: single-scattering coalbedo linear/log means retain extinction coefficient beta_lambda weighting together with TOA solar irradiance, and asymmetry factor is scattering-weighted. This corrects provenance transcription only and does not recover the exact archived RRTM band-24/25 realization. A historical AER molecular/k-distribution/Planck band-generation pipeline is recovered, but no provenance-linked Q. Fu high-resolution ice-cloud spectral sample set or Fu96 cloud-optics band-averaging generator is present in the qualified initial file set. Therefore AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED may be true while FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED remains false. "
             "Step 3Q.15 official AER 2004-to-2007 Fu96 final-table continuity, Step 3Q.14 pre-2020 cross-repository raw-blob replication, Step 3Q.13 scientific-source semantic equivalence, and Step 3Q.12 archive-endpoint/footprint qualifications remain valid. Original AER v2.5 tarball bytes/hash, exact historical Fu96 solar/discrete weighting, pre-averaging spectral samples, and deterministic Band 24/25 reproduction remain unrecovered. Production Ice Optics and Step 3R remain fail-closed."
         )
     }
