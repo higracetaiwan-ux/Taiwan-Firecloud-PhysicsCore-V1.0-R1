@@ -30,7 +30,7 @@ def _zero_tau():
 
 
 def test_version_is_r574134105():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.9"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.10"
 
 
 def test_builder_passes_full_exact_route_group_without_per_target_slice(monkeypatch):

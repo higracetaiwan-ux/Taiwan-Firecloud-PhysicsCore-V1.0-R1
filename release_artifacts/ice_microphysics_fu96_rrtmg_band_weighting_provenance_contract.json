@@ -4,7 +4,11 @@
     25
   ],
   "capabilities": {
+    "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_BYTES_RECOVERED": false,
+    "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_HASH_RECOVERED": false,
     "AER_OFFICIAL_RRTM_SW_V25_RUNTIME_SOLAR_CONTEXT_PINNED": true,
+    "AER_OFFICIAL_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME_PINNED": true,
+    "AER_RRTM_SW_WEB_TAR_BUILD_PROCEDURE_PINNED": true,
     "BAND_INTEGRATED_OPTICAL_VALIDATION_READY": false,
     "EXACT_FU96_BAND_WEIGHTING_AVAILABLE": false,
     "EXACT_HISTORICAL_SOLAR_SPECTRUM_AND_WEIGHTS_RECOVERED": false,
@@ -47,6 +51,7 @@
     "RRTM_SW_V25_EXTERNAL_MIRROR_ORIGINAL_AER_TARBALL_BYTE_IDENTITY_PROVEN": false,
     "RRTM_SW_V25_HISTORICAL_USE_2006": true,
     "RRTM_SW_V25_MAKEFILE_VERSION_IDENTITY_PINNED": true,
+    "RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED": true,
     "RRTM_SW_V25_RUNTIME_KURUCZ_LOW_HIGH_RESOLUTION_DISTINCTION_QUALIFIED": true,
     "RRTM_SW_V25_RUNTIME_SOLAR_CONTEXT_EQUALS_FU_CLOUD_TABLE_WEIGHT_VECTOR": false,
     "RRTM_SW_V25_UPDATE_NOTE_IDENTITY_PINNED": true,
@@ -56,7 +61,7 @@
     "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": false,
     "physics_promotion_allowed": false
   },
-  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_9",
+  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_10",
   "evidence_as_of": "2026-09-19",
   "forbidden_substitutes": [
     "equal_weighting",
@@ -68,16 +73,17 @@
     "treating_public_release_absence_as_generator_identity_evidence",
     "treating_v25_runtime_low_resolution_kurucz_sfluxref_as_exact_cloud_table_high_resolution_weights",
     "treating_external_v25_mirror_as_byte_identical_original_aer_tarball_without_original_archive_hash",
+    "treating_official_archive_filename_or_web_build_procedure_as_equivalent_to_recovered_original_tarball_bytes_or_hash",
     "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date"
   ],
-  "mode": "FU96_RRTM_SW_V25_MIRROR_TIME_AND_RUNTIME_SOLAR_CONTEXT_QUALIFICATION_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.9",
+  "mode": "FU96_RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFICATION_FAIL_CLOSED",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.10",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,
     "tau_ice_production_allowed": false
   },
-  "qualification_state": "PASS_FAIL_CLOSED_V25_MIRROR_TIME_AND_RUNTIME_SOLAR_CONTEXT_QUALIFIED_PREAVERAGING_GENERATOR_UNRECOVERED",
+  "qualification_state": "PASS_FAIL_CLOSED_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED_ORIGINAL_TARBALL_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED",
   "qualified_weighting_semantic_class": {
     "final_table_inverse_identification_allowed": false,
     "fu_lineage_h_domains": {
@@ -107,15 +113,25 @@
     "shortwave_weighting_basis": "solar_irradiance",
     "v25_external_distribution_lineage_qualified": true,
     "v25_external_mirror_original_aer_tarball_byte_identity_proven": false,
+    "v25_official_archive_publication_chain_qualified": true,
+    "v25_official_source_archive_filename_pinned": true,
+    "v25_official_web_tar_build_procedure_pinned": true,
+    "v25_original_aer_archive_bytes_recovered": false,
+    "v25_original_aer_archive_hash_recovered": false,
     "v25_runtime_kurucz_low_high_resolution_distinction_qualified": true,
     "v25_runtime_sfluxref_equated_to_cloud_table_high_resolution_weights": false
   },
   "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
-  "scope_note": "Step 3Q.9 extends the qualified external RRTM_SW v2.5 lineage with a strict time-provenance separation: the GitHub mirror import occurred in 2020, while preserved AER CVS metadata and the v2.5 update/build files date the source lineage to April 2004. The GitHub import timestamp is therefore not historical source provenance. Current AER documentation independently pins RRTM_SW runtime solar context to the Kurucz source with fixed 1368.22 W m-2 and states RRTMG_SW absorption data are consistent with RRTM_SW_v2.5; this runtime context is not promoted to the unrecovered Fu cloud-table high-resolution weight vector. The mirror remains non-authoritative for original-tarball byte identity because no original AER v2.5 archive hash has been recovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
+  "scope_note": "Step 3Q.10 extends the qualified RRTM_SW v2.5 lineage with an official AER publication-chain boundary. AER's RRTM_SW Code and Examples page identifies the v2.5 source package filename as aer_rrtm_sw_v2.5.tar.gz, and pinned AER release notes document that the April 2004 public-release procedure used script_build_rrtm_sw.pl to build source-code and example tar files for the web-site with the proper version number. This qualifies the official publication lineage, but it does not recover the original tarball bytes or a provenance-qualified hash and therefore does not prove the external mirror byte-identical to the original AER archive. The prior mirror import-time/CVS-time separation and runtime Kurucz context remain qualified. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. Exact weighting and production gates remain fail-closed.",
   "sources": {
     "aer_rrtm_sw_cldprop_blob_sha": "8632f7d1940285665b62fdbb30c69861924251da",
     "aer_rrtm_sw_cldprop_pinned": "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac88ae782964cd030cb202a380032d11/src/cldprop.f",
+    "aer_rrtm_sw_code_page": "https://rtweb.aer.com/rrtm_sw_code.html",
     "aer_rrtm_sw_instructions": "https://github.com/AER-RC/RRTM_SW/blob/master/rrtm_sw_instructions",
+    "aer_rrtm_sw_release_build_notes_blob_sha": "9304d7bbd17766b48a58fb2c500e8f5f951b557f",
+    "aer_rrtm_sw_release_build_notes_pinned": "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac88ae782964cd030cb202a380032d11/README.cvs_checkin_notes",
+    "aer_rrtm_sw_v25_examples_archive_filename": "aer_rrtm_sw_examples_v2.5.tar",
+    "aer_rrtm_sw_v25_source_archive_filename": "aer_rrtm_sw_v2.5.tar.gz",
     "aer_rrtmg_sw_description": "https://rtweb.aer.com/rrtmg_sw_description.html",
     "aer_rrtmg_sw_readme": "https://github.com/AER-RC/RRTMG_SW/blob/master/README.md",
     "aer_rrtmg_sw_repository": "https://github.com/AER-RC/RRTMG_SW",
@@ -143,5 +159,5 @@
     "rrtm_sw_v25_external_update_blob_sha": "00ac405ca9805ee9fc4fbaad0f0ce3733a72b67b",
     "yi2013_doi": "https://doi.org/10.1175/JAS-D-13-020.1"
   },
-  "step_version": "R5.7.41.3.4.10.30.9"
+  "step_version": "R5.7.41.3.4.10.30.10"
 }

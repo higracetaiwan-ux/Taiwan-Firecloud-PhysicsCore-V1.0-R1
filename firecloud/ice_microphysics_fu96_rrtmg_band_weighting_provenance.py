@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.9 — v2.5 mirror import-time / historical-CVS-time separation and official runtime-solar-context qualification.
+"""Ice Optics Phase 2 Step 3Q.10 — official AER v2.5 archive publication-chain qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +20,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.9"
-STEP3Q_MODE = "FU96_RRTM_SW_V25_MIRROR_TIME_AND_RUNTIME_SOLAR_CONTEXT_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.10"
+STEP3Q_MODE = "FU96_RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -39,6 +39,14 @@ MICHALSKY2006_DOI = "https://doi.org/10.1029/2005JD006341"
 AER_RRTM_SW_INSTRUCTIONS = "https://github.com/AER-RC/RRTM_SW/blob/master/rrtm_sw_instructions"
 AER_RRTM_SW_CLDPROP_PINNED = "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac88ae782964cd030cb202a380032d11/src/cldprop.f"
 AER_RRTM_SW_CLDPROP_BLOB_SHA = "8632f7d1940285665b62fdbb30c69861924251da"
+AER_RRTM_SW_CODE_PAGE = "https://rtweb.aer.com/rrtm_sw_code.html"
+AER_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME = "aer_rrtm_sw_v2.5.tar.gz"
+AER_RRTM_SW_V25_EXAMPLES_ARCHIVE_FILENAME = "aer_rrtm_sw_examples_v2.5.tar"
+AER_RRTM_SW_RELEASE_BUILD_NOTES_PINNED = (
+    "https://github.com/AER-RC/RRTM_SW/blob/"
+    "b1253809ac88ae782964cd030cb202a380032d11/README.cvs_checkin_notes"
+)
+AER_RRTM_SW_RELEASE_BUILD_NOTES_BLOB_SHA = "9304d7bbd17766b48a58fb2c500e8f5f951b557f"
 
 RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY = "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper"
 RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT = "a2d974ecefe6f369661bf5a3dfc648f07986ad89"
@@ -265,6 +273,30 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             AER_RRTMG_SW_DESCRIPTION,
         ),
         _row(
+            "AER_OFFICIAL_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME_PUBLISHED", "OFFICIAL_ARCHIVE_PUBLICATION_CHAIN", "PASS_PINNED",
+            "AER RRTM_SW Code and Examples identifies the source package as aer_rrtm_sw_v2.5.tar.gz",
+            "OFFICIAL_V25_SOURCE_ARCHIVE_FILENAME_PINNED_WITHOUT_CLAIMING_ARCHIVE_BYTES_OR_HASH_RECOVERY",
+            AER_RRTM_SW_CODE_PAGE,
+        ),
+        _row(
+            "AER_OFFICIAL_RRTM_SW_WEB_TAR_BUILD_PROCEDURE", "OFFICIAL_ARCHIVE_PUBLICATION_CHAIN", "PASS_PINNED",
+            "Pinned AER README.cvs_checkin_notes documents the April 2004 public-release procedure: update release files, then run script_build_rrtm_sw.pl to build source-code and example tar files for the web-site, with the proper version number",
+            "OFFICIAL_WEB_TARBALL_RELEASE_BUILD_CHAIN_PINNED",
+            f"{AER_RRTM_SW_RELEASE_BUILD_NOTES_PINNED}; blob_sha={AER_RRTM_SW_RELEASE_BUILD_NOTES_BLOB_SHA}",
+        ),
+        _row(
+            "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_BYTES_AND_HASH_RECOVERED", "ARCHIVAL_AUTHENTICITY", "BLOCKED_NOT_RECOVERED",
+            "The official v2.5 source-archive filename and website build procedure are now pinned, but the original aer_rrtm_sw_v2.5.tar.gz bytes and a provenance-qualified cryptographic hash are not present in the qualified evidence set",
+            "ORIGINAL_AER_V25_ARCHIVE_BYTES_PLUS_HASH_OR_EQUIVALENT_AUTHENTICITY_CHAIN_REQUIRED_FOR_BYTE_IDENTITY",
+            AER_RRTM_SW_CODE_PAGE,
+        ),
+        _row(
+            "RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN", "OFFICIAL_ARCHIVE_PUBLICATION_CHAIN", "PASS_QUALIFIED",
+            "Official AER evidence now links the v2.5 source-archive filename to AER's documented website tar-build release process; this qualifies publication lineage but not original-tarball byte identity",
+            "PUBLICATION_CHAIN_MAY_STRENGTHEN_LINEAGE_ONLY; BYTE_IDENTITY_REMAINS_FAIL_CLOSED_UNTIL_ARCHIVE_BYTES_HASH_RECOVERED",
+            f"{AER_RRTM_SW_CODE_PAGE}; {AER_RRTM_SW_RELEASE_BUILD_NOTES_PINNED}",
+        ),
+        _row(
             "RRTM_SW_V25_RUNTIME_SOLAR_CONTEXT_EQUALS_FU_CLOUD_TABLE_WEIGHT_VECTOR", "SCOPE_GUARD", "PASS_FORBIDDEN",
             "false",
             "RUNTIME_KURUCZ_CONTEXT_AND_SFLUXREF_DO_NOT_ESTABLISH_THE_UNRECOVERED_HIGH_RESOLUTION_CLOUD_TABLE_WEIGHT_VECTOR",
@@ -381,10 +413,16 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         status.get("RRTMG_SW_CURRENT_PRE_V5_PUBLIC_RELEASE_AVAILABILITY") == "PASS_QUALIFIED"
         and status.get("PUBLIC_RUNTIME_ARCHIVE_SUFFICIENT_FOR_EXACT_HISTORICAL_GENERATOR") == "PASS_FAIL_CLOSED"
     )
+    official_archive_publication_chain = (
+        status.get("AER_OFFICIAL_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME_PUBLISHED") == "PASS_PINNED"
+        and status.get("AER_OFFICIAL_RRTM_SW_WEB_TAR_BUILD_PROCEDURE") == "PASS_PINNED"
+        and status.get("RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN") == "PASS_QUALIFIED"
+        and status.get("AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_BYTES_AND_HASH_RECOVERED") == "BLOCKED_NOT_RECOVERED"
+    )
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_V25_MIRROR_TIME_AND_RUNTIME_SOLAR_CONTEXT_QUALIFIED_PREAVERAGING_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED_ORIGINAL_TARBALL_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -409,6 +447,11 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "RRTM_SW_V25_RUNTIME_KURUCZ_LOW_HIGH_RESOLUTION_DISTINCTION_QUALIFIED": bool(status.get("RRTM_SW_V25_RUNTIME_KURUCZ_LOW_HIGH_RESOLUTION_DISTINCTION") == "PASS_QUALIFIED"),
         "RRTM_SW_V25_EXTERNAL_MIRROR_IMPORT_TIME_SEPARATED_FROM_SOURCE_TIME": bool(status.get("RRTM_SW_V25_EXTERNAL_MIRROR_IMPORT_TIME_SEPARATED_FROM_SOURCE_TIME") == "PASS_QUALIFIED"),
         "AER_OFFICIAL_RRTM_SW_V25_RUNTIME_SOLAR_CONTEXT_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_RUNTIME_SOLAR_CONTEXT") == "PASS_PINNED_RUNTIME_CONTEXT"),
+        "AER_OFFICIAL_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME_PUBLISHED") == "PASS_PINNED"),
+        "AER_RRTM_SW_WEB_TAR_BUILD_PROCEDURE_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_WEB_TAR_BUILD_PROCEDURE") == "PASS_PINNED"),
+        "RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED": bool(official_archive_publication_chain),
+        "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_BYTES_RECOVERED": False,
+        "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_HASH_RECOVERED": False,
         "RRTM_SW_V25_RUNTIME_SOLAR_CONTEXT_EQUALS_FU_CLOUD_TABLE_WEIGHT_VECTOR": False,
         "RRTM_SW_V25_EXTERNAL_DISTRIBUTION_CONTAINS_PREAVERAGING_GENERATOR": False,
         "RRTM_SW_V25_EXTERNAL_MIRROR_ORIGINAL_AER_TARBALL_BYTE_IDENTITY_PROVEN": False,
@@ -447,7 +490,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_9",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_10",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -469,6 +512,11 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtm_sw_instructions": AER_RRTM_SW_INSTRUCTIONS,
             "aer_rrtm_sw_cldprop_pinned": AER_RRTM_SW_CLDPROP_PINNED,
             "aer_rrtm_sw_cldprop_blob_sha": AER_RRTM_SW_CLDPROP_BLOB_SHA,
+            "aer_rrtm_sw_code_page": AER_RRTM_SW_CODE_PAGE,
+            "aer_rrtm_sw_v25_source_archive_filename": AER_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME,
+            "aer_rrtm_sw_v25_examples_archive_filename": AER_RRTM_SW_V25_EXAMPLES_ARCHIVE_FILENAME,
+            "aer_rrtm_sw_release_build_notes_pinned": AER_RRTM_SW_RELEASE_BUILD_NOTES_PINNED,
+            "aer_rrtm_sw_release_build_notes_blob_sha": AER_RRTM_SW_RELEASE_BUILD_NOTES_BLOB_SHA,
             "rrtm_sw_v25_external_mirror_repository": RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY,
             "rrtm_sw_v25_external_mirror_commit": RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT,
             "rrtm_sw_v25_external_import_commit": RRTM_SW_V25_EXTERNAL_IMPORT_COMMIT,
@@ -508,6 +556,11 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "public_runtime_archive_sufficient_for_exact_historical_generator": False,
             "v25_external_distribution_lineage_qualified": True,
             "v25_external_mirror_original_aer_tarball_byte_identity_proven": False,
+            "v25_official_source_archive_filename_pinned": True,
+            "v25_official_web_tar_build_procedure_pinned": True,
+            "v25_official_archive_publication_chain_qualified": True,
+            "v25_original_aer_archive_bytes_recovered": False,
+            "v25_original_aer_archive_hash_recovered": False,
             "v25_runtime_kurucz_low_high_resolution_distinction_qualified": True,
             "v25_runtime_sfluxref_equated_to_cloud_table_high_resolution_weights": False,
             "final_table_inverse_identification_allowed": False,
@@ -529,11 +582,12 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "treating_public_release_absence_as_generator_identity_evidence",
             "treating_v25_runtime_low_resolution_kurucz_sfluxref_as_exact_cloud_table_high_resolution_weights",
             "treating_external_v25_mirror_as_byte_identical_original_aer_tarball_without_original_archive_hash",
+            "treating_official_archive_filename_or_web_build_procedure_as_equivalent_to_recovered_original_tarball_bytes_or_hash",
             "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.9 extends the qualified external RRTM_SW v2.5 lineage with a strict time-provenance separation: the GitHub mirror import occurred in 2020, while preserved AER CVS metadata and the v2.5 update/build files date the source lineage to April 2004. The GitHub import timestamp is therefore not historical source provenance. Current AER documentation independently pins RRTM_SW runtime solar context to the Kurucz source with fixed 1368.22 W m-2 and states RRTMG_SW absorption data are consistent with RRTM_SW_v2.5; this runtime context is not promoted to the unrecovered Fu cloud-table high-resolution weight vector. The mirror remains non-authoritative for original-tarball byte identity because no original AER v2.5 archive hash has been recovered. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
+            "Step 3Q.10 extends the qualified RRTM_SW v2.5 lineage with an official AER publication-chain boundary. AER's RRTM_SW Code and Examples page identifies the v2.5 source package filename as aer_rrtm_sw_v2.5.tar.gz, and pinned AER release notes document that the April 2004 public-release procedure used script_build_rrtm_sw.pl to build source-code and example tar files for the web-site with the proper version number. This qualifies the official publication lineage, but it does not recover the original tarball bytes or a provenance-qualified hash and therefore does not prove the external mirror byte-identical to the original AER archive. The prior mirror import-time/CVS-time separation and runtime Kurucz context remain qualified. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."

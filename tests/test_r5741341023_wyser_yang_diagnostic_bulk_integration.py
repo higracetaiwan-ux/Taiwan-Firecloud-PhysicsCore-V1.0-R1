@@ -15,7 +15,7 @@ from firecloud.ice_microphysics_wyser_yang_diagnostic_bulk_integration import (
 
 
 def test_step3j_identity_is_diagnostic_only_and_fail_closed():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.9"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.10"
     assert STEP3J_VERSION == "R5.7.41.3.4.10.23"
     assert STEP3J_MODE == "WYSER_PSD_YANG_CEXT_DIAGNOSTIC_BULK_INTEGRATION_FAIL_CLOSED"
 
