@@ -26,7 +26,7 @@ def _ctx():
 
 
 def test_version():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.14"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.15"
 
 
 def test_lut_content_signature_is_content_scoped():

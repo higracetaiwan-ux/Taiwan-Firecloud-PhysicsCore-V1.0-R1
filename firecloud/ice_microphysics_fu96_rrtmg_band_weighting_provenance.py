@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.14 — pre-2020 cross-repository raw-blob replication qualification.
+"""Ice Optics Phase 2 Step 3Q.15 — official AER RRTM_SW-to-RRTMG_SW Fu96 final-table continuity qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +20,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.14"
-STEP3Q_MODE = "FU96_RRTM_SW_V25_PRE2020_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.15"
+STEP3Q_MODE = "FU96_AER_RRTM_SW_TO_RRTMG_SW_FINAL_TABLE_CONTINUITY_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -94,6 +94,18 @@ PYRRTM_SW_2014_KGB24_BLOB_SHA = "7847f1d19a9008137d60db422c623505ebf8835e"
 PYRRTM_SW_2014_KGB25_BLOB_SHA = "e3cc504280805b0b2de725d5645334095a92b07e"
 RRTM_SW_V25_EXTERNAL_IMPORT_KGB24_BLOB_SHA = "7847f1d19a9008137d60db422c623505ebf8835e"
 RRTM_SW_V25_EXTERNAL_IMPORT_KGB25_BLOB_SHA = "e3cc504280805b0b2de725d5645334095a92b07e"
+
+AER_RRTMG_SW_2007_CONTINUITY_COMMIT = "5336e33010ac1a8498a1a66c5ef01fd1199213bf"
+AER_RRTMG_SW_2007_CONTINUITY_DATE_UTC = "2007-04-19T22:42:34Z"
+AER_RRTMG_SW_2007_CONTINUITY_TREE_SHA = "2ec6d3135d20410d4702f66e2b8ef33aa64da888"
+AER_RRTMG_SW_2007_CLDPROP_BLOB_SHA = "0f1df8d16ca6aa2374f4bec1f07567daa57077ab"
+AER_RRTMG_SW_2007_CLDPROP = (
+    "https://github.com/AER-RC/RRTMG_SW/blob/"
+    "5336e33010ac1a8498a1a66c5ef01fd1199213bf/src/rrtmg_sw_cldprop.f90"
+)
+AER_RRTM_RRTMG_FU96_CONTINUITY_ARRAY_COUNT = 56
+AER_RRTM_RRTMG_FU96_CONTINUITY_VALUES_PER_ARRAY = 46
+AER_RRTM_RRTMG_FU96_CONTINUITY_VALUE_COUNT = 2576
 
 RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY = "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper"
 RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT = "a2d974ecefe6f369661bf5a3dfc648f07986ad89"
@@ -400,6 +412,23 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "Separate repository replication strengthens source-lineage confidence but both histories may derive from the same historical AER distribution; original aer_rrtm_sw_v2.5.tar.gz bytes/hash remain unrecovered.",
         ),
         _row(
+            "AER_RRTMG_SW_2007_FU96_FINAL_TABLE_HISTORY_PINNED", "OFFICIAL_AER_CROSS_GENERATION_CONTINUITY", "PASS_PINNED",
+            "AER official RRTMG_SW commit 5336e33010ac1a8498a1a66c5ef01fd1199213bf dated 2007-04-19 preserves the Fu96 cloud tables in rrtmg_sw_cldprop.f90",
+            "OFFICIAL_AER_RRTMG_SW_2007_HISTORY_AND_CLOUD_TABLE_SOURCE_PINNED",
+            f"{AER_RRTMG_SW_2007_CLDPROP}; tree={AER_RRTMG_SW_2007_CONTINUITY_TREE_SHA}; blob={AER_RRTMG_SW_2007_CLDPROP_BLOB_SHA}",
+        ),
+        _row(
+            "AER_RRTM_SW_2004_TO_RRTMG_SW_2007_FU96_FINAL_TABLE_VALUE_CONTINUITY", "OFFICIAL_AER_CROSS_GENERATION_CONTINUITY", "PASS_QUALIFIED",
+            "EXTICE3, SSAICE3, ASYICE3, and FDLICE3 were compared for all RRTM_SW bands 16-29: 56 of 56 arrays and 2576 of 2576 numeric values are identical between AER official 2004 RRTM_SW v2.5 source and AER official 2007 RRTMG_SW source",
+            "ALL_4_FU96_TABLE_FAMILIES_X_14_BANDS_X_46_VALUES_MUST_MATCH_NUMERICALLY",
+            "This qualifies authoritative final-table continuity across AER model generations; it does not recover the pre-averaging spectral samples, generator, exact historical solar weights, or original v2.5 tarball hash.",
+        ),
+        _row(
+            "AER_RRTM_RRTMG_FU96_FINAL_TABLE_CONTINUITY_IS_PREAVERAGING_GENERATOR_RECOVERY", "SCOPE_GUARD", "PASS_FORBIDDEN",
+            "false",
+            "FINAL_TABLE_CONTINUITY_MUST_NOT_BE_RELABELED_AS_PREAVERAGING_GENERATOR_OR_EXACT_WEIGHTING_RECOVERY",
+        ),
+        _row(
             "RRTM_SW_V25_RUNTIME_KURUCZ_LOW_HIGH_RESOLUTION_DISTINCTION", "HISTORICAL_SOLAR_SOURCE_CONTEXT", "PASS_QUALIFIED",
             "Pinned v2.5 taumoldis.f explicitly distinguishes a low-resolution Kurucz solar source from a high-resolution version and notes a band-total irradiance discrepancy handled by SCALEKUR",
             "RUNTIME_SFLUXREF_MUST_NOT_BE_EQUATED_TO_UNRECOVERED_HIGH_RESOLUTION_CLOUD_TABLE_WEIGHT_VECTOR",
@@ -615,10 +644,15 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         and status.get("RRTM_SW_V25_CRITICAL_FU96_BAND24_25_RAW_BLOB_REPLICATION") == "PASS_QUALIFIED"
         and status.get("RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_IS_ORIGINAL_AER_TARBALL_IDENTITY") == "PASS_FORBIDDEN"
     )
+    official_aer_cross_generation_fu96_final_table_continuity = (
+        status.get("AER_RRTMG_SW_2007_FU96_FINAL_TABLE_HISTORY_PINNED") == "PASS_PINNED"
+        and status.get("AER_RRTM_SW_2004_TO_RRTMG_SW_2007_FU96_FINAL_TABLE_VALUE_CONTINUITY") == "PASS_QUALIFIED"
+        and status.get("AER_RRTM_RRTMG_FU96_FINAL_TABLE_CONTINUITY_IS_PREAVERAGING_GENERATOR_RECOVERY") == "PASS_FORBIDDEN"
+    )
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_V25_PRE2020_CROSS_REPOSITORY_CRITICAL_FU96_RAW_BLOB_REPLICATION_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_AER_RRTM_SW_TO_RRTMG_SW_FU96_FINAL_TABLE_CONTINUITY_QUALIFIED_ORIGINAL_TARBALL_BYTES_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -657,6 +691,9 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_MATCH_22_OF_26_QUALIFIED": bool(status.get("RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_MATCH_22_OF_26") == "PASS_QUALIFIED"),
         "RRTM_SW_V25_CRITICAL_FU96_BAND24_25_RAW_BLOB_REPLICATION_QUALIFIED": bool(pre2020_cross_repository_raw_blob_replication),
         "RRTM_SW_V25_CROSS_REPOSITORY_RAW_BLOB_REPLICATION_IS_ORIGINAL_AER_TARBALL_IDENTITY": False,
+        "AER_RRTMG_SW_2007_FU96_FINAL_TABLE_HISTORY_PINNED": bool(status.get("AER_RRTMG_SW_2007_FU96_FINAL_TABLE_HISTORY_PINNED") == "PASS_PINNED"),
+        "AER_RRTM_SW_TO_RRTMG_SW_FU96_FINAL_TABLE_CONTINUITY_56_OF_56_ARRAYS_2576_OF_2576_VALUES_QUALIFIED": bool(official_aer_cross_generation_fu96_final_table_continuity),
+        "AER_RRTM_RRTMG_FU96_FINAL_TABLE_CONTINUITY_IS_PREAVERAGING_GENERATOR_RECOVERY": False,
         "AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_BINARY_DOWNLOAD_ENDPOINT_PINNED") == "PASS_PINNED"),
         "AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED": bool(status.get("AER_RRTM_SW_V25_HISTORICAL_FTP_DISTRIBUTION_PATH_PINNED") == "PASS_PINNED"),
         "RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT_QUALIFIED": bool(status.get("RRTM_SW_V25_INDEPENDENT_EXTRACTED_DISTRIBUTION_FOOTPRINT") == "PASS_SECONDARY_QUALIFIED"),
@@ -706,7 +743,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_14",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_15",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -747,6 +784,11 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtm_sw_v25_official_release_tree_commit": AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_COMMIT,
             "aer_rrtm_sw_v25_official_release_tree_sha": AER_RRTM_SW_V25_OFFICIAL_RELEASE_TREE_SHA,
             "rrtm_sw_v25_external_import_tree_sha": RRTM_SW_V25_EXTERNAL_IMPORT_TREE_SHA,
+            "aer_rrtmg_sw_2007_continuity_commit": AER_RRTMG_SW_2007_CONTINUITY_COMMIT,
+            "aer_rrtmg_sw_2007_continuity_date_utc": AER_RRTMG_SW_2007_CONTINUITY_DATE_UTC,
+            "aer_rrtmg_sw_2007_continuity_tree_sha": AER_RRTMG_SW_2007_CONTINUITY_TREE_SHA,
+            "aer_rrtmg_sw_2007_cldprop": AER_RRTMG_SW_2007_CLDPROP,
+            "aer_rrtmg_sw_2007_cldprop_blob_sha": AER_RRTMG_SW_2007_CLDPROP_BLOB_SHA,
             "pyrrtm_repository": PYRRTM_REPOSITORY,
             "pyrrtm_sw_2014_commit": PYRRTM_SW_2014_COMMIT,
             "pyrrtm_sw_2014_date_utc": PYRRTM_SW_2014_DATE_UTC,
@@ -822,6 +864,10 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "v25_cross_repository_raw_blob_nonmatch_count": 4,
             "v25_critical_fu96_band24_25_raw_blob_replication_qualified": True,
             "v25_cross_repository_raw_blob_replication_is_original_aer_tarball_identity": False,
+            "aer_rrtm_sw_to_rrtmg_sw_fu96_final_table_continuity_qualified": True,
+            "aer_rrtm_rrtmg_fu96_continuity_array_count": 56,
+            "aer_rrtm_rrtmg_fu96_continuity_value_count": 2576,
+            "aer_rrtm_rrtmg_fu96_final_table_continuity_is_preaveraging_generator_recovery": False,
             "v25_official_binary_download_endpoint_pinned": True,
             "v25_historical_ftp_distribution_path_pinned": True,
             "v25_independent_extracted_distribution_footprint_qualified": True,
@@ -857,6 +903,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "treating_cvs_normalized_source_tree_equivalence_as_proof_of_original_tarball_byte_identity_or_original_tarball_hash",
             "treating_scientific_source_semantic_equivalence_with_documented_operational_deltas_as_full_raw_byte_identity_or_original_tarball_identity",
             "treating_pre2020_cross_repository_raw_blob_replication_as_original_aer_tarball_byte_identity_or_authoritative_archive_hash",
+            "treating_official_aer_rrtm_sw_to_rrtmg_sw_final_table_continuity_as_recovered_preaveraging_generator_exact_weighting_or_original_v25_tarball_hash",
             "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
             "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date",
         ],
