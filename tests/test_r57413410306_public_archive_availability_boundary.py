@@ -20,8 +20,8 @@ def test_step3q6_public_archive_boundary_fail_closed():
 
 def test_step3q6_contract_records_archive_availability_without_inference():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
     assert p["qualified_weighting_semantic_class"]["rrtmg_sw_pre_v5_current_public_releases_available"] is False
     assert p["qualified_weighting_semantic_class"]["public_runtime_archive_sufficient_for_exact_historical_generator"] is False
     assert "treating_public_release_absence_as_generator_identity_evidence" in p["forbidden_substitutes"]

@@ -24,7 +24,7 @@ def test_step3q4_h_domain_constraints_narrow_band25_and_keep_band24_fail_closed(
     assert bool(g["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"]) is False
 
     p = fu96_rrtmg_band_weighting_provenance_contract_payload(evidence=e, gate=build_fu96_rrtmg_band_weighting_provenance_gate(e))
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
     q = p["qualified_weighting_semantic_class"]
     assert q["fu_lineage_h_domains"]["0.175_to_0.700_um"] == 1.0
     assert q["fu_lineage_h_domains"]["0.700_to_1.220_um"] == "2/3"

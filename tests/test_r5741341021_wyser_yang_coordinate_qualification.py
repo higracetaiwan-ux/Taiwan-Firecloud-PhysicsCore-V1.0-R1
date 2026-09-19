@@ -16,7 +16,7 @@ from firecloud.ice_microphysics_wyser_yang_coordinate_qualification import (
 
 
 def test_release_identity_and_step3h_contract_identity():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.19"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.20"
     assert STEP3H_VERSION == "R5.7.41.3.4.10.21"
     assert SCIENCE_BASELINE == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
     assert STEP3H_MODE == "WYSER_YANG_MAXIMUM_DIMENSION_COORDINATE_QUALIFICATION_SHAPE_COMPATIBILITY_FAIL_CLOSED"

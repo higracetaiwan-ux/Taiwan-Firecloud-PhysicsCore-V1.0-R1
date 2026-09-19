@@ -18,7 +18,7 @@ def test_step3q3_historical_equation_family_is_pinned_but_h_is_fail_closed():
     assert bool(g["FU96_HISTORICAL_BAND24_25_H_VALUES_RECOVERED"]) is False
     assert bool(g["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"]) is False
     p=fu96_rrtmg_band_weighting_provenance_contract_payload(evidence=e, gate=build_fu96_rrtmg_band_weighting_provenance_gate(e))
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
     q=p["qualified_weighting_semantic_class"]
     assert q["historical_fu96_band24_25_h_values_recovered"] is False
     assert q["historical_fu96_alpha_linear"].startswith("sum(alpha_lambda")

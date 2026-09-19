@@ -30,7 +30,7 @@ def test_step3q1_contract_records_qualified_formulas_without_promoting_exact_wei
     )
     payload = fu96_rrtmg_band_weighting_provenance_contract_payload()
     sem = payload["qualified_weighting_semantic_class"]
-    assert payload["step_version"] == "R5.7.41.3.4.10.30.19"
+    assert payload["step_version"] == "R5.7.41.3.4.10.30.20"
     assert sem["shortwave_weighting_basis"] == "solar_irradiance"
     assert sem["historical_fu96_coalbedo"] == "absorption_dependent_mix_of_solar_weighted_linear_and_logarithmic_averages"
     assert sem["later_rrtmg_band_g_example"] == "scattering_cross_section_weighted_with_solar_spectrum"
@@ -40,7 +40,7 @@ def test_step3q1_contract_records_qualified_formulas_without_promoting_exact_wei
     a = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(payload)
     b = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(dict(reversed(list(payload.items()))))
     assert a == b
-    assert json.loads(a.decode("utf-8"))["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+    assert json.loads(a.decode("utf-8"))["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
 
 
 def test_step3q1_forbids_only_unproven_or_ad_hoc_substitutes():

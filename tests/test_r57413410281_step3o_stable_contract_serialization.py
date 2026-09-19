@@ -7,7 +7,7 @@ from firecloud.ice_microphysics_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck impo
 
 def test_step3o_contract_bytes_are_canonical_across_insertion_order():
     payload = fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_payload(
-        physicscore_version="1.0.0-R5.7.41.3.4.10.30.19"
+        physicscore_version="1.0.0-R5.7.41.3.4.10.30.20"
     )
     reordered = dict(reversed(list(payload.items())))
     a = serialize_fu96_rrtmg_ssa_asymmetry_numeric_crosscheck_contract_json_bytes(payload)

@@ -1976,7 +1976,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         _guards = _c.get("production_guards", {}) if isinstance(_c, Mapping) else {}
         _step3q_contract_ok = bool(
             isinstance(_c, Mapping)
-            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
             and _c.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
             and _caps.get("EXACT_FU96_BAND_WEIGHTING_AVAILABLE") is False
             and _caps.get("BAND_INTEGRATED_OPTICAL_VALIDATION_READY") is False
@@ -2022,6 +2022,10 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             and _b("RRTMG_FORWARD_GENERATION_PROCESS_DOCUMENTED", True)
             and _b("FU96_OPTICAL_INTERVAL_TRANSPORT_INTERVAL_DISTINCTION_QUALIFIED", True)
             and _b("RRTMG_BAND25_DIRECT_PRIMARY_BROADBAND_COPY_REPRODUCTION_PASS", False)
+            and _b("RRTMG_BAND25_PINNED_REFERENCE_GRID_46_NODES", True)
+            and _b("RRTMG_BAND25_FORWARD_REPRODUCTION_HARNESS_READY", True)
+            and _b("RRTMG_BAND25_DIRECT_PRIMARY_CONTROL_RESIDUAL_TOPOLOGY_QUALIFIED", True)
+            and _b("RRTMG_BAND25_HISTORICAL_INTRABAND_INPUT_BUNDLE_COMPLETE", False)
             and _b("RRTMG_FINE_SPECTRAL_GRID_REALIZATION_RECOVERED", False)
         )
         add(

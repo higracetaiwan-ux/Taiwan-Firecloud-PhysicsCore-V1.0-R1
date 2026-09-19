@@ -1,0 +1,62 @@
+{
+  "forbidden_substitutes": [
+    "direct_fu_primary_broadband_copy_as_exact_rrtmg_band25",
+    "runtime_rrtmg_gpoint_solar_weights_as_unproven_cloud_table_generator_weights",
+    "inverse_fit_archived_final_band25_table_to_claim_historical_generator",
+    "synthetic_or_assumed_fine_grid"
+  ],
+  "missing_exact_historical_inputs": [
+    "fine_spectral_grid_nodes",
+    "fine_grid_interpolation_realization",
+    "preaveraging_source_wavelength_optical_samples",
+    "exact_historical_solar_spectrum_identity",
+    "exact_discrete_solar_weight_vector"
+  ],
+  "mode": "DIAGNOSTIC_ONLY_FAIL_CLOSED",
+  "prerequisites": {
+    "PRODUCTION_ICE_OPTICS_READY": false,
+    "RRTMG_BAND25_DIRECT_PRIMARY_CONTROL_RESIDUAL_TOPOLOGY_QUALIFIED": true,
+    "RRTMG_BAND25_EXACT_HISTORICAL_SOLAR_WEIGHTS_RECOVERED": false,
+    "RRTMG_BAND25_EXACT_REPRODUCTION_PASS": false,
+    "RRTMG_BAND25_FINE_SPECTRAL_GRID_REALIZATION_RECOVERED": false,
+    "RRTMG_BAND25_FORWARD_REPRODUCTION_HARNESS_READY": true,
+    "RRTMG_BAND25_PINNED_REFERENCE_GRID_46_NODES": true,
+    "RRTMG_BAND25_PREAVERAGING_SPECTRAL_SAMPLES_RECOVERED": false,
+    "TAU_ICE_PRODUCTION_ALLOWED": false,
+    "physics_promotion_allowed": false
+  },
+  "production_promotion_allowed": false,
+  "reference_csv": "firecloud/data/ice_optics/fu96_rrtmg_visible_band24_25_reference_v1.csv",
+  "reference_source_sha": "0ccf597d6aa3d6ed40ec592560e3ed94b653ef32",
+  "schema": "twfc.fu96-rrtmg-band25-reproduction-diagnostic.v1",
+  "summary": {
+    "asymmetry_relative_rmse_over_mean": 0.0010955150422100914,
+    "asymmetry_residual_all_negative": true,
+    "asymmetry_rmse": 0.0008815955346369234,
+    "band_wavelength_max_um": 0.625,
+    "band_wavelength_min_um": 0.44150110375275936,
+    "band_wavenumber_max_cm1": 22650.0,
+    "band_wavenumber_min_cm1": 16000.0,
+    "dge_max_um": 140.0,
+    "dge_min_um": 5.0,
+    "dge_step_um": 3.0,
+    "exact_band25_reproduction_pass": false,
+    "exact_historical_solar_weights_recovered": false,
+    "extinction_first_zero_crossing_bracket_um": [
+      107.0,
+      110.0
+    ],
+    "extinction_relative_rmse_over_mean": 0.0047811239553869666,
+    "extinction_residual_monotonic_nonincreasing": true,
+    "extinction_residual_zero_crossing_count": 1,
+    "extinction_rmse": 0.0003196727087900704,
+    "fine_spectral_grid_realization_recovered": false,
+    "fu96_primary_band_index": 1,
+    "preaveraging_spectral_samples_recovered": false,
+    "production_promotion_allowed": false,
+    "reference_node_count": 46,
+    "ssa_relative_rmse_over_mean": 3.790091528184389e-06,
+    "ssa_residual_all_negative": true,
+    "ssa_rmse": 3.790077224708535e-06
+  }
+}

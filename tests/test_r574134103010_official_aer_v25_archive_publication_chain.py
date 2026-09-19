@@ -29,8 +29,8 @@ def test_step3q10_publication_chain_does_not_promote_original_tarball_byte_ident
 
 def test_step3q10_contract_identity_and_fail_closed_state():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["sources"]["aer_rrtm_sw_v25_source_archive_filename"] == "aer_rrtm_sw_v2.5.tar.gz"
     assert p["qualified_weighting_semantic_class"]["v25_original_aer_archive_hash_recovered"] is False

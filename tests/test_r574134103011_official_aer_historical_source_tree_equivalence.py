@@ -35,8 +35,8 @@ def test_step3q11_source_tree_equivalence_promotes_lineage_only_not_archive_or_p
 
 def test_step3q11_contract_identity_and_fail_closed_state():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["qualified_weighting_semantic_class"]["v25_official_source_tree_cvs_normalized_equivalence_qualified"] is True
     assert p["qualified_weighting_semantic_class"]["v25_official_source_tree_equivalence_is_original_tarball_byte_identity"] is False

@@ -29,8 +29,8 @@ def test_step3q15_gate_and_contract_remain_fail_closed():
     assert bool(g["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"]) is False
     assert bool(g["PRODUCTION_ICE_OPTICS_READY"]) is False
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
     q = p["qualified_weighting_semantic_class"]
     assert q["aer_rrtm_rrtmg_fu96_continuity_array_count"] == AER_RRTM_RRTMG_FU96_CONTINUITY_ARRAY_COUNT == 56
     assert q["aer_rrtm_rrtmg_fu96_continuity_value_count"] == AER_RRTM_RRTMG_FU96_CONTINUITY_VALUE_COUNT == 2576

@@ -26,8 +26,8 @@ def test_step3q16_gate_recovers_molecular_pipeline_but_not_fu96_cloud_generator(
 
 def test_step3q16_contract_identity_and_fail_closed_scope():
     p=fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["production_guards"]["physics_promotion_allowed"] is False
     blob=json.dumps(p,sort_keys=True)

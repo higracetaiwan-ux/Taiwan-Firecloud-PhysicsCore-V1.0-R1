@@ -36,8 +36,8 @@ def test_step3q8_gate_remains_closed():
 
 def test_step3q8_contract_forbids_runtime_sfluxref_substitution():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
     q = p["qualified_weighting_semantic_class"]
     assert q["v25_external_distribution_lineage_qualified"] is True
     assert q["v25_external_mirror_original_aer_tarball_byte_identity_proven"] is False

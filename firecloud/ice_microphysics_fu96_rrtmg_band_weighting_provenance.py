@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.18 — Fu96 primary spectral-boundary and Band-24 inverse re-averaging barrier qualification.
+"""Ice Optics Phase 2 Step 3Q.20 — Band25 forward-reproduction harness and contract consistency closure.
 
 This step corrects the Step3Q diagnostic/provenance transcription of the Fu96-lineage
 shortwave broadband averaging equations. The linear and logarithmic single-scattering
@@ -32,11 +32,15 @@ from typing import Any
 import json
 import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
+from .fu96_rrtmg_band25_reproduction import (
+    summarize_band25_direct_primary_control,
+    band25_reproduction_prerequisite_matrix,
+)
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.19"
-STEP3Q_MODE = "FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUT_QUALIFICATION_FAIL_CLOSED"
-EVIDENCE_AS_OF = "2026-09-19"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.20"
+STEP3Q_MODE = "RRTMG_BAND25_FORWARD_REPRODUCTION_HARNESS_AND_CONTRACT_CONSISTENCY_FAIL_CLOSED"
+EVIDENCE_AS_OF = "2026-09-20"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
 FU2007_DOI = "https://doi.org/10.1175/2007JAS2289.1"
@@ -217,6 +221,8 @@ def _row(check_id: str, category: str, status: str, observed: str, required: str
 
 
 def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
+    band25_summary = summarize_band25_direct_primary_control()
+    band25_prereq = band25_reproduction_prerequisite_matrix()
     rows = [
         _row(
             "FU96_EQ39_PRIMARY_SOLAR_COEFFICIENT_INPUT_SET_RECOVERED", "FORWARD_RECONSTRUCTION_INPUT", "PASS_QUALIFIED",
@@ -251,6 +257,30 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             "Direct Fu first-primary-band Eq3.9 evaluation over 46 Dge nodes does not exactly reproduce archived RRTMG band25: extinction relative RMSE=0.004781123955; asymmetry relative RMSE=0.001095515042; therefore archived Band25 is not a direct copy of the recovered broad-band coefficients",
             "DIRECT_BROADBAND_COEFFICIENT_COPY_MUST_NOT_BE_USED_AS_EXACT_RRTMG_BAND25_RECONSTRUCTION",
             f"{FU96_PRIMARY_FORWARD_SOURCE_REPOSITORY}; {AER_RRTMG_SW_REPOSITORY}",
+        ),
+        _row(
+            "RRTMG_BAND25_PINNED_REFERENCE_GRID_46_NODES", "FORWARD_RECONSTRUCTION_HARNESS", "PASS_QUALIFIED",
+            f"Pinned archived Band25 reference has {band25_summary.reference_node_count} Dge nodes from {band25_summary.dge_min_um:.1f} to {band25_summary.dge_max_um:.1f} um at {band25_summary.dge_step_um:.1f} um spacing",
+            "PINNED_46_NODE_REFERENCE_GRID_REQUIRED_FOR_DETERMINISTIC_REPRODUCTION_TESTS",
+            "firecloud/data/ice_optics/fu96_rrtmg_visible_band24_25_reference_v1.csv",
+        ),
+        _row(
+            "RRTMG_BAND25_FORWARD_REPRODUCTION_HARNESS", "FORWARD_RECONSTRUCTION_HARNESS", "PASS_TOOLING",
+            "Executable harness regenerates the Fu96 primary-band direct-copy negative control at all 46 archived Band25 Dge nodes and emits deterministic residuals plus prerequisite state",
+            "EXECUTABLE_REPRODUCTION_HARNESS_WITHOUT_SYNTHETIC_HISTORICAL_INPUTS",
+            "firecloud/fu96_rrtmg_band25_reproduction.py",
+        ),
+        _row(
+            "RRTMG_BAND25_DIRECT_PRIMARY_CONTROL_RESIDUAL_TOPOLOGY", "FORWARD_RECONSTRUCTION_DIAGNOSTIC", "PASS_QUALIFIED",
+            f"46-node direct-primary control: extinction RMSE/mean={band25_summary.extinction_relative_rmse_over_mean:.15g}, SSA RMSE/mean={band25_summary.ssa_relative_rmse_over_mean:.15g}, asymmetry RMSE/mean={band25_summary.asymmetry_relative_rmse_over_mean:.15g}; extinction residual is monotonic non-increasing with one zero crossing bracket {band25_summary.extinction_first_zero_crossing_bracket_um}; SSA and asymmetry residuals are negative at all nodes",
+            "RESIDUAL_TOPOLOGY_IS_A_NEGATIVE_CONTROL_AND_MUST_NOT_BE_INVERTED_TO_CLAIM_HISTORICAL_GENERATOR",
+            "firecloud/fu96_rrtmg_band25_reproduction.py",
+        ),
+        _row(
+            "RRTMG_BAND25_HISTORICAL_INTRABAND_INPUT_BUNDLE_COMPLETE", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_RECOVERED",
+            "Band25 exact reconstruction still lacks the provenance-linked fine spectral grid nodes, exact interpolation realization, pre-averaging source-wavelength optical samples, exact historical solar-spectrum identity, and discrete within-band solar weights",
+            "ALL_HISTORICAL_INTRABAND_INPUTS_OR_AN_EQUIVALENT_DETERMINISTIC_AUTHORITATIVE_GENERATOR_REQUIRED",
+            "No synthetic fine grid or runtime g-point weight substitution is allowed.",
         ),
         _row(
             "RRTMG_FINE_SPECTRAL_GRID_REALIZATION_RECOVERED", "EXACT_WEIGHTING_PREREQUISITE", "BLOCKED_NOT_RECOVERED",
@@ -830,6 +860,10 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "RRTMG_FORWARD_GENERATION_PROCESS_DOCUMENTED": bool(status.get("RRTMG_FU96_FORWARD_GENERATION_PROCESS_DOCUMENTED") == "PASS_QUALIFIED"),
         "FU96_OPTICAL_INTERVAL_TRANSPORT_INTERVAL_DISTINCTION_QUALIFIED": bool(status.get("FU96_OPTICAL_INTERVAL_VS_TRANSPORT_BAND_LABEL_DISTINCTION") == "PASS_QUALIFIED"),
         "RRTMG_BAND25_DIRECT_PRIMARY_BROADBAND_COPY_REPRODUCTION_PASS": False,
+        "RRTMG_BAND25_PINNED_REFERENCE_GRID_46_NODES": bool(status.get("RRTMG_BAND25_PINNED_REFERENCE_GRID_46_NODES") == "PASS_QUALIFIED"),
+        "RRTMG_BAND25_FORWARD_REPRODUCTION_HARNESS_READY": bool(status.get("RRTMG_BAND25_FORWARD_REPRODUCTION_HARNESS") == "PASS_TOOLING"),
+        "RRTMG_BAND25_DIRECT_PRIMARY_CONTROL_RESIDUAL_TOPOLOGY_QUALIFIED": bool(status.get("RRTMG_BAND25_DIRECT_PRIMARY_CONTROL_RESIDUAL_TOPOLOGY") == "PASS_QUALIFIED"),
+        "RRTMG_BAND25_HISTORICAL_INTRABAND_INPUT_BUNDLE_COMPLETE": False,
         "RRTMG_FINE_SPECTRAL_GRID_REALIZATION_RECOVERED": False,
         "FU96_PRIMARY_SOURCE_PINNED": bool(primary),
         "RRTMG_FU96_DGE_LINEAGE_PINNED": bool(lineage),
@@ -930,8 +964,10 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     evidence = evidence if evidence is not None else build_fu96_rrtmg_band_weighting_provenance_evidence()
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
+    band25_summary = summarize_band25_direct_primary_control()
+    band25_prereq = band25_reproduction_prerequisite_matrix()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -1032,8 +1068,8 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
         "qualified_weighting_semantic_class": {
             "shortwave_weighting_basis": "solar_irradiance",
             "historical_fu96_coalbedo": "absorption_dependent_mix_of_solar_weighted_linear_and_logarithmic_averages",
-            "historical_fu96_alpha_linear": "sum(alpha_lambda*S_lambda*dLambda)/sum(S_lambda*dLambda)",
-            "historical_fu96_alpha_log": "exp(sum(ln(alpha_lambda)*S_lambda*dLambda)/sum(S_lambda*dLambda))",
+            "historical_fu96_alpha_linear": "sum(alpha_lambda*beta_lambda*S_lambda*dLambda)/sum(beta_lambda*S_lambda*dLambda)",
+            "historical_fu96_alpha_log": "exp(sum(ln(alpha_lambda)*beta_lambda*S_lambda*dLambda)/sum(beta_lambda*S_lambda*dLambda))",
             "historical_fu96_h_semantic": "empirical flux-calibration parameter; h near 1 for weak absorption and decreases with stronger absorption",
             "historical_fu96_band24_25_h_values_recovered": False,
             "fu_lineage_h_domains": {
@@ -1044,6 +1080,13 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "rrtmg_band24_domain_constraint": "0.625000-0.778210 um crosses 0.700 um h-domain boundary; no single h may be assigned without historical generator proof",
             "rrtmg_band24_single_h_assignment_allowed": False,
             "rrtmg_band25_exact_archived_generator_h_proven": False,
+            "rrtmg_band25_reference_grid_46_nodes_pinned": bool(band25_prereq["RRTMG_BAND25_PINNED_REFERENCE_GRID_46_NODES"]),
+            "rrtmg_band25_forward_reproduction_harness_ready": bool(band25_prereq["RRTMG_BAND25_FORWARD_REPRODUCTION_HARNESS_READY"]),
+            "rrtmg_band25_direct_primary_control_residual_topology_qualified": bool(band25_prereq["RRTMG_BAND25_DIRECT_PRIMARY_CONTROL_RESIDUAL_TOPOLOGY_QUALIFIED"]),
+            "rrtmg_band25_historical_intraband_input_bundle_complete": False,
+            "rrtmg_band25_direct_control_extinction_relative_rmse_over_mean": float(band25_summary.extinction_relative_rmse_over_mean),
+            "rrtmg_band25_direct_control_ssa_relative_rmse_over_mean": float(band25_summary.ssa_relative_rmse_over_mean),
+            "rrtmg_band25_direct_control_asymmetry_relative_rmse_over_mean": float(band25_summary.asymmetry_relative_rmse_over_mean),
             "rrtm_sw_archive_boundary": "pinned runtime archive contains post-averaged EXTICE3/SSAICE3/ASYICE3/FDLICE3 tables plus interpolation, not the Q. Fu high-resolution pre-averaging sample set or averaging generator",
             "rrtm_sw_preaveraging_generator_recovered": False,
             "rrtmg_sw_pre_v5_current_public_releases_available": False,
@@ -1123,7 +1166,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.19 recovers and pins the executable Fu96 primary solar-band Eq.3.9 coefficient inputs (ap/bps/cp/dps), qualifies 90/90 cross-repository numeric replication, and pins the documented RRTMG forward-generation process: evaluate Fu optical properties, interpolate to a fine spectral grid, then average over each RRTMG band. A direct 46-node Band25 comparison shows the recovered Fu broad-band coefficients do not exactly reproduce archived RRTMG Band25, proving that direct broad-band copying is not an exact substitute and narrowing the remaining blocker to the intra-band fine-grid interpolation / solar-weighting realization. It also preserves the distinction between a recovered Fu transport-code band label (0.7-1.3 um) and the Fu96-lineage optical-property averaging interval (0.7-1.41 um). Step 3Q.18 pins the Fu96 primary 0.700 um solar-band boundary and qualifies the Band-24 inverse re-averaging barrier. RRTMG band 25 lies wholly within the Fu96 0.2-0.7 um band, whereas band 24 spans 0.625-0.778210 um and crosses the Fu96 0.700 um boundary. Because Fu96-lineage co-albedo averaging preserves separate extinction-weighted linear/log spectral moments before mixing, the compact archived final broad-band values do not contain enough information to uniquely invert the historical cross-boundary band-24 realization. Final-table inverse fitting therefore remains forbidden. Step 3Q.17 also corrects the Fu96-lineage broadband-weighting equation transcription used by Step3Q diagnostics: linear/log single-scattering coalbedo means retain beta_lambda extinction weighting together with TOA solar irradiance and spectral interval, while asymmetry factor is weighted by omega_lambda*beta_lambda scattering. This is a provenance-contract correction only; it does not alter frozen Formation/Viewing/Twilight Glow science. "
+            "Step 3Q.20 adds an executable 46-node Band25 forward-reproduction harness, qualifies the direct-primary negative-control residual topology, and closes an internal contract-consistency defect by carrying beta_lambda extinction weighting into the serialized linear/log co-albedo equation strings. The exact historical fine-grid/interpolation/source-sample/solar-weight bundle remains unrecovered, so Band25 exact reproduction and all production promotion gates remain false. Step 3Q.19 recovers and pins the executable Fu96 primary solar-band Eq.3.9 coefficient inputs (ap/bps/cp/dps), qualifies 90/90 cross-repository numeric replication, and pins the documented RRTMG forward-generation process: evaluate Fu optical properties, interpolate to a fine spectral grid, then average over each RRTMG band. A direct 46-node Band25 comparison shows the recovered Fu broad-band coefficients do not exactly reproduce archived RRTMG Band25, proving that direct broad-band copying is not an exact substitute and narrowing the remaining blocker to the intra-band fine-grid interpolation / solar-weighting realization. It also preserves the distinction between a recovered Fu transport-code band label (0.7-1.3 um) and the Fu96-lineage optical-property averaging interval (0.7-1.41 um). Step 3Q.18 pins the Fu96 primary 0.700 um solar-band boundary and qualifies the Band-24 inverse re-averaging barrier. RRTMG band 25 lies wholly within the Fu96 0.2-0.7 um band, whereas band 24 spans 0.625-0.778210 um and crosses the Fu96 0.700 um boundary. Because Fu96-lineage co-albedo averaging preserves separate extinction-weighted linear/log spectral moments before mixing, the compact archived final broad-band values do not contain enough information to uniquely invert the historical cross-boundary band-24 realization. Final-table inverse fitting therefore remains forbidden. Step 3Q.17 also corrects the Fu96-lineage broadband-weighting equation transcription used by Step3Q diagnostics: linear/log single-scattering coalbedo means retain beta_lambda extinction weighting together with TOA solar irradiance and spectral interval, while asymmetry factor is weighted by omega_lambda*beta_lambda scattering. This is a provenance-contract correction only; it does not alter frozen Formation/Viewing/Twilight Glow science. "
             "Step 3Q.16 remains valid: the public AER-RC rrtmgp-band-generation repository is an imported historical AER RRTM_BAND_GEN SVN work tree whose qualified scope is molecular/k-distribution/continuum/minor-gas/Planck band generation, not the Fu96 ice-cloud pre-averaging generator. "
             "The 2014-04-02 AER commit explicitly describes the added files as initial band-generation codes from Karen and original RRTM work with no modifications yet. The pinned script.gen_2band and kdis_2sort sources operate on LBLRTM optical depths to generate molecular absorption k-distributions, continuum/minor-gas coefficients, g-band data and Planck-related products. "
             "This release also corrects the diagnostic Fu96-lineage broadband equations: single-scattering coalbedo linear/log means retain extinction coefficient beta_lambda weighting together with TOA solar irradiance, and asymmetry factor is scattering-weighted. This corrects provenance transcription only and does not recover the exact archived RRTM band-24/25 realization. A historical AER molecular/k-distribution/Planck band-generation pipeline is recovered, but no provenance-linked Q. Fu high-resolution ice-cloud spectral sample set or Fu96 cloud-optics band-averaging generator is present in the qualified initial file set. Therefore AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED may be true while FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED remains false. "

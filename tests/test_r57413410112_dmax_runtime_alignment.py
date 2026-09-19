@@ -17,7 +17,7 @@ ICE_DATA = ROOT / "firecloud" / "data" / "ice_optics"
 
 
 def test_release_version_and_bundled_portable_lut_is_explicitly_loadable():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.19"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.20"
     assert BUNDLED_CALIBRATED_LUT_PATH == ICE_DATA / "portable_ice_optics_lut_v1.csv"
     lut, status = load_ice_optics_lut(BUNDLED_CALIBRATED_LUT_PATH)
     assert status.loaded is True
