@@ -9,7 +9,7 @@ def test_step3q4_v14_contract_and_current_state_are_accepted_by_integrity_gate()
     evidence = build_fu96_rrtmg_band_weighting_provenance_evidence()
     gate = build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     contract = fu96_rrtmg_band_weighting_provenance_contract_payload(evidence=evidence, gate=gate)
-    assert contract["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
+    assert contract["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
     result = {
         "ice_microphysics_fu96_rrtmg_band_weighting_provenance_required": True,
         "v1_ice_microphysics_fu96_rrtmg_band_weighting_provenance_evidence": evidence,
@@ -21,5 +21,5 @@ def test_step3q4_v14_contract_and_current_state_are_accepted_by_integrity_gate()
     state_row = audit.loc["ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_FAIL_CLOSED"]
     assert contract_row["status"] == "PASS"
     assert state_row["status"] == "PASS"
-    assert "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18" in contract_row["observed"]
-    assert "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED" in state_row["observed"]
+    assert "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19" in contract_row["observed"]
+    assert "PASS_FAIL_CLOSED_FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUTS_QUALIFIED_RRTMG_FINE_GRID_AND_EXACT_BAND24_25_REALIZATION_UNRECOVERED" in state_row["observed"]

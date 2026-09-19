@@ -26,8 +26,8 @@ def test_step3q2_pins_pre_v4_kurucz_runtime_context_without_equating_it_to_table
 def test_step3q2_contract_v12_preserves_fail_close_and_semantic_distinction():
     from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import fu96_rrtmg_band_weighting_provenance_contract_payload
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.18"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
     sem = p["qualified_weighting_semantic_class"]
     assert sem["historical_fu96_coalbedo"].startswith("absorption_dependent_mix")
     assert sem["later_formula_is_historical_fu96_generator"] is False

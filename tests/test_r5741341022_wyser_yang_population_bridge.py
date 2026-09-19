@@ -15,7 +15,7 @@ from firecloud.ice_microphysics_wyser_yang_population_bridge import (
 
 
 def test_release_identity_and_step3i_identity():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.18.2"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.19"
     assert STEP3I_VERSION == "R5.7.41.3.4.10.22"
     assert STEP3I_MODE == "WYSER_POPULATION_YANG_OPTICAL_KERNEL_BRIDGE_DIAGNOSTIC_ONLY_FAIL_CLOSED"
 

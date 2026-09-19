@@ -17,7 +17,7 @@ from tools.verify_rrtm_sw_v25_cross_repository_raw_blobs import (
     compare_tree_manifests,
 )
 
-EXPECTED_STATE = "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+EXPECTED_STATE = "PASS_FAIL_CLOSED_FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUTS_QUALIFIED_RRTMG_FINE_GRID_AND_EXACT_BAND24_25_REALIZATION_UNRECOVERED"
 
 
 def test_step3q14_pre2020_history_and_cross_repository_replication_are_qualified():
@@ -49,8 +49,8 @@ def test_step3q14_critical_blobs_are_exactly_replicated_but_production_stays_clo
     assert bool(g["PRODUCTION_ICE_OPTICS_READY"]) is False
 
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.18"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
     assert p["qualification_state"] == EXPECTED_STATE
     q = p["qualified_weighting_semantic_class"]
     assert q["v25_cross_repository_raw_blob_match_count"] == 22

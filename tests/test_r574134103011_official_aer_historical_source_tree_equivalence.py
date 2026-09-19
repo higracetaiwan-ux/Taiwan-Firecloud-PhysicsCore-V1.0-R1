@@ -4,7 +4,7 @@ from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import (
     fu96_rrtmg_band_weighting_provenance_contract_payload,
 )
 
-EXPECTED_STATE = "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+EXPECTED_STATE = "PASS_FAIL_CLOSED_FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUTS_QUALIFIED_RRTMG_FINE_GRID_AND_EXACT_BAND24_25_REALIZATION_UNRECOVERED"
 
 
 def test_step3q11_official_2004_history_and_cvs_normalized_equivalence_are_pinned():
@@ -35,8 +35,8 @@ def test_step3q11_source_tree_equivalence_promotes_lineage_only_not_archive_or_p
 
 def test_step3q11_contract_identity_and_fail_closed_state():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.18"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["qualified_weighting_semantic_class"]["v25_official_source_tree_cvs_normalized_equivalence_qualified"] is True
     assert p["qualified_weighting_semantic_class"]["v25_official_source_tree_equivalence_is_original_tarball_byte_identity"] is False

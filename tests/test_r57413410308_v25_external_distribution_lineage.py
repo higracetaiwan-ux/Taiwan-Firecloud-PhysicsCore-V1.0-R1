@@ -23,7 +23,7 @@ def test_v25_runtime_kurucz_low_high_resolution_distinction_is_fail_closed():
 
 def test_step3q8_gate_remains_closed():
     g = build_fu96_rrtmg_band_weighting_provenance_gate().iloc[0]
-    assert g["qualification_state"] == "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+    assert g["qualification_state"] == "PASS_FAIL_CLOSED_FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUTS_QUALIFIED_RRTMG_FINE_GRID_AND_EXACT_BAND24_25_REALIZATION_UNRECOVERED"
     assert bool(g["RRTM_SW_V25_EXTERNAL_DISTRIBUTION_MIRROR_PINNED"]) is True
     assert bool(g["RRTM_SW_V25_CLDPROP_CVS_PROVENANCE_PINNED"]) is True
     assert bool(g["RRTM_SW_V25_CLDPROP_SCIENCE_CONTENT_EQUIVALENCE_QUALIFIED"]) is True
@@ -36,8 +36,8 @@ def test_step3q8_gate_remains_closed():
 
 def test_step3q8_contract_forbids_runtime_sfluxref_substitution():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.18"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
     q = p["qualified_weighting_semantic_class"]
     assert q["v25_external_distribution_lineage_qualified"] is True
     assert q["v25_external_mirror_original_aer_tarball_byte_identity_proven"] is False

@@ -35,8 +35,12 @@
     "FU96_LINEAGE_ASYMMETRY_SCATTERING_WEIGHTING_QUALIFIED": true,
     "FU96_LINEAGE_COALBEDO_BETA_WEIGHTING_TRANSCRIPTION_CORRECTED": true,
     "FU96_LINEAGE_SIMPLE_SOLAR_ONLY_COALBEDO_WEIGHTING_FORBIDDEN": true,
+    "FU96_OPTICAL_INTERVAL_TRANSPORT_INTERVAL_DISTINCTION_QUALIFIED": true,
     "FU96_PRIMARY_0P700UM_SPECTRAL_BOUNDARY_PINNED": true,
+    "FU96_PRIMARY_BAND_EQ39_COEFFICIENT_INPUT_SET_RECOVERED": true,
+    "FU96_PRIMARY_BAND_FORWARD_MODEL_EXECUTABLE": true,
     "FU96_PRIMARY_SOURCE_PINNED": true,
+    "FU96_SOLAR_COEFFICIENT_REPLICATION_90_OF_90_QUALIFIED": true,
     "FULL_SIX_BAND_LIKE_FOR_LIKE_OPTICAL_VALIDATION_PASS": false,
     "HISTORICAL_EXACT_WEIGHTING_REALIZATION_UNAMBIGUOUS": false,
     "INDEPENDENT_ASYMMETRY_VALIDATION_PASS": false,
@@ -54,11 +58,14 @@
     "RRTMG_BAND24_FINAL_TABLE_INVERSE_REAVERAGING_UNIQUE": false,
     "RRTMG_BAND24_SINGLE_H_ASSIGNMENT_JUSTIFIED": false,
     "RRTMG_BAND24_STRADDLES_FU96_PRIMARY_0P700UM_BOUNDARY_QUALIFIED": true,
+    "RRTMG_BAND25_DIRECT_PRIMARY_BROADBAND_COPY_REPRODUCTION_PASS": false,
     "RRTMG_BAND25_EXACT_ARCHIVED_GENERATOR_H_PROVEN": false,
     "RRTMG_BAND25_EXACT_REPRODUCTION_PASS": false,
     "RRTMG_BAND25_FULLY_WITHIN_FU_LINEAGE_H1_DOMAIN": true,
     "RRTMG_BAND25_WITHIN_SINGLE_FU96_PRIMARY_BAND_QUALIFIED": true,
     "RRTMG_FINAL_FU96_BAND_TABLES_PINNED": true,
+    "RRTMG_FINE_SPECTRAL_GRID_REALIZATION_RECOVERED": false,
+    "RRTMG_FORWARD_GENERATION_PROCESS_DOCUMENTED": true,
     "RRTMG_FU96_DGE_LINEAGE_PINNED": true,
     "RRTMG_PRE_V4_KURUCZ_RUNTIME_SOLAR_SOURCE_PINNED": true,
     "RRTMG_SW_PRE_V5_CURRENT_PUBLIC_RELEASES_AVAILABLE": false,
@@ -97,10 +104,12 @@
     "YI2013_FORMULA_PROVEN_AS_HISTORICAL_FU96_TABLE_GENERATOR": false,
     "physics_promotion_allowed": false
   },
-  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18",
+  "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19",
   "evidence_as_of": "2026-09-19",
   "forbidden_substitutes": [
     "equal_weighting",
+    "direct_copy_of_fu_primary_broadband_eq39_coefficients_as_exact_rrtmg_band24_or_band25_tables",
+    "treating_fu_radiation_transport_band_labels_as_exact_historical_fu96_optical_property_averaging_intervals",
     "unversioned_or_assumed_solar_spectrum_weights",
     "assumed_gpoint_weighting_for_cloud_optics_band_average",
     "ad_hoc_extinction_or_scattering_reweighting",
@@ -120,14 +129,14 @@
     "treating_live_official_download_endpoint_or_secondary_extracted_distribution_footprint_as_recovered_original_tarball_bytes_or_hash",
     "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date"
   ],
-  "mode": "FU96_PRIMARY_SPECTRAL_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_FAIL_CLOSED",
-  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.18.2",
+  "mode": "FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUT_QUALIFICATION_FAIL_CLOSED",
+  "physicscore_version": "1.0.0-R5.7.41.3.4.10.30.19",
   "production_guards": {
     "physics_promotion_allowed": false,
     "production_ice_optics_ready": false,
     "tau_ice_production_allowed": false
   },
-  "qualification_state": "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED",
+  "qualification_state": "PASS_FAIL_CLOSED_FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUTS_QUALIFIED_RRTMG_FINE_GRID_AND_EXACT_BAND24_25_REALIZATION_UNRECOVERED",
   "qualified_weighting_semantic_class": {
     "aer_historical_rrtm_band_generation_initial_original_rrtm_work_commit_pinned": true,
     "aer_historical_rrtm_band_generation_pipeline_is_fu96_cloud_preaveraging_generator": false,
@@ -196,7 +205,7 @@
     "v25_taumoldis_official_mirror_cvs_normalized_equivalence": true
   },
   "science_baseline": "R5.7.41.2_SHADOW_COT_AB_FROZEN",
-  "scope_note": "Step 3Q.18 pins the Fu96 primary 0.700 um solar-band boundary and qualifies the Band-24 inverse re-averaging barrier. RRTMG band 25 lies wholly within the Fu96 0.2-0.7 um band, whereas band 24 spans 0.625-0.778210 um and crosses the Fu96 0.700 um boundary. Because Fu96-lineage co-albedo averaging preserves separate extinction-weighted linear/log spectral moments before mixing, the compact archived final broad-band values do not contain enough information to uniquely invert the historical cross-boundary band-24 realization. Final-table inverse fitting therefore remains forbidden. Step 3Q.17 also corrects the Fu96-lineage broadband-weighting equation transcription used by Step3Q diagnostics: linear/log single-scattering coalbedo means retain beta_lambda extinction weighting together with TOA solar irradiance and spectral interval, while asymmetry factor is weighted by omega_lambda*beta_lambda scattering. This is a provenance-contract correction only; it does not alter frozen Formation/Viewing/Twilight Glow science. Step 3Q.16 remains valid: the public AER-RC rrtmgp-band-generation repository is an imported historical AER RRTM_BAND_GEN SVN work tree whose qualified scope is molecular/k-distribution/continuum/minor-gas/Planck band generation, not the Fu96 ice-cloud pre-averaging generator. The 2014-04-02 AER commit explicitly describes the added files as initial band-generation codes from Karen and original RRTM work with no modifications yet. The pinned script.gen_2band and kdis_2sort sources operate on LBLRTM optical depths to generate molecular absorption k-distributions, continuum/minor-gas coefficients, g-band data and Planck-related products. This release also corrects the diagnostic Fu96-lineage broadband equations: single-scattering coalbedo linear/log means retain extinction coefficient beta_lambda weighting together with TOA solar irradiance, and asymmetry factor is scattering-weighted. This corrects provenance transcription only and does not recover the exact archived RRTM band-24/25 realization. A historical AER molecular/k-distribution/Planck band-generation pipeline is recovered, but no provenance-linked Q. Fu high-resolution ice-cloud spectral sample set or Fu96 cloud-optics band-averaging generator is present in the qualified initial file set. Therefore AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED may be true while FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED remains false. Step 3Q.15 official AER 2004-to-2007 Fu96 final-table continuity, Step 3Q.14 pre-2020 cross-repository raw-blob replication, Step 3Q.13 scientific-source semantic equivalence, and Step 3Q.12 archive-endpoint/footprint qualifications remain valid. Original AER v2.5 tarball bytes/hash, exact historical Fu96 solar/discrete weighting, pre-averaging spectral samples, and deterministic Band 24/25 reproduction remain unrecovered. Production Ice Optics and Step 3R remain fail-closed.",
+  "scope_note": "Step 3Q.19 recovers and pins the executable Fu96 primary solar-band Eq.3.9 coefficient inputs (ap/bps/cp/dps), qualifies 90/90 cross-repository numeric replication, and pins the documented RRTMG forward-generation process: evaluate Fu optical properties, interpolate to a fine spectral grid, then average over each RRTMG band. A direct 46-node Band25 comparison shows the recovered Fu broad-band coefficients do not exactly reproduce archived RRTMG Band25, proving that direct broad-band copying is not an exact substitute and narrowing the remaining blocker to the intra-band fine-grid interpolation / solar-weighting realization. It also preserves the distinction between a recovered Fu transport-code band label (0.7-1.3 um) and the Fu96-lineage optical-property averaging interval (0.7-1.41 um). Step 3Q.18 pins the Fu96 primary 0.700 um solar-band boundary and qualifies the Band-24 inverse re-averaging barrier. RRTMG band 25 lies wholly within the Fu96 0.2-0.7 um band, whereas band 24 spans 0.625-0.778210 um and crosses the Fu96 0.700 um boundary. Because Fu96-lineage co-albedo averaging preserves separate extinction-weighted linear/log spectral moments before mixing, the compact archived final broad-band values do not contain enough information to uniquely invert the historical cross-boundary band-24 realization. Final-table inverse fitting therefore remains forbidden. Step 3Q.17 also corrects the Fu96-lineage broadband-weighting equation transcription used by Step3Q diagnostics: linear/log single-scattering coalbedo means retain beta_lambda extinction weighting together with TOA solar irradiance and spectral interval, while asymmetry factor is weighted by omega_lambda*beta_lambda scattering. This is a provenance-contract correction only; it does not alter frozen Formation/Viewing/Twilight Glow science. Step 3Q.16 remains valid: the public AER-RC rrtmgp-band-generation repository is an imported historical AER RRTM_BAND_GEN SVN work tree whose qualified scope is molecular/k-distribution/continuum/minor-gas/Planck band generation, not the Fu96 ice-cloud pre-averaging generator. The 2014-04-02 AER commit explicitly describes the added files as initial band-generation codes from Karen and original RRTM work with no modifications yet. The pinned script.gen_2band and kdis_2sort sources operate on LBLRTM optical depths to generate molecular absorption k-distributions, continuum/minor-gas coefficients, g-band data and Planck-related products. This release also corrects the diagnostic Fu96-lineage broadband equations: single-scattering coalbedo linear/log means retain extinction coefficient beta_lambda weighting together with TOA solar irradiance, and asymmetry factor is scattering-weighted. This corrects provenance transcription only and does not recover the exact archived RRTM band-24/25 realization. A historical AER molecular/k-distribution/Planck band-generation pipeline is recovered, but no provenance-linked Q. Fu high-resolution ice-cloud spectral sample set or Fu96 cloud-optics band-averaging generator is present in the qualified initial file set. Therefore AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED may be true while FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED remains false. Step 3Q.15 official AER 2004-to-2007 Fu96 final-table continuity, Step 3Q.14 pre-2020 cross-repository raw-blob replication, Step 3Q.13 scientific-source semantic equivalence, and Step 3Q.12 archive-endpoint/footprint qualifications remain valid. Original AER v2.5 tarball bytes/hash, exact historical Fu96 solar/discrete weighting, pre-averaging spectral samples, and deterministic Band 24/25 reproduction remain unrecovered. Production Ice Optics and Step 3R remain fail-closed.",
   "sources": {
     "aer_rrtm_band_gen_initial_comp_wtavg_planck": "https://github.com/AER-RC/rrtmgp-band-generation/blob/5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/comp_wtavg_planck.f",
     "aer_rrtm_band_gen_initial_kdis_2sort_for": "https://github.com/AER-RC/rrtmgp-band-generation/blob/5ce72bd363c993189767f09f1c9fe9bc84b72c56/branches/chebyproject/kdis_2sort_for.f",
@@ -242,6 +251,16 @@
     "chou2002_doi": "https://doi.org/10.1029/2002JD002061",
     "fu2007_doi": "https://doi.org/10.1175/2007JAS2289.1",
     "fu96_doi": "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2",
+    "fu96_primary_forward_legacy_import_commit": "8da06a2a348babbcdfd588098ed7b5f18cbe6029",
+    "fu96_primary_forward_replication_commit": "6813100d1db7f16bdb2340949fd5659ae9604085",
+    "fu96_primary_forward_replication_path": "refs/OneDModelRad/misc_subs_flcode.f",
+    "fu96_primary_forward_replication_repository": "https://github.com/DavidEngland/ABL",
+    "fu96_primary_forward_source_blob_sha": "0711455bbcb94e959c119bcc343db215e1149ecb",
+    "fu96_primary_forward_source_commit": "3a07581a509936829bca1743e038b0ad9a435ba9",
+    "fu96_primary_forward_source_path": "fortran/Fu/cas_fu_radiation.f",
+    "fu96_primary_forward_source_repository": "https://github.com/XHU-sysu/pyCFRAM",
+    "fu96_primary_solar_coefficient_count": 90,
+    "geoschem_gcrt_guide": "https://wiki.seas.harvard.edu/geos-chem/images/Guide_to_GCRT_Oct2013.pdf",
     "michalsky2006_doi": "https://doi.org/10.1029/2005JD006341",
     "pinned_rrtmg_reference_source": "https://github.com/geoschem/geos-chem/blob/a4551f9442183bb572b23e9c2d362e2d34420d3a/GeosRad/rrtmg_sw_init.F90",
     "pinned_rrtmg_reference_source_sha": "0ccf597d6aa3d6ed40ec592560e3ed94b653ef32",
@@ -278,5 +297,5 @@
     "rrtm_sw_v25_scientific_source_file_count": 26,
     "yi2013_doi": "https://doi.org/10.1175/JAS-D-13-020.1"
   },
-  "step_version": "R5.7.41.3.4.10.30.18"
+  "step_version": "R5.7.41.3.4.10.30.19"
 }

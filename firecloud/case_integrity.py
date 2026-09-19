@@ -1976,7 +1976,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         _guards = _c.get("production_guards", {}) if isinstance(_c, Mapping) else {}
         _step3q_contract_ok = bool(
             isinstance(_c, Mapping)
-            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
+            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
             and _c.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
             and _caps.get("EXACT_FU96_BAND_WEIGHTING_AVAILABLE") is False
             and _caps.get("BAND_INTEGRATED_OPTICAL_VALIDATION_READY") is False
@@ -2004,7 +2004,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             and _b("TAU_ICE_PRODUCTION_ALLOWED", False)
             and _b("PRODUCTION_ICE_OPTICS_READY", False)
             and _b("physics_promotion_allowed", False)
-            and _state == "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+            and _state == "PASS_FAIL_CLOSED_FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUTS_QUALIFIED_RRTMG_FINE_GRID_AND_EXACT_BAND24_25_REALIZATION_UNRECOVERED"
             and _b("FU96_LINEAGE_COALBEDO_BETA_WEIGHTING_TRANSCRIPTION_CORRECTED", True)
             and _b("FU96_LINEAGE_ASYMMETRY_SCATTERING_WEIGHTING_QUALIFIED", True)
             and _b("FU96_LINEAGE_SIMPLE_SOLAR_ONLY_COALBEDO_WEIGHTING_FORBIDDEN", True)
@@ -2016,6 +2016,13 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             and _b("AER_HISTORICAL_RRTM_MOLECULAR_BAND_GENERATION_PIPELINE_RECOVERED", True)
             and _b("AER_HISTORICAL_RRTM_BAND_GENERATION_PIPELINE_IS_FU96_CLOUD_PREAVERAGING_GENERATOR", False)
             and _b("FU96_CLOUD_PREAVERAGING_GENERATOR_RECOVERED", False)
+            and _b("FU96_PRIMARY_BAND_EQ39_COEFFICIENT_INPUT_SET_RECOVERED", True)
+            and _b("FU96_PRIMARY_BAND_FORWARD_MODEL_EXECUTABLE", True)
+            and _b("FU96_SOLAR_COEFFICIENT_REPLICATION_90_OF_90_QUALIFIED", True)
+            and _b("RRTMG_FORWARD_GENERATION_PROCESS_DOCUMENTED", True)
+            and _b("FU96_OPTICAL_INTERVAL_TRANSPORT_INTERVAL_DISTINCTION_QUALIFIED", True)
+            and _b("RRTMG_BAND25_DIRECT_PRIMARY_BROADBAND_COPY_REPRODUCTION_PASS", False)
+            and _b("RRTMG_FINE_SPECTRAL_GRID_REALIZATION_RECOVERED", False)
         )
         add(
             "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_FAIL_CLOSED",

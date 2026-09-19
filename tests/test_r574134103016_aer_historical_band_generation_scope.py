@@ -5,7 +5,7 @@ from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import (
     fu96_rrtmg_band_weighting_provenance_contract_payload,
 )
 
-EXPECTED_STATE = "PASS_FAIL_CLOSED_FU96_PRIMARY_0P700UM_BOUNDARY_AND_BAND24_NONASSOCIATIVE_REAVERAGING_BARRIER_QUALIFIED_EXACT_RRTM_BAND24_25_REALIZATION_UNRECOVERED"
+EXPECTED_STATE = "PASS_FAIL_CLOSED_FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUTS_QUALIFIED_RRTMG_FINE_GRID_AND_EXACT_BAND24_25_REALIZATION_UNRECOVERED"
 
 def test_step3q16_evidence_scope_is_pinned_and_narrow():
     e=build_fu96_rrtmg_band_weighting_provenance_evidence().set_index("check_id")
@@ -26,8 +26,8 @@ def test_step3q16_gate_recovers_molecular_pipeline_but_not_fu96_cloud_generator(
 
 def test_step3q16_contract_identity_and_fail_closed_scope():
     p=fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_18"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.18"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_19"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.19"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["production_guards"]["physics_promotion_allowed"] is False
     blob=json.dumps(p,sort_keys=True)
