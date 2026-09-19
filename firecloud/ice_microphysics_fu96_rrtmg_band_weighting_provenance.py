@@ -1,4 +1,4 @@
-"""Ice Optics Phase 2 Step 3Q.10 — official AER v2.5 archive publication-chain qualification.
+"""Ice Optics Phase 2 Step 3Q.11 — official AER historical source-tree CVS-normalized equivalence qualification.
 
 This step refines Step 3Q.1 without promoting exact historical weighting.  It separates
 (a) historical Fu96 broadband co-albedo semantics from (b) later RRTMG-band integration
@@ -20,8 +20,8 @@ import pandas as pd
 from . import __version__ as PHYSICSCORE_VERSION
 
 SCIENCE_BASELINE = "R5.7.41.2_SHADOW_COT_AB_FROZEN"
-STEP3Q_VERSION = "R5.7.41.3.4.10.30.10"
-STEP3Q_MODE = "FU96_RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFICATION_FAIL_CLOSED"
+STEP3Q_VERSION = "R5.7.41.3.4.10.30.11"
+STEP3Q_MODE = "FU96_RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFICATION_FAIL_CLOSED"
 EVIDENCE_AS_OF = "2026-09-19"
 
 FU96_DOI = "https://doi.org/10.1175/1520-0442(1996)009<2058:AAPOTS>2.0.CO;2"
@@ -41,17 +41,40 @@ AER_RRTM_SW_CLDPROP_PINNED = "https://github.com/AER-RC/RRTM_SW/blob/b1253809ac8
 AER_RRTM_SW_CLDPROP_BLOB_SHA = "8632f7d1940285665b62fdbb30c69861924251da"
 AER_RRTM_SW_CODE_PAGE = "https://rtweb.aer.com/rrtm_sw_code.html"
 AER_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME = "aer_rrtm_sw_v2.5.tar.gz"
-AER_RRTM_SW_V25_EXAMPLES_ARCHIVE_FILENAME = "aer_rrtm_sw_examples_v2.5.tar"
+AER_RRTM_SW_V25_EXAMPLES_ARCHIVE_FILENAME = "aer_rrtm_sw_examples_v2.5.tar.gz"
 AER_RRTM_SW_RELEASE_BUILD_NOTES_PINNED = (
     "https://github.com/AER-RC/RRTM_SW/blob/"
     "b1253809ac88ae782964cd030cb202a380032d11/README.cvs_checkin_notes"
 )
 AER_RRTM_SW_RELEASE_BUILD_NOTES_BLOB_SHA = "9304d7bbd17766b48a58fb2c500e8f5f951b557f"
+AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_COMMIT = "356609ea083f9684dc83a56e3f5c96515cb25b19"
+AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_DATE_UTC = "2004-04-15T18:42:10Z"
+AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_BLOB_SHA = "8632f7d1940285665b62fdbb30c69861924251da"
+AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004 = (
+    "https://github.com/AER-RC/RRTM_SW/blob/"
+    "356609ea083f9684dc83a56e3f5c96515cb25b19/src/cldprop.f"
+)
+AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_COMMIT = "a43212334fd726dec8d69203be0c7d50fd9ce1b0"
+AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_DATE_UTC = "2004-04-15T18:50:57Z"
+AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_BLOB_SHA = "b2b1080fe51b7c3d512de26b4507314fee17ff58"
+AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004 = (
+    "https://github.com/AER-RC/RRTM_SW/blob/"
+    "a43212334fd726dec8d69203be0c7d50fd9ce1b0/src/taumoldis.f"
+)
 
 RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY = "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper"
 RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT = "a2d974ecefe6f369661bf5a3dfc648f07986ad89"
 RRTM_SW_V25_EXTERNAL_IMPORT_COMMIT = "040d18018f553faeeae625fd4ef73d50ba0436fb"
 RRTM_SW_V25_EXTERNAL_IMPORT_DATE_UTC = "2020-03-17T22:23:17Z"
+RRTM_SW_V25_EXTERNAL_IMPORT_CLDPROP = (
+    "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper/blob/"
+    "040d18018f553faeeae625fd4ef73d50ba0436fb/SW/src/cldprop.f"
+)
+RRTM_SW_V25_EXTERNAL_IMPORT_TAUMOLDIS = (
+    "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper/blob/"
+    "040d18018f553faeeae625fd4ef73d50ba0436fb/SW/src/taumoldis.f"
+)
+RRTM_SW_V25_EXTERNAL_IMPORT_TAUMOLDIS_BLOB_SHA = "5111a3bb7d981ea8facb4733c2ebb8d7f1308486"
 RRTM_SW_V25_EXTERNAL_CLDPROP = (
     "https://github.com/nickedkins/RRTM-LWandSW-Python-wrapper/blob/"
     "a2d974ecefe6f369661bf5a3dfc648f07986ad89/SW/src/cldprop.f"
@@ -255,6 +278,36 @@ def build_fu96_rrtmg_band_weighting_provenance_evidence() -> pd.DataFrame:
             f"external_blob={RRTM_SW_V25_EXTERNAL_CLDPROP_BLOB_SHA}; aer_blob={AER_RRTM_SW_CLDPROP_BLOB_SHA}",
         ),
         _row(
+            "AER_OFFICIAL_RRTM_SW_V25_CLDPROP_2004_HISTORY_PINNED", "OFFICIAL_HISTORICAL_SOURCE_TREE", "PASS_PINNED",
+            "AER-RC/RRTM_SW records src/cldprop.f commit 356609ea083f9684dc83a56e3f5c96515cb25b19 by jdelamer at 2004-04-15T18:42:10Z; the official blob is 8632f7d1940285665b62fdbb30c69861924251da",
+            "OFFICIAL_2004_CLDPROP_HISTORY_AND_BLOB_PINNED",
+            f"{AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004}; commit={AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_COMMIT}; blob_sha={AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_BLOB_SHA}",
+        ),
+        _row(
+            "AER_OFFICIAL_RRTM_SW_V25_TAUMOLDIS_2004_HISTORY_PINNED", "OFFICIAL_HISTORICAL_SOURCE_TREE", "PASS_PINNED",
+            "AER-RC/RRTM_SW records src/taumoldis.f commit a43212334fd726dec8d69203be0c7d50fd9ce1b0 by jdelamer at 2004-04-15T18:50:57Z; the official blob is b2b1080fe51b7c3d512de26b4507314fee17ff58",
+            "OFFICIAL_2004_TAUMOLDIS_HISTORY_AND_BLOB_PINNED",
+            f"{AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004}; commit={AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_COMMIT}; blob_sha={AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_BLOB_SHA}",
+        ),
+        _row(
+            "RRTM_SW_V25_CLDPROP_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE", "OFFICIAL_HISTORICAL_SOURCE_TREE", "PASS_QUALIFIED",
+            "Official AER 2004 cldprop.f and the external mirror import both contain 2080 lines; the only raw differences are CVS keyword collapse/expansion ($Source/$Author/$Revision/$Date and the runtime HVRCLD revision string). After canonical CVS-keyword normalization the complete files are identical",
+            "FULL_FILE_EQUIVALENCE_AFTER_CVS_KEYWORD_NORMALIZATION_REQUIRED",
+            f"official_blob={AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_BLOB_SHA}; mirror_blob={RRTM_SW_V25_EXTERNAL_CLDPROP_BLOB_SHA}; official_commit={AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_COMMIT}; mirror_import_commit={RRTM_SW_V25_EXTERNAL_IMPORT_COMMIT}",
+        ),
+        _row(
+            "RRTM_SW_V25_TAUMOLDIS_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE", "OFFICIAL_HISTORICAL_SOURCE_TREE", "PASS_QUALIFIED",
+            "Official AER 2004 taumoldis.f and the external mirror import both contain 2054 lines; after canonical CVS-keyword normalization ($Source/$Author/$Revision/$Date) the complete files are identical. The mirror expansion identifies revision 2.5 dated 2004-04-15 18:50:57",
+            "FULL_FILE_EQUIVALENCE_AFTER_CVS_KEYWORD_NORMALIZATION_REQUIRED",
+            f"official_blob={AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_BLOB_SHA}; mirror_blob={RRTM_SW_V25_EXTERNAL_IMPORT_TAUMOLDIS_BLOB_SHA}; official_commit={AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_COMMIT}; mirror_import_commit={RRTM_SW_V25_EXTERNAL_IMPORT_COMMIT}",
+        ),
+        _row(
+            "RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE", "OFFICIAL_HISTORICAL_SOURCE_TREE", "PASS_QUALIFIED",
+            "The two critical v2.5 provenance anchors used by this qualification (cldprop.f cloud tables/runtime and taumoldis.f solar-source context) are full-file equivalent between AER official 2004 history and the external mirror after removing CVS keyword expansion as a non-science checkout artifact",
+            "CRITICAL_SOURCE_TREE_EQUIVALENCE_QUALIFIED_WITHOUT_PROMOTING_ORIGINAL_TARBALL_BYTE_IDENTITY",
+            "This is source-tree equivalence for pinned critical files, not proof that the external repository tree or archive bytes are byte-identical to aer_rrtm_sw_v2.5.tar.gz.",
+        ),
+        _row(
             "RRTM_SW_V25_RUNTIME_KURUCZ_LOW_HIGH_RESOLUTION_DISTINCTION", "HISTORICAL_SOLAR_SOURCE_CONTEXT", "PASS_QUALIFIED",
             "Pinned v2.5 taumoldis.f explicitly distinguishes a low-resolution Kurucz solar source from a high-resolution version and notes a band-total irradiance discrepancy handled by SCALEKUR",
             "RUNTIME_SFLUXREF_MUST_NOT_BE_EQUATED_TO_UNRECOVERED_HIGH_RESOLUTION_CLOUD_TABLE_WEIGHT_VECTOR",
@@ -419,10 +472,17 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         and status.get("RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN") == "PASS_QUALIFIED"
         and status.get("AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_BYTES_AND_HASH_RECOVERED") == "BLOCKED_NOT_RECOVERED"
     )
+    official_source_tree_equivalence = (
+        status.get("AER_OFFICIAL_RRTM_SW_V25_CLDPROP_2004_HISTORY_PINNED") == "PASS_PINNED"
+        and status.get("AER_OFFICIAL_RRTM_SW_V25_TAUMOLDIS_2004_HISTORY_PINNED") == "PASS_PINNED"
+        and status.get("RRTM_SW_V25_CLDPROP_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE") == "PASS_QUALIFIED"
+        and status.get("RRTM_SW_V25_TAUMOLDIS_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE") == "PASS_QUALIFIED"
+        and status.get("RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE") == "PASS_QUALIFIED"
+    )
     exact = status.get("EXACT_FU96_RRTMG_BAND_WEIGHTING") == "PASS"
     state = (
         "PASS_EXACT_WEIGHTING_PROVENANCE_QUALIFIED" if primary and lineage and tables and semantic and exact
-        else "PASS_FAIL_CLOSED_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED_ORIGINAL_TARBALL_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+        else "PASS_FAIL_CLOSED_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFIED_ORIGINAL_TARBALL_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
     )
     return pd.DataFrame([{
         "qualification_state": state,
@@ -450,6 +510,11 @@ def build_fu96_rrtmg_band_weighting_provenance_gate(evidence: pd.DataFrame | Non
         "AER_OFFICIAL_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_SOURCE_ARCHIVE_FILENAME_PUBLISHED") == "PASS_PINNED"),
         "AER_RRTM_SW_WEB_TAR_BUILD_PROCEDURE_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_WEB_TAR_BUILD_PROCEDURE") == "PASS_PINNED"),
         "RRTM_SW_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED": bool(official_archive_publication_chain),
+        "RRTM_SW_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFIED": bool(official_source_tree_equivalence),
+        "AER_OFFICIAL_RRTM_SW_V25_CLDPROP_2004_HISTORY_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_CLDPROP_2004_HISTORY_PINNED") == "PASS_PINNED"),
+        "AER_OFFICIAL_RRTM_SW_V25_TAUMOLDIS_2004_HISTORY_PINNED": bool(status.get("AER_OFFICIAL_RRTM_SW_V25_TAUMOLDIS_2004_HISTORY_PINNED") == "PASS_PINNED"),
+        "RRTM_SW_V25_CLDPROP_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE_QUALIFIED": bool(status.get("RRTM_SW_V25_CLDPROP_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE") == "PASS_QUALIFIED"),
+        "RRTM_SW_V25_TAUMOLDIS_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE_QUALIFIED": bool(status.get("RRTM_SW_V25_TAUMOLDIS_CVS_NORMALIZED_OFFICIAL_MIRROR_EQUIVALENCE") == "PASS_QUALIFIED"),
         "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_BYTES_RECOVERED": False,
         "AER_OFFICIAL_RRTM_SW_V25_ARCHIVE_HASH_RECOVERED": False,
         "RRTM_SW_V25_RUNTIME_SOLAR_CONTEXT_EQUALS_FU_CLOUD_TABLE_WEIGHT_VECTOR": False,
@@ -490,7 +555,7 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
     gate = gate if gate is not None else build_fu96_rrtmg_band_weighting_provenance_gate(evidence)
     g = gate.iloc[0].to_dict()
     return {
-        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_10",
+        "contract_version": "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_11",
         "physicscore_version": str(physicscore_version),
         "step_version": STEP3Q_VERSION,
         "science_baseline": SCIENCE_BASELINE,
@@ -517,10 +582,21 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "aer_rrtm_sw_v25_examples_archive_filename": AER_RRTM_SW_V25_EXAMPLES_ARCHIVE_FILENAME,
             "aer_rrtm_sw_release_build_notes_pinned": AER_RRTM_SW_RELEASE_BUILD_NOTES_PINNED,
             "aer_rrtm_sw_release_build_notes_blob_sha": AER_RRTM_SW_RELEASE_BUILD_NOTES_BLOB_SHA,
+            "aer_rrtm_sw_v25_official_cldprop_2004": AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004,
+            "aer_rrtm_sw_v25_official_cldprop_2004_commit": AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_COMMIT,
+            "aer_rrtm_sw_v25_official_cldprop_2004_date_utc": AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_DATE_UTC,
+            "aer_rrtm_sw_v25_official_cldprop_2004_blob_sha": AER_RRTM_SW_V25_OFFICIAL_CLDPROP_2004_BLOB_SHA,
+            "aer_rrtm_sw_v25_official_taumoldis_2004": AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004,
+            "aer_rrtm_sw_v25_official_taumoldis_2004_commit": AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_COMMIT,
+            "aer_rrtm_sw_v25_official_taumoldis_2004_date_utc": AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_DATE_UTC,
+            "aer_rrtm_sw_v25_official_taumoldis_2004_blob_sha": AER_RRTM_SW_V25_OFFICIAL_TAUMOLDIS_2004_BLOB_SHA,
             "rrtm_sw_v25_external_mirror_repository": RRTM_SW_V25_EXTERNAL_MIRROR_REPOSITORY,
             "rrtm_sw_v25_external_mirror_commit": RRTM_SW_V25_EXTERNAL_MIRROR_COMMIT,
             "rrtm_sw_v25_external_import_commit": RRTM_SW_V25_EXTERNAL_IMPORT_COMMIT,
             "rrtm_sw_v25_external_import_date_utc": RRTM_SW_V25_EXTERNAL_IMPORT_DATE_UTC,
+            "rrtm_sw_v25_external_import_cldprop": RRTM_SW_V25_EXTERNAL_IMPORT_CLDPROP,
+            "rrtm_sw_v25_external_import_taumoldis": RRTM_SW_V25_EXTERNAL_IMPORT_TAUMOLDIS,
+            "rrtm_sw_v25_external_import_taumoldis_blob_sha": RRTM_SW_V25_EXTERNAL_IMPORT_TAUMOLDIS_BLOB_SHA,
             "rrtm_sw_v25_external_cldprop": RRTM_SW_V25_EXTERNAL_CLDPROP,
             "rrtm_sw_v25_external_cldprop_blob_sha": RRTM_SW_V25_EXTERNAL_CLDPROP_BLOB_SHA,
             "rrtm_sw_v25_external_update": RRTM_SW_V25_EXTERNAL_UPDATE,
@@ -559,6 +635,10 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "v25_official_source_archive_filename_pinned": True,
             "v25_official_web_tar_build_procedure_pinned": True,
             "v25_official_archive_publication_chain_qualified": True,
+            "v25_official_source_tree_cvs_normalized_equivalence_qualified": True,
+            "v25_cldprop_official_mirror_cvs_normalized_equivalence": True,
+            "v25_taumoldis_official_mirror_cvs_normalized_equivalence": True,
+            "v25_official_source_tree_equivalence_is_original_tarball_byte_identity": False,
             "v25_original_aer_archive_bytes_recovered": False,
             "v25_original_aer_archive_hash_recovered": False,
             "v25_runtime_kurucz_low_high_resolution_distinction_qualified": True,
@@ -583,11 +663,12 @@ def fu96_rrtmg_band_weighting_provenance_contract_payload(*, evidence: pd.DataFr
             "treating_v25_runtime_low_resolution_kurucz_sfluxref_as_exact_cloud_table_high_resolution_weights",
             "treating_external_v25_mirror_as_byte_identical_original_aer_tarball_without_original_archive_hash",
             "treating_official_archive_filename_or_web_build_procedure_as_equivalent_to_recovered_original_tarball_bytes_or_hash",
+            "treating_cvs_normalized_source_tree_equivalence_as_proof_of_original_tarball_byte_identity_or_original_tarball_hash",
             "treating_2020_github_mirror_import_timestamp_as_the_2004_aer_source_date",
         ],
         "production_guards": {"tau_ice_production_allowed": False, "production_ice_optics_ready": False, "physics_promotion_allowed": False},
         "scope_note": (
-            "Step 3Q.10 extends the qualified RRTM_SW v2.5 lineage with an official AER publication-chain boundary. AER's RRTM_SW Code and Examples page identifies the v2.5 source package filename as aer_rrtm_sw_v2.5.tar.gz, and pinned AER release notes document that the April 2004 public-release procedure used script_build_rrtm_sw.pl to build source-code and example tar files for the web-site with the proper version number. This qualifies the official publication lineage, but it does not recover the original tarball bytes or a provenance-qualified hash and therefore does not prove the external mirror byte-identical to the original AER archive. The prior mirror import-time/CVS-time separation and runtime Kurucz context remain qualified. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
+            "Step 3Q.11 extends the qualified RRTM_SW v2.5 lineage with official AER historical source-tree equivalence evidence. AER's RRTM_SW Code and Examples page identifies the v2.5 source package filename as aer_rrtm_sw_v2.5.tar.gz, and pinned AER release notes document that the April 2004 public-release procedure used script_build_rrtm_sw.pl to build source-code and example tar files for the web-site with the proper version number. This retains the official publication-lineage qualification. In addition, AER official 2004 repository history now directly pins cldprop.f at 2004-04-15T18:42:10Z and taumoldis.f at 2004-04-15T18:50:57Z. Full-file comparison against the external mirror import shows that both critical files become identical after canonical removal of CVS keyword expansion, qualifying critical-source-tree historical equivalence. This still does not recover the original tarball bytes or a provenance-qualified archive hash and therefore does not prove the mirror repository tree or archive byte-identical to the original AER tarball. The prior mirror import-time/CVS-time separation and runtime Kurucz context remain qualified. The runtime distribution still preserves post-averaged Fu96 band tables rather than the Q. Fu high-resolution pre-averaging tables or generator. "
             "It does not claim recovery of the exact historical Fu96-to-default-RRTMG discrete weighting realization, "
             "nor does it equate the later Yi2013 integration formula or runtime Kurucz spectrum with the historical table generator. "
             "Exact weighting and production gates remain fail-closed."

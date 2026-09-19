@@ -12,7 +12,7 @@ def test_step3q5_post_averaged_archive_boundary_is_pinned_and_fail_closed():
     assert e.loc["RRTM_SW_PREAVERAGING_FU96_GENERATOR_PRESENT_IN_PINNED_ARCHIVE", "status"] == "BLOCKED_NOT_PRESENT"
     assert e.loc["FINAL_TABLE_INVERSE_IDENTIFICATION_OF_H_OR_WEIGHTS", "status"] == "PASS_FORBIDDEN"
     g = build_fu96_rrtmg_band_weighting_provenance_gate(e.reset_index()).iloc[0]
-    assert g["qualification_state"] == "PASS_FAIL_CLOSED_V25_OFFICIAL_ARCHIVE_PUBLICATION_CHAIN_QUALIFIED_ORIGINAL_TARBALL_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
+    assert g["qualification_state"] == "PASS_FAIL_CLOSED_V25_OFFICIAL_SOURCE_TREE_CVS_NORMALIZED_EQUIVALENCE_QUALIFIED_ORIGINAL_TARBALL_HASH_UNRECOVERED_PREAVERAGING_GENERATOR_UNRECOVERED"
     assert bool(g["RRTM_SW_POST_AVERAGED_ARCHIVE_BOUNDARY_QUALIFIED"]) is True
     assert bool(g["RRTM_SW_PREAVERAGING_GENERATOR_RECOVERED"]) is False
     assert bool(g["FINAL_TABLE_INVERSE_IDENTIFICATION_ALLOWED"]) is False
@@ -22,8 +22,8 @@ def test_step3q5_post_averaged_archive_boundary_is_pinned_and_fail_closed():
 
 def test_step3q5_contract_records_pinned_aer_archive_boundary():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_10"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.10"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_11"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.11"
     assert p["sources"]["aer_rrtm_sw_cldprop_blob_sha"] == "8632f7d1940285665b62fdbb30c69861924251da"
     q = p["qualified_weighting_semantic_class"]
     assert q["rrtm_sw_preaveraging_generator_recovered"] is False

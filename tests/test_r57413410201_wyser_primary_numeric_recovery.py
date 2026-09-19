@@ -5,7 +5,7 @@ import firecloud.ice_microphysics_wyser_primary_numeric_recovery as w
 
 
 def test_patch_release_identity_and_contract_version():
-    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.10"
+    assert firecloud.__version__ == "1.0.0-R5.7.41.3.4.10.30.11"
     assert w.STEP3G_VERSION == "R5.7.41.3.4.10.20.1"
     assert w.STEP3G_MODE == "WYSER_PRIMARY_EQ5_EQ6_NUMERIC_RECOVERY_DIAGNOSTIC_MASS_CLOSURE_EXTERNAL_EQ6_CORROBORATION_PENDING"
     assert w.wyser_primary_numeric_recovery_contract_payload()["contract_version"] == "FIRECLOUD_ICE_WYSER_PRIMARY_NUMERIC_RECOVERY_V3"
