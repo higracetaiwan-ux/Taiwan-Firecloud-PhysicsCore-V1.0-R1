@@ -1976,7 +1976,7 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
         _guards = _c.get("production_guards", {}) if isinstance(_c, Mapping) else {}
         _step3q_contract_ok = bool(
             isinstance(_c, Mapping)
-            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+            and _c.get("contract_version") == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"
             and _c.get("science_baseline") == "R5.7.41.2_SHADOW_COT_AB_FROZEN"
             and _caps.get("EXACT_FU96_BAND_WEIGHTING_AVAILABLE") is False
             and _caps.get("BAND_INTEGRATED_OPTICAL_VALIDATION_READY") is False
@@ -2027,6 +2027,14 @@ def build_analysis_integrity_audit(result: Mapping[str, Any]) -> pd.DataFrame:
             and _b("RRTMG_BAND25_DIRECT_PRIMARY_CONTROL_RESIDUAL_TOPOLOGY_QUALIFIED", True)
             and _b("RRTMG_BAND25_HISTORICAL_INTRABAND_INPUT_BUNDLE_COMPLETE", False)
             and _b("RRTMG_FINE_SPECTRAL_GRID_REALIZATION_RECOVERED", False)
+            and _b("FU96_LINEAGE_200_WAVELENGTH_SAMPLE_COUNT_QUALIFIED", True)
+            and _b("FU96_LINEAGE_SOLAR_PRIMARY_BAND_COUNT_QUALIFIED", True)
+            and _b("FU96_LINEAGE_EXACT_200_WAVELENGTH_NODE_GRID_RECOVERED", False)
+            and _b("RRTMG_FU96_RUNTIME_DGE_3UM_LINEAR_INTERPOLATION_PINNED", True)
+            and _b("RRTMG_RUNTIME_DGE_INTERPOLATION_IS_SPECTRAL_PREAVERAGING_REALIZATION", False)
+            and _b("RRTMG_BAND25_RUNTIME_GPOINT_REDUCTION_SCOPE_QUALIFIED", True)
+            and _b("RRTMG_BAND25_RUNTIME_RWGT_IS_CLOUD_PREAVERAGING_SOLAR_WEIGHT_VECTOR", False)
+            and _b("RRTMG_BAND25_RUNTIME_SFLUXREF_REDUCTION_PROVES_HISTORICAL_CLOUD_WEIGHTING", False)
         )
         add(
             "ICE_MICROPHYSICS_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_FAIL_CLOSED",

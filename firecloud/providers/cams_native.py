@@ -1630,6 +1630,25 @@ def _run_cams_role_isolated(role: str, points: list[dict], valid_time: datetime,
         except Exception: pass
     return res
 
+def _deferred_reattach_deadline_seconds(initial_deadline_seconds: float) -> float:
+    """Bound observation time for an already-submitted ADS request.
+
+    The initial request has already consumed its normal provider deadline.  A
+    reattach-only worker may observe/harvest the same durable request ID, but
+    must not spend another full production deadline by default.  Small test or
+    explicitly low-latency deadlines are never enlarged.
+    """
+    initial=max(0.2,float(initial_deadline_seconds))
+    raw=os.getenv("FIRECLOUD_CAMS_DEFERRED_REATTACH_DEADLINE_SECONDS","").strip()
+    if raw:
+        try:
+            return min(initial,max(0.2,float(raw)))
+        except Exception:
+            pass
+    candidate=max(20.0,min(75.0,initial*0.35))
+    return round(min(initial,candidate), 3)
+
+
 def _is_retryable_cams_failure(res: dict) -> bool:
     status=str(res.get("status","")).upper()
     err=str(res.get("error","") or "").lower()
@@ -1706,6 +1725,8 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
         deferred_reattach_cooldown=8.0
     deferred_reattach_cooldown=min(deferred_reattach_cooldown, max(0.0, deadline_seconds*0.25))
     meta["cams_deferred_reattach_count"] = deferred_reattach_count
+    deferred_reattach_deadline_seconds = _deferred_reattach_deadline_seconds(deadline_seconds)
+    meta["cams_deferred_reattach_deadline_seconds"] = deferred_reattach_deadline_seconds
     meta["cams_deferred_reattach_contract"] = "R5.7.41.3.4.10.30.18.2_SAME_REQUEST_ID_BOUNDED_REATTACH_V2"
 
     role_results={}
@@ -1771,7 +1792,7 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
                 try: progress_callback(role+"_REATTACH", "RUNNING", 0.0)
                 except Exception: pass
             res = _run_cams_role_isolated(
-                role, points, valid_time, cache_dir, deadline_seconds,
+                role, points, valid_time, cache_dir, deferred_reattach_deadline_seconds,
                 heartbeat_callback=progress_callback, reattach_only=True,
             )
             res["deferred_reattach_attempted"] = True
@@ -1779,7 +1800,9 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
             res["deferred_initial_status"] = str(prior.get("status", ""))
             res["deferred_initial_error"] = str(prior.get("error", "") or "")
             res["deferred_initial_elapsed_seconds"] = float(prior.get("elapsed_seconds", 0.0) or 0.0)
-            res["deferred_recovery_contract"] = "R5.7.41.3.4.10.30.18.2_SAME_REQUEST_ID_BOUNDED_REATTACH_V2"
+            res["deferred_initial_deadline_seconds"] = float(deadline_seconds)
+            res["deferred_reattach_deadline_seconds"] = float(deferred_reattach_deadline_seconds)
+            res["deferred_recovery_contract"] = "R5.7.41.3.4.10.30.21_BOUNDED_SAME_REQUEST_ID_REATTACH_OBSERVATION_WINDOW_V1"
             if progress_callback:
                 try: progress_callback(role+"_REATTACH", res.get("status","FAILED"), res.get("elapsed_seconds",0.0))
                 except Exception: pass
@@ -1812,6 +1835,8 @@ def _fetch_route_native_aerosol_bundle_single_tile(points: list[dict], valid_tim
                       "initial_elapsed_seconds":round(float(res.get("initial_elapsed_seconds",0.0) or 0.0),3),
                       "deferred_reattach_attempted":bool(res.get("deferred_reattach_attempted",False)),
                       "deferred_reattach_count":int(res.get("deferred_reattach_count",0) or 0),
+                      "deferred_initial_deadline_seconds":float(res.get("deferred_initial_deadline_seconds",0.0) or 0.0),
+                      "deferred_reattach_deadline_seconds":float(res.get("deferred_reattach_deadline_seconds",0.0) or 0.0),
                       "deferred_initial_status":res.get("deferred_initial_status",""),
                       "deferred_initial_error":res.get("deferred_initial_error",""),
                       "deferred_initial_elapsed_seconds":round(float(res.get("deferred_initial_elapsed_seconds",0.0) or 0.0),3),
@@ -1993,6 +2018,7 @@ def _fetch_cams_role_adaptive(points: list[dict], valid_time: datetime, role: st
         except Exception:
             adaptive_reattach_cooldown=8.0
         adaptive_reattach_cooldown=min(adaptive_reattach_cooldown, max(0.0, deadline_seconds*0.25))
+        adaptive_reattach_deadline_seconds=_deferred_reattach_deadline_seconds(deadline_seconds)
         adaptive_reattach_attempts=0
         while (
             adaptive_reattach_attempts < adaptive_reattach_count
@@ -2009,7 +2035,7 @@ def _fetch_cams_role_adaptive(points: list[dict], valid_time: datetime, role: st
                 try: progress_callback(display+"_REATTACH", "RUNNING", 0.0)
                 except Exception: pass
             res=_run_cams_role_isolated(
-                role,seg,valid_time,cache_dir,deadline_seconds,
+                role,seg,valid_time,cache_dir,adaptive_reattach_deadline_seconds,
                 heartbeat_callback=hb,reattach_only=True,
             )
             res["deferred_reattach_attempted"]=True
@@ -2020,7 +2046,9 @@ def _fetch_cams_role_adaptive(points: list[dict], valid_time: datetime, role: st
             res["deferred_initial_request_id"]=str(prior_audit.get("ads_request_id", ""))
             res["deferred_initial_remote_status"]=str(prior_audit.get("ads_remote_status", ""))
             res["deferred_initial_timeout_reason"]=str(prior_audit.get("ads_stateful_timeout_reason", ""))
-            res["deferred_recovery_contract"]="R5.7.41.3.4.10.30.18.2_ADAPTIVE_QUEUE_RUNNING_SAME_REQUEST_ID_REATTACH_V1"
+            res["deferred_initial_deadline_seconds"]=float(deadline_seconds)
+            res["deferred_reattach_deadline_seconds"]=float(adaptive_reattach_deadline_seconds)
+            res["deferred_recovery_contract"]="R5.7.41.3.4.10.30.21_BOUNDED_SAME_REQUEST_ID_REATTACH_OBSERVATION_WINDOW_V1"
             if progress_callback:
                 try: progress_callback(display+"_REATTACH",res.get("status","FAILED"),res.get("elapsed_seconds",0.0))
                 except Exception: pass
@@ -2053,6 +2081,8 @@ def _fetch_cams_role_adaptive(points: list[dict], valid_time: datetime, role: st
             "bbox_nwse":route_bbox(seg),
             "deferred_reattach_attempted":bool(res.get("deferred_reattach_attempted",False)),
             "deferred_reattach_count":int(res.get("deferred_reattach_count",0) or 0),
+            "deferred_initial_deadline_seconds":float(res.get("deferred_initial_deadline_seconds",0.0) or 0.0),
+            "deferred_reattach_deadline_seconds":float(res.get("deferred_reattach_deadline_seconds",0.0) or 0.0),
             "deferred_initial_status":res.get("deferred_initial_status",""),
             "deferred_initial_error":res.get("deferred_initial_error",""),
             "deferred_initial_elapsed_seconds":round(float(res.get("deferred_initial_elapsed_seconds",0.0) or 0.0),3),

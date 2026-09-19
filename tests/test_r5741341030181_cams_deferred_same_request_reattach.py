@@ -139,4 +139,4 @@ def test_serial_scheduler_same_run_reattaches_timeout_deferred(monkeypatch):
     assert audit["deferred_reattach_attempted"] is True
     assert audit["deferred_reattach_count"] == 1
     assert audit["deferred_initial_status"] == "TIMEOUT_DEFERRED"
-    assert audit["deferred_recovery_contract"] == "R5.7.41.3.4.10.30.18.2_SAME_REQUEST_ID_BOUNDED_REATTACH_V2"
+    assert audit["deferred_recovery_contract"] == "R5.7.41.3.4.10.30.21_BOUNDED_SAME_REQUEST_ID_REATTACH_OBSERVATION_WINDOW_V1"

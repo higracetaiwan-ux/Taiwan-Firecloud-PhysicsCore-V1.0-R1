@@ -15,8 +15,8 @@ from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import (
 
 
 def test_step3q20_band25_reference_geometry_and_residual_harness():
-    assert __version__ == "1.0.0-R5.7.41.3.4.10.30.20"
-    assert STEP3Q_VERSION == "R5.7.41.3.4.10.30.20"
+    assert __version__ == "1.0.0-R5.7.41.3.4.10.30.21"
+    assert STEP3Q_VERSION == "R5.7.41.3.4.10.30.21"
     assert abs(BAND25_WAVELENGTH_MIN_UM - 0.4415011037527594) < 1e-15
     assert BAND25_WAVELENGTH_MAX_UM == 0.625
     r = build_band25_direct_primary_control_residuals()
@@ -67,7 +67,7 @@ def test_step3q20_prerequisite_matrix_and_contract_remain_fail_closed():
 
 def test_step3q20_contract_equation_strings_match_corrected_beta_weighting():
     c = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert c["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert c["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"
     q = c["qualified_weighting_semantic_class"]
     assert q["historical_fu96_alpha_linear"] == "sum(alpha_lambda*beta_lambda*S_lambda*dLambda)/sum(beta_lambda*S_lambda*dLambda)"
     assert q["historical_fu96_alpha_log"] == "exp(sum(ln(alpha_lambda)*beta_lambda*S_lambda*dLambda)/sum(beta_lambda*S_lambda*dLambda))"

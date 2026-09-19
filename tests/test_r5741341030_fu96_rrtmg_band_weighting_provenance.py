@@ -45,10 +45,10 @@ def test_step3q_contract_is_stable_nonproduction_and_versioned():
     ev = build_fu96_rrtmg_band_weighting_provenance_evidence()
     gate = build_fu96_rrtmg_band_weighting_provenance_gate(ev)
     payload = fu96_rrtmg_band_weighting_provenance_contract_payload(evidence=ev, gate=gate)
-    assert payload["step_version"] == "R5.7.41.3.4.10.30.20"
+    assert payload["step_version"] == "R5.7.41.3.4.10.30.21"
     assert payload["production_guards"]["tau_ice_production_allowed"] is False
     assert payload["production_guards"]["production_ice_optics_ready"] is False
     a = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(payload)
     b = serialize_fu96_rrtmg_band_weighting_provenance_contract_json_bytes(dict(reversed(list(payload.items()))))
     assert a == b
-    assert json.loads(a.decode("utf-8"))["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert json.loads(a.decode("utf-8"))["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"

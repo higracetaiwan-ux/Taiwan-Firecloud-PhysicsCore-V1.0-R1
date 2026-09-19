@@ -25,8 +25,8 @@ def test_current_unavailability_does_not_erase_historical_publication_or_unlock_
 
 def test_step3q7_contract_version_and_semantics():
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.21"
     q = p["qualified_weighting_semantic_class"]
     assert q["rrtmg_sw_pre_v5_current_public_releases_available"] is False
     assert q["rrtm_sw_v24_historically_public_2002"] is True

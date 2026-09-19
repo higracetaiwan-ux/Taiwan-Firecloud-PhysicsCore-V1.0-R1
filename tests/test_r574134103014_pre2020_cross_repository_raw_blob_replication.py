@@ -49,8 +49,8 @@ def test_step3q14_critical_blobs_are_exactly_replicated_but_production_stays_clo
     assert bool(g["PRODUCTION_ICE_OPTICS_READY"]) is False
 
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.21"
     assert p["qualification_state"] == EXPECTED_STATE
     q = p["qualified_weighting_semantic_class"]
     assert q["v25_cross_repository_raw_blob_match_count"] == 22

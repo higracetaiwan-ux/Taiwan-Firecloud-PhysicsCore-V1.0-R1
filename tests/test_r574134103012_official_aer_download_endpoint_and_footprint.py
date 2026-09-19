@@ -34,8 +34,8 @@ def test_step3q12_lineage_gain_keeps_original_archive_and_physics_fail_closed():
     assert bool(g["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"]) is False
     assert bool(g["PRODUCTION_ICE_OPTICS_READY"]) is False
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.21"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["sources"]["aer_rrtm_sw_v25_source_archive_url"] == OFFICIAL_URL
 

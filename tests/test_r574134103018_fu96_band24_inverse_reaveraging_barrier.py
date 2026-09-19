@@ -28,9 +28,9 @@ def test_band24_inverse_reaveraging_remains_nonunique_and_fail_closed():
 
 def test_step3q18_contract_identity_and_scope():
     c = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert __version__ == "1.0.0-R5.7.41.3.4.10.30.20"
-    assert STEP3Q_VERSION == "R5.7.41.3.4.10.30.20"
-    assert c["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert __version__ == "1.0.0-R5.7.41.3.4.10.30.21"
+    assert STEP3Q_VERSION == "R5.7.41.3.4.10.30.21"
+    assert c["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"
     assert c["capabilities"]["RRTMG_BAND24_FINAL_TABLE_INVERSE_REAVERAGING_NONUNIQUE_QUALIFIED"] is True
     assert c["production_guards"]["tau_ice_production_allowed"] is False
     assert c["production_guards"]["production_ice_optics_ready"] is False

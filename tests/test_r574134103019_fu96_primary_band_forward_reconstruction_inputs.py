@@ -10,8 +10,8 @@ from firecloud.ice_microphysics_fu96_rrtmg_band_weighting_provenance import (
 )
 
 def test_primary_band_coefficients_and_forward_evaluation():
-    assert __version__ == "1.0.0-R5.7.41.3.4.10.30.20"
-    assert STEP3Q_VERSION == "R5.7.41.3.4.10.30.20"
+    assert __version__ == "1.0.0-R5.7.41.3.4.10.30.21"
+    assert STEP3Q_VERSION == "R5.7.41.3.4.10.30.21"
     assert coefficient_count() == 90
     assert SOURCE_BLOB_SHA == "0711455bbcb94e959c119bcc343db215e1149ecb"
     assert AP[0] == (-2.9172062e-05, 2.5192544, 0.0)
@@ -41,7 +41,7 @@ def test_step3q19_evidence_and_gate_are_fail_closed():
 
 def test_step3q19_contract_scope_and_production_guard():
     p=fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"
     assert p["qualification_state"] == "PASS_FAIL_CLOSED_FU96_PRIMARY_BAND_FORWARD_RECONSTRUCTION_INPUTS_QUALIFIED_RRTMG_FINE_GRID_AND_EXACT_BAND24_25_REALIZATION_UNRECOVERED"
     assert p["capabilities"]["FU96_PRIMARY_BAND_EQ39_COEFFICIENT_INPUT_SET_RECOVERED"] is True
     assert p["capabilities"]["RRTMG_FINE_SPECTRAL_GRID_REALIZATION_RECOVERED"] is False

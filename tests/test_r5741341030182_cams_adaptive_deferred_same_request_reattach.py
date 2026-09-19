@@ -35,7 +35,7 @@ def test_adaptive_scheduler_queue_timeout_same_run_reattaches_same_request(monke
     assert a["deferred_initial_request_id"] == "rid-queue"
     assert a["deferred_initial_remote_status"] == "accepted"
     assert a["deferred_initial_timeout_reason"] == "CAMS_ADS_QUEUE_GRACE_EXCEEDED"
-    assert a["deferred_recovery_contract"] == "R5.7.41.3.4.10.30.18.2_ADAPTIVE_QUEUE_RUNNING_SAME_REQUEST_ID_REATTACH_V1"
+    assert a["deferred_recovery_contract"] == "R5.7.41.3.4.10.30.21_BOUNDED_SAME_REQUEST_ID_REATTACH_OBSERVATION_WINDOW_V1"
 
 def test_adaptive_scheduler_running_timeout_same_run_reattaches(monkeypatch):
     calls=[]

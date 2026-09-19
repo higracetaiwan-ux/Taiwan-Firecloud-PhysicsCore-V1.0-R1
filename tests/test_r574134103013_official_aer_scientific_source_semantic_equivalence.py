@@ -40,8 +40,8 @@ def test_step3q13_semantic_equivalence_promotes_lineage_only_and_stays_fail_clos
     assert bool(g["EXACT_FU96_BAND_WEIGHTING_AVAILABLE"]) is False
     assert bool(g["PRODUCTION_ICE_OPTICS_READY"]) is False
     p = fu96_rrtmg_band_weighting_provenance_contract_payload()
-    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_20"
-    assert p["step_version"] == "R5.7.41.3.4.10.30.20"
+    assert p["contract_version"] == "FIRECLOUD_ICE_FU96_RRTMG_BAND_WEIGHTING_PROVENANCE_V1_21"
+    assert p["step_version"] == "R5.7.41.3.4.10.30.21"
     assert p["qualification_state"] == EXPECTED_STATE
     assert p["qualified_weighting_semantic_class"]["v25_scientific_source_semantic_equivalence_qualified"] is True
     assert p["qualified_weighting_semantic_class"]["v25_scientific_source_semantic_equivalence_is_full_raw_byte_identity"] is False
